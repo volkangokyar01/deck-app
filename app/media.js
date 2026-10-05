@@ -154,27 +154,46 @@ const AS_VOL = `try
 end try
 `;
 let macVol = { vol: null, mute: false };
+const macSkip = {};             // app -> time until which we leave it alone (permission prompt pending / timed out)
+async function osa(script, timeout) {
+  const r = await run('osascript', ['-'], timeout, 'set out to ""\n' + script + 'return out');
+  return r;
+}
+async function macVolume() {
+  // volume needs no permission: keep it in its own call so a pending "control Chrome?" prompt never blocks it
+  const r = await osa(AS_VOL, 3000);
+  const f = r.stdout.trim().split('\t');
+  if (f[0] === 'vol') { const v = num(f[1]); macVol = { vol: v >= 0 ? Math.round(v) : null, mute: f[2] === 'true' }; }
+  return macVol;
+}
 async function macPoll(wantMedia, wantVol) {
-  const running = wantMedia ? await macRunning() : new Set();
-  let script = 'set out to ""\n';
+  const jobs = [];
+  if (wantVol) jobs.push(macVolume().then(() => ''));
   if (wantMedia) {
-    if (running.has('Spotify')) script += asPlayer('spotify', 'Spotify', 1000);
-    if (running.has('Music')) script += asPlayer('music', 'Music', 1);
-    for (const [app, kind] of MAC_BROWSERS) if (running.has(app)) script += asBrowser(app, kind);
+    const running = await macRunning(), now = Date.now();
+    const parts = [];
+    if (running.has('Spotify')) parts.push(['Spotify', asPlayer('spotify', 'Spotify', 1000)]);
+    if (running.has('Music')) parts.push(['Music', asPlayer('music', 'Music', 1)]);
+    for (const [app, kind] of MAC_BROWSERS) if (running.has(app)) parts.push([app, asBrowser(app, kind)]);
+    for (const [app, script] of parts) {
+      if (macSkip[app] > now) continue;
+      jobs.push(osa(script, 4000).then(r => {
+        if (r.code && !r.stdout) macSkip[app] = Date.now() + 30000;   // probably waiting on the Automation prompt
+        return r.stdout;
+      }));
+    }
   }
-  if (wantVol) script += AS_VOL;
-  script += 'return out';
-  const r = await run('osascript', ['-'], 6000, script);
+  const outs = await Promise.all(jobs);
   const cands = [];
-  for (const line of r.stdout.split(/\r?\n/)) {
+  for (const line of outs.join('\n').split(/\r?\n/)) {
     const f = line.split('\t'); if (!f[0]) continue;
-    if (f[0] === 'vol') { const v = num(f[1]); macVol = { vol: v >= 0 ? Math.round(v) : null, mute: f[2] === 'true' }; continue; }
     if (f[0] === 'ytmusic') {
       const t = (f[1] || '').replace(/\s*[-–—|]\s*YouTube Music\s*$/i, '').trim();
       if (cands.some(c => c.player === 'ytmusic')) continue;
       cands.push({ player: 'ytmusic', name: 'YouTube Music', title: /^youtube music$/i.test(t) ? '' : t, artist: '', playing: false, pos: -1, dur: -1, ctl: 'keys' });
       continue;
     }
+    if (!NAMES[f[0]]) continue;
     const st = (f[1] || '').toLowerCase();
     cands.push({ player: f[0], name: NAMES[f[0]], title: f[2] || '', artist: f[3] || '', playing: st === 'playing', pos: num(f[4]), dur: num(f[5]), ctl: 'app' });
   }
