@@ -1,0 +1,8 @@
+{
+  "name": "volkan-deck",
+  "productName": "Volkan Deck",
+  "version": "1.0.0",
+  "description": "Volkan Deck masaüstü uygulaması",
+  "main": "main.js",
+  "author": "Volkan"
+}

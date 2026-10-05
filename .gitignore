@@ -1,0 +1,6 @@
+dist/
+__pycache__/
+*.pyc
+firmware/VolkanDeck/build/
+.DS_Store
+case/v4/t-display-s3-full.stl

@@ -1,0 +1,331 @@
+// Volkan Deck — desktop companion (Windows + macOS)
+// Keeps the USB link to the deck, opens apps directly when a key is pressed (no Win+R / Spotlight typing),
+// forwards PC temperatures (Windows + LibreHardwareMonitor) and hosts the settings UI.
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog, nativeImage, session, Notification, nativeTheme } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const cp = require('child_process');
+
+const IS_WIN = process.platform === 'win32';
+const IS_MAC = process.platform === 'darwin';
+const ESP_VID = 0x303a;
+
+app.setName('Volkan Deck');
+if (IS_WIN) app.setAppUserModelId('com.volkan.deck');
+if (!app.requestSingleInstanceLock()) { app.quit(); }
+
+let win = null, tray = null, quitting = false;
+let status = { connected: false, text: 'Bağlı değil', direct: false };
+const statePath = () => path.join(app.getPath('userData'), 'state.json');
+function readState() { try { return JSON.parse(fs.readFileSync(statePath(), 'utf8')); } catch (e) { return {}; } }
+function writeState(s) { try { fs.writeFileSync(statePath(), JSON.stringify(s)); } catch (e) {} }
+
+const startHidden = process.argv.includes('--hidden') || (IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin);
+
+/* ---------------- window ---------------- */
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1320, height: 900, minWidth: 980, minHeight: 640, show: false,
+    title: 'Volkan Deck', icon: path.join(__dirname, 'icon.png'), backgroundColor: '#0E1116',
+    autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, backgroundThrottling: false }
+  });
+  win.removeMenu?.();
+  win.loadFile(path.join(__dirname, 'index.html'));
+  win.on('page-title-updated', e => e.preventDefault());   // keep the status in the title bar / taskbar
+  win.once('ready-to-show', () => {
+    if (!startHidden) showWindow();
+    else if (IS_MAC) setDock(false);                           // started at login: menu bar only
+    applyStatusVisual();
+  });
+  if (process.env.DECK_SHOT) {   // test hook: screenshot + console dump, then quit
+    win.webContents.on('console-message', (e, ...a) => { const d = a[0] && typeof a[0] === 'object' ? a[0] : { level: a[0], message: a[1], lineNumber: a[2] }; console.log('[page]', d.level, d.message, d.lineNumber); });
+    win.webContents.once('did-finish-load', () => setTimeout(async () => {
+      try { if (process.env.DECK_EVAL) console.log('[eval]', JSON.stringify(await win.webContents.executeJavaScript(process.env.DECK_EVAL, true))); } catch (e) { console.log('[eval-err]', e.message); }
+      const img = await win.webContents.capturePage(); fs.writeFileSync(process.env.DECK_SHOT, img.toPNG()); quitting = true; app.quit();
+    }, 4000));
+  }
+  win.on('close', e => {
+    if (quitting) return;
+    e.preventDefault(); hideWindow();
+    const st = readState();
+    if (!st.hiddenTipShown && Notification.isSupported()) {
+      new Notification({ title: 'Volkan Deck arka planda çalışıyor', body: IS_MAC ? 'Menü çubuğundaki simgesinden açabilirsin; kapatmak için simge → Çık.' : 'Görev çubuğunun sağındaki simgesine tıklayarak açabilirsin (gizli simgeler ^ içinde olabilir). Kapatmak için simgeye sağ tıkla → Çık.' }).show();
+      st.hiddenTipShown = true; writeState(st);
+    }
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/i.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+}
+let inDock = true;
+function setDock(on) {                      // macOS: 'regular' = Dock icon, 'accessory' = menu bar only
+  if (!IS_MAC) return;
+  inDock = on;
+  if (on) { app.setActivationPolicy('regular'); app.dock?.show(); applyStatusVisual(); return; }
+  // macOS keeps the Dock tile of the frontmost app: deactivate first (focus goes back to the previous app), then drop the tile
+  app.hide();
+  setTimeout(() => { if (!inDock) { app.setActivationPolicy('accessory'); app.dock?.hide(); } }, 150);
+}
+function showWindow() { setDock(true); if (IS_MAC) app.show(); if (win.isMinimized()) win.restore(); win.show(); win.focus(); if (IS_MAC) app.focus({ steal: true }); }
+// The X button never quits: the window hides and the app lives only as a status icon
+// (macOS: menu bar, no Dock icon; Windows: notification area of the taskbar).
+function hideWindow() { win.hide(); setDock(false); }
+
+/* ---------------- running status, always visible (Dock icon / taskbar overlay / tray) ---------------- */
+function statusKey() { return status.connected ? (status.direct ? 'on' : 'warn') : 'off'; }
+const STATUS_TEXT = { on: 'Bağlı · uygulamaları açıyor', warn: 'Bağlı · firmware güncellemesi gerekli', off: 'Cihaz bağlı değil' };
+function applyStatusVisual() {
+  const k = statusKey();
+  if (win && !win.isDestroyed()) {
+    win.setTitle('Volkan Deck — ' + STATUS_TEXT[k]);
+    if (IS_WIN) win.setOverlayIcon(nativeImage.createFromPath(path.join(__dirname, 'overlay-' + k + '.png')), STATUS_TEXT[k]);
+  }
+  if (IS_MAC && app.dock && inDock) app.dock.setIcon(nativeImage.createFromPath(path.join(__dirname, 'dock-' + k + '.png')));
+  if (IS_MAC && tray) { const im = nativeImage.createFromPath(path.join(__dirname, 'trayT-' + k + 'Template.png')); im.setTemplateImage(true); tray.setImage(im); }
+  if (IS_WIN && tray) tray.setImage(nativeImage.createFromPath(path.join(__dirname, 'tray-win-' + k + '.png')));
+  if (tray) tray.setToolTip('Volkan Deck — ' + STATUS_TEXT[k]);
+}
+
+/* ---------------- tray ---------------- */
+function buildTray() {
+  const img = IS_MAC ? nativeImage.createFromPath(path.join(__dirname, 'trayT-offTemplate.png'))
+                     : nativeImage.createFromPath(path.join(__dirname, 'tray-win-off.png'));
+  if (IS_MAC) img.setTemplateImage(true);
+  tray = new Tray(img);
+  tray.on('click', () => { if (!IS_MAC) { if (win.isVisible() && !win.isMinimized()) hideWindow(); else showWindow(); } });
+  nativeTheme.on('updated', applyStatusVisual);
+  refreshTray();
+}
+function refreshTray() {
+  if (!tray) return;
+  const login = app.getLoginItemSettings().openAtLogin;
+  tray.setToolTip('Volkan Deck — ' + status.text);
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: status.connected ? '● ' + status.text : '○ Cihaz bağlı değil', enabled: false },
+    { label: status.direct ? 'Uygulamalar doğrudan açılıyor' : 'Doğrudan açma kapalı (klavye yöntemi)', enabled: false },
+    { type: 'separator' },
+    { label: 'Ayarları aç', click: showWindow },
+    { label: 'Bilgisayar açılınca başlat', type: 'checkbox', checked: login, click: m => setLogin(m.checked) },
+    { type: 'separator' },
+    { label: 'Çık', click: () => { quitting = true; app.quit(); } }
+  ]));
+}
+function setLogin(on) {
+  app.setLoginItemSettings(IS_WIN ? { openAtLogin: on, args: ['--hidden'] } : { openAtLogin: on, openAsHidden: true });
+  refreshTray();
+}
+
+/* ---------------- Web Serial: auto-pick the deck, no chooser ---------------- */
+function isEsp(p) {
+  const v = p.vendorId; if (v == null) return false;
+  const s = String(v);
+  return parseInt(s, 10) === ESP_VID || parseInt(s, 16) === ESP_VID;
+}
+function setupSerial() {
+  const ses = session.defaultSession;
+  ses.on('select-serial-port', (event, portList, wc, callback) => {
+    event.preventDefault();
+    const p = portList.find(isEsp);
+    callback(p ? p.portId : '');
+  });
+  ses.setPermissionCheckHandler((wc, perm) => ['serial', 'notifications', 'clipboard-sanitized-write', 'clipboard-read'].includes(perm));
+  ses.setDevicePermissionHandler(d => d.deviceType === 'serial');
+  // ask the page to (re)connect every few seconds; userGesture=true satisfies requestPort()
+  setInterval(() => {
+    if (win && !win.isDestroyed()) win.webContents.executeJavaScript('window.__deckAutoConnect && window.__deckAutoConnect()', true).catch(() => {});
+  }, 3000);
+}
+
+/* ---------------- launching ---------------- */
+const ok = how => ({ ok: true, how });
+const fail = error => ({ ok: false, error });
+const isUrl = s => /^[a-z][a-z0-9+.-]+:/i.test(s) && !/^[a-z]:[\\/]/i.test(s);
+
+function detached(cmd, args, opts = {}) {
+  return new Promise(res => {
+    try {
+      const ch = cp.spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true, ...opts });
+      ch.once('error', e => res(fail(e.message)));
+      ch.once('spawn', () => { ch.unref(); res(ok(cmd)); });
+    } catch (e) { res(fail(e.message)); }
+  });
+}
+function run(cmd, args, timeout = 8000) {
+  return new Promise(res => cp.execFile(cmd, args, { timeout, windowsHide: true, maxBuffer: 8 << 20 }, (err, stdout, stderr) =>
+    res({ code: err ? (err.code || 1) : 0, stdout: String(stdout || ''), stderr: String(stderr || '') })));
+}
+
+// Windows Start menu index (classic + Store apps) via Get-StartApps
+let startApps = [], startAppsAt = 0;
+async function refreshStartApps() {
+  if (!IS_WIN) return;
+  const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
+    '[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-StartApps | Select-Object Name,AppID | ConvertTo-Json -Compress'], 20000);
+  try { const j = JSON.parse(r.stdout); startApps = Array.isArray(j) ? j : [j]; startAppsAt = Date.now(); } catch (e) {}
+}
+const norm = s => String(s || '').toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim();
+async function findStartApp(name) {
+  if (!startApps.length || Date.now() - startAppsAt > 10 * 60e3) await refreshStartApps();
+  const n = norm(name); if (!n) return null;
+  return startApps.find(a => norm(a.Name) === n) || startApps.find(a => norm(a.Name).startsWith(n)) || startApps.find(a => norm(a.Name).includes(n)) || null;
+}
+
+// Windows: everything is a direct system call (CreateProcess / ShellExecute); no Run box, no Start search UI.
+// bg = open minimized without taking focus (start /MIN → SW_SHOWMINNOACTIVE).
+function winStart(target, { dir = null, bg = false, args = '' } = {}) {
+  const q = s => '"' + String(s).replace(/"/g, '') + '"';
+  const line = 'start "" ' + (bg ? '/MIN ' : '') + (dir ? '/D ' + q(dir) + ' ' : '') + q(target) + (args ? ' ' + args : '');
+  return detached('cmd.exe', ['/d /s /c "' + line + '"'], { windowsVerbatimArguments: true });
+}
+async function launchWin(e) {
+  const bg = !!e.bg;
+  const p = String(e.path || '').trim();
+  if (p) {
+    if (isUrl(p)) { if (bg) return winStart(p, { bg }); await shell.openExternal(p, { activate: true }); return ok('adres'); }
+    if (fs.existsSync(p)) {
+      if (/\.exe$/i.test(p)) return bg ? winStart(p, { dir: path.dirname(p), bg }) : detached(p, [], { cwd: path.dirname(p) });
+      if (bg) return winStart(p, { dir: path.dirname(p), bg });   // .lnk / .url / documents
+      const err = await shell.openPath(p);
+      return err ? fail(err) : ok('dosya');
+    }
+  }
+  const v = String(e.value || '').trim();
+  if (e.method === 'run' && v) {
+    if (isUrl(v)) { if (bg) return winStart(v, { bg }); await shell.openExternal(v); return ok('adres'); }
+    // a command like the Run box would take, but executed directly: "C:\x\app.exe" -args  /  chrome  /  calc
+    const m = v.match(/^"([^"]+)"\s*(.*)$/) || v.match(/^(\S+)\s*(.*)$/);
+    const exe = m ? m[1] : v, args = m ? m[2] : '';
+    const dir = fs.existsSync(exe) ? path.dirname(exe) : null;
+    if (dir && /\.exe$/i.test(exe) && !bg) return detached(exe, args ? args.match(/"[^"]*"|\S+/g).map(a => a.replace(/^"|"$/g, '')) : [], { cwd: dir });
+    return winStart(exe, { dir, bg, args });          // also resolves App Paths names (chrome, code, …)
+  }
+  const name = e.method === 'search' ? (v || e.name) : e.name;
+  const hit = await findStartApp(name);               // Start menu index (Get-StartApps), not the search UI
+  if (hit) {
+    if (bg) return winStart('shell:AppsFolder\\' + hit.AppID, { bg });
+    return detached('explorer.exe', ['shell:AppsFolder\\' + hit.AppID]);
+  }
+  return fail('Başlat menüsünde “' + name + '” bulunamadı');
+}
+
+async function openMac(args) {
+  const r = await run('/usr/bin/open', args);
+  return r.code === 0 ? ok('open') : fail((r.stderr || 'açılamadı').trim().split('\n').pop());
+}
+async function mdfindApp(name) {
+  const q = "kMDItemContentType == 'com.apple.application-bundle' && kMDItemDisplayName == '*" + String(name).replace(/['*\\]/g, '') + "*'cd";
+  const r = await run('/usr/bin/mdfind', [q]);
+  const list = r.stdout.split('\n').filter(Boolean).sort((a, b) => a.length - b.length);
+  return list.find(x => x.startsWith('/Applications/')) || list[0] || null;
+}
+async function launchMac(e) {
+  const g = e.bg ? ['-g'] : [];                       // -g: open in the background, keep the current app in front
+  const m = String(e.mac || '').trim();
+  if (m) {
+    if (isUrl(m)) return openMac([...g, m]);
+    if (m.startsWith('/')) return fs.existsSync(m) ? openMac([...g, m]) : fail(m + ' bulunamadı');
+    return openMac([...g, '-a', m]);
+  }
+  const v = String(e.value || '').trim();
+  if (e.method === 'run' && isUrl(v)) return openMac([...g, v]);     // steam://, discord://, spotify:
+  const name = e.method === 'search' ? (v || e.name) : e.name;
+  const r = await openMac([...g, '-a', name]);
+  if (r.ok) return r;
+  const found = await mdfindApp(name);
+  if (found) return openMac([...g, found]);
+  return fail('“' + name + '” adlı uygulama bulunamadı');
+}
+
+async function launch(e) {
+  try { return IS_MAC ? await launchMac(e) : IS_WIN ? await launchWin(e) : fail('Bu sistem desteklenmiyor'); }
+  catch (err) { return fail(err.message); }
+}
+
+/* ---------------- temperatures (Windows: LibreHardwareMonitor web server) ---------------- */
+async function readTemps(o = {}) {
+  if (!IS_WIN) return null;
+  try {
+    const res = await fetch('http://127.0.0.1:' + (o.port || 8085) + '/data.json', { signal: AbortSignal.timeout(1500) });
+    const root = await res.json();
+    const all = [];
+    (function walk(n) { if (!n) return; if (typeof n.Text === 'string' && typeof n.Value === 'string') all.push(n); (n.Children || []).forEach(walk); })(root);
+    const num = s => { const v = parseFloat(String(s).replace(',', '.')); return isNaN(v) ? null : v; };
+    const isT = n => /°?\s*C$/.test(n.Value) && !/Hz/.test(n.Value), isL = n => /%$/.test(n.Value);
+    const pick = (names, test, own) => {
+      if (own) { const x = all.find(n => n.Text === own && test(n)); if (x) return num(x.Value); }
+      for (const nm of names) { const x = all.find(n => n.Text === nm && test(n)); if (x) return num(x.Value); }
+      return null;
+    };
+    return {
+      cpu: pick(['CPU Package', 'Core (Tctl/Tdie)', 'CPU (Tctl/Tdie)', 'Core Average', 'Package'], isT, o.cpu),
+      gpu: pick(['GPU Core', 'GPU Hot Spot'], isT, o.gpu),
+      cpuLoad: pick(['CPU Total'], isL),
+      gpuLoad: pick(['GPU Core'], isL)
+    };
+  } catch (e) { return null; }
+}
+
+/* ---------------- app picker (native dialog, real paths + icons) ---------------- */
+async function pickApps(multi) {
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Uygulama seç',
+    defaultPath: IS_MAC ? '/Applications' : undefined,
+    properties: ['openFile', ...(multi ? ['multiSelections'] : [])],
+    filters: IS_MAC ? [{ name: 'Uygulamalar', extensions: ['app'] }] : [{ name: 'Programlar ve kısayollar', extensions: ['exe', 'lnk', 'url'] }]
+  });
+  if (r.canceled) return [];
+  const out = [];
+  for (const p of r.filePaths) out.push(await appInfo(p));
+  return out;
+}
+// macOS: app.getFileIcon crashes on macOS 27 (thread-pool CHECK), so read the bundle's .icns with sips
+async function macAppIcon(appPath) {
+  try {
+    const plist = path.join(appPath, 'Contents', 'Info.plist');
+    let name = '';
+    for (const key of ['CFBundleIconFile', 'CFBundleIconName']) {
+      const r = await run('/usr/bin/plutil', ['-extract', key, 'raw', '-o', '-', plist]);
+      if (r.code === 0 && r.stdout.trim()) { name = r.stdout.trim(); break; }
+    }
+    const res = path.join(appPath, 'Contents', 'Resources');
+    let icns = name ? path.join(res, /\.icns$/i.test(name) ? name : name + '.icns') : '';
+    if (!icns || !fs.existsSync(icns)) {
+      const any = fs.existsSync(res) ? fs.readdirSync(res).find(f => /\.icns$/i.test(f) && /app|icon/i.test(f)) : null;
+      if (!any) return null; icns = path.join(res, any);
+    }
+    const out = path.join(app.getPath('temp'), 'vd-icon-' + process.pid + '-' + Date.now() + '.png');
+    await run('/usr/bin/sips', ['-s', 'format', 'png', '-Z', '128', icns, '--out', out]);
+    if (!fs.existsSync(out)) return null;
+    const data = 'data:image/png;base64,' + fs.readFileSync(out).toString('base64');
+    fs.unlink(out, () => {});
+    return data;
+  } catch (e) { return null; }
+}
+async function appInfo(p) {
+  let icon = null;
+  if (IS_MAC) icon = await macAppIcon(p);
+  else { try { icon = (await app.getFileIcon(p, { size: 'large' })).toDataURL(); } catch (e) {} }
+  return { path: p, name: path.basename(p).replace(/\.(app|exe|lnk|url)$/i, ''), icon };
+}
+
+/* ---------------- IPC ---------------- */
+ipcMain.handle('launch', (ev, e) => launch(e));
+ipcMain.handle('pick-apps', (ev, multi) => pickApps(!!multi));
+ipcMain.handle('app-info', (ev, p) => appInfo(String(p || '')));
+ipcMain.handle('read-temps', (ev, o) => readTemps(o));
+ipcMain.handle('notify', (ev, t, b) => { if (Notification.isSupported()) new Notification({ title: t, body: b }).show(); });
+ipcMain.on('status', (ev, s) => { const changed = JSON.stringify(s) !== JSON.stringify(status); status = s; if (changed) { refreshTray(); applyStatusVisual(); } });
+ipcMain.handle('version', () => app.getVersion());
+
+/* ---------------- lifecycle ---------------- */
+app.on('second-instance', () => { if (win) showWindow(); });
+app.on('activate', () => { if (win) showWindow(); });
+app.on('before-quit', () => { quitting = true; });
+app.whenReady().then(() => {
+  setupSerial();
+  createWindow();
+  buildTray(); applyStatusVisual();
+  const st = readState();
+  if (!st.loginAsked) { setLogin(true); st.loginAsked = true; writeState(st); }   // start with the computer by default
+  refreshStartApps();
+});
+app.on('window-all-closed', e => { /* stay in the tray */ });
