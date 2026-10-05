@@ -155,7 +155,6 @@ const AS_VOL = `try
 end try
 `;
 let macVol = { vol: null, mute: false };
-const macSkip = {};             // app -> time until which we leave it alone (permission prompt pending / timed out)
 async function osa(script, timeout) {
   const r = await run('osascript', ['-'], timeout, 'set vdOut to ""\n' + script + 'return vdOut');
   return r;
@@ -167,9 +166,18 @@ async function macVolume() {
   if (f[0] === 'vol') { const v = num(f[1]); macVol = { vol: v >= 0 ? Math.round(v) : null, mute: f[2] === 'true' }; }
   return macVol;
 }
+// Each app is queried in the background and the newest answer is cached, so the 2 s poll never waits.
+// The first query to an app shows macOS' "Volkan Deck wants to control …" prompt: give the user a minute to answer it.
+const macApp = {};              // app -> { out, at, busy }
+function macQuery(app, script) {
+  const st = macApp[app] || (macApp[app] = { out: '', at: 0, busy: false });
+  if (st.busy) return;
+  st.busy = true;
+  osa(script, 60000).then(r => { st.out = r.code ? '' : r.stdout; st.at = Date.now(); st.busy = false; });
+}
 async function macPoll(wantMedia, wantVol) {
-  const jobs = [];
-  if (wantVol) jobs.push(macVolume().then(() => ''));
+  if (wantVol) await macVolume();
+  const lines = [];
   if (wantMedia) {
     const running = await macRunning(), now = Date.now();
     const parts = [];
@@ -177,16 +185,13 @@ async function macPoll(wantMedia, wantVol) {
     if (running.has('Music')) parts.push(['Music', asPlayer('music', 'Music', 1)]);
     for (const [app, kind] of MAC_BROWSERS) if (running.has(app)) parts.push([app, asBrowser(app, kind)]);
     for (const [app, script] of parts) {
-      if (macSkip[app] > now) continue;
-      jobs.push(osa(script, 4000).then(r => {
-        if (r.code && !r.stdout) macSkip[app] = Date.now() + 30000;   // probably waiting on the Automation prompt
-        return r.stdout;
-      }));
+      macQuery(app, script);
+      const st = macApp[app];
+      if (st && now - st.at < 10000) lines.push(st.out);
     }
   }
-  const outs = await Promise.all(jobs);
   const cands = [];
-  for (const line of outs.join('\n').split(/\r?\n/)) {
+  for (const line of lines.join('\n').split(/\r?\n/)) {
     const f = line.split('\t'); if (!f[0]) continue;
     if (f[0] === 'ytmusic') {
       const t = (f[1] || '').replace(/\s*[-–—|]\s*YouTube Music\s*$/i, '').trim();
@@ -195,8 +200,8 @@ async function macPoll(wantMedia, wantVol) {
       continue;
     }
     if (!NAMES[f[0]]) continue;
-    const st = (f[1] || '').toLowerCase();
-    cands.push({ player: f[0], name: NAMES[f[0]], title: f[2] || '', artist: f[3] || '', playing: st === 'playing', pos: num(f[4]), dur: num(f[5]), ctl: 'app' });
+    const state = (f[1] || '').toLowerCase();
+    cands.push({ player: f[0], name: NAMES[f[0]], title: f[2] || '', artist: f[3] || '', playing: state === 'playing', pos: num(f[4]), dur: num(f[5]), ctl: 'app' });
   }
   return cands;
 }
