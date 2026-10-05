@@ -48,6 +48,9 @@ struct Settings {
   // apps
   std::vector<App> apps;
   String quickA, quickB;
+  // extra pages in the knob list
+  bool mediaOn = true, sysOn = true;
+  String mediaPlayer = "auto";   // auto | spotify | music | ytmusic
 };
 
 Settings S;
@@ -64,7 +67,8 @@ static const char DEFAULT_CONFIG[] PROGMEM = R"JSON({
  {"id":"chrome","name":"Chrome","icon":"globe","color":"#E8590C","inWheel":true,"launch":{"method":"run","value":"chrome"}},
  {"id":"steam","name":"Steam","icon":"game","color":"#1B6FD1","inWheel":true,"launch":{"method":"run","value":"steam://open/main"}}
 ],
-"quick":{"a":"discord","b":"cs2"}
+"quick":{"a":"discord","b":"cs2"},
+"pages":{"media":{"enabled":true,"player":"auto"},"system":{"enabled":true}}
 })JSON";
 
 static uint16_t parseColor(const char* s, uint16_t def) {
@@ -171,6 +175,9 @@ static void applyConfig(JsonObjectConst c) {
     if (N.apps.size() >= 16) break;
   }
   N.quickA = (const char*)(c["quick"]["a"] | ""); N.quickB = (const char*)(c["quick"]["b"] | "");
+  JsonObjectConst pg = c["pages"];
+  N.mediaOn = pg["media"]["enabled"] | true; N.sysOn = pg["system"]["enabled"] | true;
+  N.mediaPlayer = (const char*)(pg["media"]["player"] | "auto");
 
   freeAppPix();
   S = N;
@@ -273,3 +280,12 @@ static void persistAnimChoice(int fps) {
   saveConfig(doc.as<JsonObjectConst>());
   S.animKind = A_CUSTOM; if (fps > 0) S.animFps = constrain(fps, 1, 30);
 }
+
+/* ---------- media / system state reported by the desktop app ---------- */
+struct MediaState {
+  String player, name, title, artist;   // player: spotify | music | ytmusic | other | ""
+  bool playing = false, appCtl = false; // appCtl: the desktop app controls the player (else media keys)
+  float pos = -1, dur = -1; uint32_t posAt = 0, stamp = 0;
+} media;
+struct SysState { int vol = -1, bright = -1; bool mute = false; uint32_t stamp = 0; } sysSt;
+String mediaTarget = "auto";

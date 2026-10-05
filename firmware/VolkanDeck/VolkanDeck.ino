@@ -84,7 +84,51 @@ bool dirty = true;
 static void selectIndex(int i) {
   int n = items.size(); if (!n) return;
   if (S.wrap) i = (i % n + n) % n; else i = constrain(i, 0, n - 1);
-  if (i != sel) { sel = i; dirty = true; evtSelect(); }
+  if (i != sel) { sel = i; adjust = 0; dirty = true; evtSelect(); }
+}
+static Item* curItem() { return items.empty() ? nullptr : &items[sel]; }
+static uint8_t curKind() { Item* it = curItem(); return it ? it->kind : K_APP; }
+
+/* ---------- media & system pages ---------- */
+bool volPending = false, brightPending = false;
+
+static void mediaAction(const char* act, uint16_t key) {
+  mediaFlashAct = act; mediaFlashAt = millis(); dirty = true;
+  if (mediaLive() && media.appCtl) {           // the desktop app talks to Spotify / Music / the browser directly
+    evtMedia(act);
+    if (!strcmp(act, "play_pause")) media.playing = !media.playing;
+    return;
+  }
+  if (!consumerTap(key)) toast("Bilgisayara bağlı değil");   // media keys: whatever is playing on the computer
+}
+
+static void cyclePlayer() {
+  static const char* order[4] = { "auto", "spotify", "music", "ytmusic" };
+  int i = 0; for (int k = 0; k < 4; k++) if (mediaTarget == order[k]) i = k;
+  mediaTarget = order[(i + 1) % 4];
+  evtMedia("select");
+  media.stamp = 0;                             // wait for the new player's info
+  toast(mediaTarget == "auto" ? String("Oynatıcı: otomatik") : String(PLAYER_NAMES[i % 3]));
+  dirty = true;
+}
+
+static void levelStep(bool vol, int steps) {
+  int& v = vol ? sysSt.vol : sysSt.bright;
+  if (sysLive() && v >= 0) {
+    v = constrain(v + steps * (vol ? 2 : 5), 0, 100);
+    sysLocalAt = millis();
+    (vol ? volPending : brightPending) = true;
+  } else {                                     // no desktop app (or value unknown): send keys
+    for (int i = 0; i < abs(steps); i++) consumerTap(vol ? (steps > 0 ? CC_VOL_UP : CC_VOL_DOWN) : (steps > 0 ? CC_BRIGHT_UP : CC_BRIGHT_DOWN));
+    keyFlash = steps > 0 ? 1 : -1; keyFlashWhat = vol ? 1 : 2; keyFlashAt = millis();
+  }
+  adjustAt = millis(); dirty = true;
+}
+
+static void toggleMute() {
+  if (sysLive() && sysSt.vol >= 0) { sysSt.mute = !sysSt.mute; sysLocalAt = millis(); evtSys("mute", sysSt.mute); }
+  else consumerTap(CC_MUTE);
+  dirty = true;
 }
 
 static void doLaunch(App* a) {
@@ -94,7 +138,7 @@ static void doLaunch(App* a) {
   // apps are opened only by the desktop app (system call); no Win+R / Start / Spotlight typing unless enabled
   if (direct && !companionOn() && !S.kbFallback) { toast("Volkan Deck uygulaması açık değil"); dirty = true; return; }
   if (activeLink() == L_NONE && !companionOn()) { toast("Bilgisayara bağlı değil"); dirty = true; return; }
-  bool onApp = !items.empty() && !items[sel].home && items[sel].app == a;
+  bool onApp = !items.empty() && items[sel].kind == K_APP && items[sel].app == a;
   if (onApp) {
     for (int i = 0; i <= 8; i++) { launchP = i / 8.0f; render(linkName()); delay(25); }
   } else { toast(a->name + " açılıyor"); render(linkName()); }
@@ -109,8 +153,12 @@ static void doLaunch(App* a) {
 static void onPress() {
   if (items.empty()) return;
   Item& it = items[sel];
-  if (it.home) { App* a = appById(S.pressApp); if (a) doLaunch(a); }
-  else doLaunch(it.app);
+  switch (it.kind) {
+    case K_HOME: { App* a = appById(S.pressApp); if (a) doLaunch(a); break; }
+    case K_MEDIA: mediaAction("play_pause", CC_PLAY); break;
+    case K_SYS: adjust = adjust == 1 ? 2 : 1; adjustAt = millis(); dirty = true; break;   // volume ↔ brightness
+    default: doLaunch(it.app);
+  }
 }
 
 static void handleInput() {
@@ -121,18 +169,48 @@ static void handleInput() {
     noInterrupts(); encCount -= steps * S.encDetent; interrupts();
     if (!wakeUp()) {
       if (S.encRev) steps = -steps;
-      selectIndex(sel + steps);
+      uint8_t k = curKind();
+      if (adjust && k == K_MEDIA) levelStep(true, steps);           // volume mode on the media page
+      else if (adjust && k == K_SYS) levelStep(adjust == 1, steps);
+      else selectIndex(sel + steps);
       evtInput(steps > 0 ? "cw" : "ccw");
     }
   }
+  // double press on the media page switches the player (only when the desktop app can target one)
+  static uint32_t pressPendingAt = 0;
+  uint32_t now = millis();
   int e = bEnc.poll(700);
-  if (e == 1) { if (!wakeUp()) { evtInput("press"); onPress(); } }
-  else if (e == 2) { wakeUp(); if (S.homeOn) selectIndex(0); }
+  if (e == 1) {
+    if (!wakeUp()) {
+      evtInput("press");
+      if (curKind() == K_MEDIA && companionOn()) {
+        if (pressPendingAt && now - pressPendingAt < 330) { pressPendingAt = 0; cyclePlayer(); }
+        else pressPendingAt = now;
+      } else onPress();
+    }
+  } else if (e == 2) {
+    wakeUp(); pressPendingAt = 0;
+    uint8_t k = curKind();
+    if (k == K_MEDIA) { adjust = adjust ? 0 : 1; adjustAt = now; dirty = true; }
+    else if (k == K_SYS && adjust) { adjust = 0; dirty = true; }
+    else if (S.homeOn) selectIndex(0);
+  }
+  if (pressPendingAt && now - pressPendingAt >= 330) { pressPendingAt = 0; onPress(); }
 
   int a = bA.poll(0);
-  if (a == 1 && !wakeUp()) { evtInput("a"); doLaunch(appById(S.quickA)); }
+  if (a == 1 && !wakeUp()) {
+    evtInput("a"); uint8_t k = curKind();
+    if (k == K_MEDIA) mediaAction("prev", CC_PREV);
+    else if (k == K_SYS) { toggleMute(); adjustAt = now; }
+    else doLaunch(appById(S.quickA));
+  }
   int b = bB.poll(0);
-  if (b == 1 && !wakeUp()) { evtInput("b"); doLaunch(appById(S.quickB)); }
+  if (b == 1 && !wakeUp()) {
+    evtInput("b"); uint8_t k = curKind();
+    if (k == K_MEDIA) mediaAction("next", CC_NEXT);
+    else if (k == K_SYS) { adjust = adjust == 2 ? 1 : 2; adjustAt = now; dirty = true; }
+    else doLaunch(appById(S.quickB));
+  }
 
   int p = bPwr.poll(2000);
   if (p == 1) {
@@ -147,7 +225,9 @@ static void handleInput() {
 }
 
 static void applySideEffects() {
-  buildItems();
+  buildItems(); adjust = 0;
+  mediaTarget = S.mediaPlayer;
+  if (companionOn()) evtMedia("select");       // keep the desktop app on the same player
   if (sel >= (int)items.size()) sel = 0;
   lcd.setRotation(S.flip ? 3 : 1);
   if (!screenOff && !dimmed) { curBright = -1; setBright(S.brightness); }
@@ -171,6 +251,7 @@ void setup() {
   loadConfig();
   loadAnim();
   buildItems();
+  mediaTarget = S.mediaPlayer;
   if (S.homeOn) sel = 0;
 
   uiBegin();
@@ -190,7 +271,7 @@ void setup() {
 void loop() {
   protoPoll();
   if (configChangedFlag) { configChangedFlag = false; applySideEffects(); }
-  if (companionNew) { companionNew = false; toast("Masaüstü uygulaması bağlı"); dirty = true; }
+  if (companionNew) { companionNew = false; toast("Masaüstü uygulaması bağlı"); dirty = true; evtMedia("select"); }
   handleInput();
 
   uint32_t now = millis();
@@ -208,6 +289,15 @@ void loop() {
     dirty = true;
   }
 
+  // media / system pages: send level changes (throttled), leave adjust mode after a pause
+  static uint32_t volSentAt = 0, brightSentAt = 0;
+  if (volPending && now - volSentAt >= 60) { volPending = false; volSentAt = now; evtSys("vol", sysSt.vol); }
+  if (brightPending && now - brightSentAt >= 200) { brightPending = false; brightSentAt = now; evtSys("bright", sysSt.bright); }
+  if (adjust && now - adjustAt > 6000) { adjust = 0; dirty = true; }
+  uint8_t kind = curKind();
+  bool onPage = kind == K_MEDIA || kind == K_SYS;
+  if (mediaDirty) { mediaDirty = false; if (onPage) dirty = true; }
+
   // idle handling
   uint32_t idle = (now - lastActivity) / 1000;
   if (S.homeOn && S.returnAfter > 0 && idle >= (uint32_t)S.returnAfter && sel != 0 && !items.empty() && items[0].home) { sel = 0; dirty = true; evtSelect(); }
@@ -216,7 +306,7 @@ void loop() {
 
   bool onHome = !items.empty() && items[sel].home;
   bool animate = onHome && !screenOff && S.animKind != A_NONE;
-  if (!screenOff && (dirty || (animate && now - tFrame >= 40) || (toastUntil && now > toastUntil && now - toastUntil < 100))) {
+  if (!screenOff && (dirty || (animate && now - tFrame >= 40) || (onPage && now - tFrame >= 250) || (toastUntil && now > toastUntil && now - toastUntil < 100))) {
     tFrame = now; dirty = false;
     render(linkName());
   }

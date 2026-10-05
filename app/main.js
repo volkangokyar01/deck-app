@@ -5,6 +5,7 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog, nativeImage, ses
 const path = require('path');
 const fs = require('fs');
 const cp = require('child_process');
+const media = require('./media');
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -315,6 +316,10 @@ ipcMain.handle('read-temps', (ev, o) => readTemps(o));
 ipcMain.handle('notify', (ev, t, b) => { if (Notification.isSupported()) new Notification({ title: t, body: b }).show(); });
 ipcMain.on('status', (ev, s) => { const changed = JSON.stringify(s) !== JSON.stringify(status); status = s; if (changed) { refreshTray(); applyStatusVisual(); } });
 ipcMain.handle('version', () => app.getVersion());
+ipcMain.handle('host-state', (ev, o) => media.hostState(o || {}).catch(e => ({ error: e.message })));
+ipcMain.handle('media-ctl', (ev, action, target) => media.mediaControl(String(action || ''), String(target || 'auto')).catch(e => ({ ok: false, error: e.message })));
+ipcMain.handle('sys-set', (ev, o) => media.sysSet(o || {}).catch(e => ({ error: e.message })));
+app.on('will-quit', () => media.stop());
 
 /* ---------------- lifecycle ---------------- */
 app.on('second-instance', () => { if (win) showWindow(); });

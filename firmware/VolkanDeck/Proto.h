@@ -9,6 +9,7 @@ uint32_t rxBytes = 0, rxLines = 0;
 static void* bigAlloc(size_t n) { void* p = psramFound() ? ps_malloc(n) : nullptr; if (!p) p = malloc(n); return p; }      // main applies side effects
 String pendingName;
 uint32_t companionAt = 0; bool companionNew = false;
+bool mediaDirty = false; uint32_t sysLocalAt = 0;
 static bool companionOn() { return companionAt && millis() - companionAt < 6000 && Serial; }
 
 const char* linkName();
@@ -22,7 +23,7 @@ static void replyErr(JsonVariantConst id, const char* e) { JsonDocument r; r["id
 static void evtInput(const char* ctl) { if (!Serial) return; JsonDocument d; d["evt"] = "input"; d["control"] = ctl; sendJson(d); }
 static void evtSelect() {
   if (!Serial || items.empty()) return;
-  JsonDocument d; d["evt"] = "select"; d["app"] = items[sel].home ? String("home") : items[sel].app->id; sendJson(d);
+  JsonDocument d; d["evt"] = "select"; d["app"] = itemId(items[sel]); sendJson(d);
 }
 static void evtStatus() {
   if (!Serial) return;
@@ -34,6 +35,14 @@ static void evtLaunch(App* a) {
   const Launch& L = a->launch;
   d["method"] = L.method == M_SEARCH ? "search" : L.method == M_TASKBAR ? "taskbar" : L.method == M_KEY ? "key" : "run";
   d["value"] = L.value; if (L.path.length()) d["path"] = L.path; if (L.mac.length()) d["mac"] = L.mac;
+  sendJson(d);
+}
+static void evtMedia(const char* action) {      // play_pause | next | prev | select
+  JsonDocument d; d["evt"] = "media"; d["action"] = action; d["player"] = mediaTarget; sendJson(d);
+}
+static void evtSys(const char* key, int value) {  // vol | bright (0..100), mute (0/1)
+  JsonDocument d; d["evt"] = "sys";
+  if (!strcmp(key, "mute")) d["mute"] = value != 0; else d[key] = value;
   sendJson(d);
 }
 static void evtTemps() {
@@ -163,6 +172,22 @@ static void handleLine(char* buf, size_t len) {
     temps.cpu = c.isNull() ? NAN : c.as<float>(); temps.gpu = g.isNull() ? NAN : g.as<float>();
     temps.cpuLoad = cl.isNull() ? NAN : cl.as<float>(); temps.gpuLoad = gl.isNull() ? NAN : gl.as<float>();
     temps.stamp = millis() | 1;
+  }
+  else if (!strcmp(cmd, "media")) {              // now playing, pushed by the desktop app
+    media.player = (const char*)(doc["player"] | ""); media.name = (const char*)(doc["name"] | "");
+    media.title = (const char*)(doc["title"] | ""); media.artist = (const char*)(doc["artist"] | "");
+    media.playing = doc["playing"] | false; media.appCtl = !strcmp(doc["ctl"] | "keys", "app");
+    media.pos = doc["pos"] | -1.0f; media.dur = doc["dur"] | -1.0f; media.posAt = millis();
+    media.stamp = millis() | 1; mediaDirty = true;
+  }
+  else if (!strcmp(cmd, "sys")) {                // volume / brightness, pushed by the desktop app
+    uint32_t now = millis();
+    JsonVariantConst v = doc["vol"], b = doc["bright"];
+    if (now - sysLocalAt > 1500) {               // the user is turning the knob: keep the local value
+      sysSt.vol = v.isNull() ? -1 : v.as<int>(); sysSt.bright = b.isNull() ? -1 : b.as<int>();
+      sysSt.mute = doc["mute"] | false;
+    }
+    sysSt.stamp = now | 1; mediaDirty = true;
   }
   else if (!strcmp(cmd, "dfu")) {
     replyOk(id); Serial.flush(); delay(200);

@@ -1,15 +1,18 @@
 #pragma once
 #include "USB.h"
 #include "USBHIDKeyboard.h"
+#include "USBHIDConsumerControl.h"
 #include <NimBLEDevice.h>
 #include <NimBLEHIDDevice.h>
 
 USBHIDKeyboard usbKb;
+USBHIDConsumerControl usbCc;
 volatile bool usbMounted = false, usbSuspended = false;
 volatile bool bleConnected = false;
 NimBLEServer* bleServer = nullptr;
 NimBLEHIDDevice* bleHid = nullptr;
 NimBLECharacteristic* bleIn = nullptr;
+NimBLECharacteristic* bleCc = nullptr;   // consumer (media) report
 bool bleStarted = false;
 
 enum Link : uint8_t { L_NONE = 0, L_USB, L_BLE };
@@ -21,6 +24,10 @@ static const uint8_t HID_MAP[] = {
   0x95,0x05, 0x75,0x01, 0x05,0x08, 0x19,0x01, 0x29,0x05, 0x91,0x02,
   0x95,0x01, 0x75,0x03, 0x91,0x01,
   0x95,0x06, 0x75,0x08, 0x15,0x00, 0x25,0x73, 0x05,0x07, 0x19,0x00, 0x29,0x73, 0x81,0x00,
+  0xC0,
+  // consumer control (media keys, volume, brightness): report 2, one 16-bit usage
+  0x05,0x0C, 0x09,0x01, 0xA1,0x01, 0x85,0x02,
+  0x15,0x00, 0x26,0xFF,0x03, 0x19,0x00, 0x2A,0xFF,0x03, 0x75,0x10, 0x95,0x01, 0x81,0x00,
   0xC0
 };
 
@@ -48,6 +55,7 @@ static void bleBegin(const String& name) {
   bleServer->setCallbacks(new BleCb());
   bleHid = new NimBLEHIDDevice(bleServer);
   bleIn = bleHid->getInputReport(1);
+  bleCc = bleHid->getInputReport(2);
   bleHid->setManufacturer("Volkan Deck");
   bleHid->setPnp(0x02, 0x303A, 0x1001, 0x0100);
   bleHid->setHidInfo(0x00, 0x01);
@@ -74,6 +82,7 @@ static void bleBattery(uint8_t pct) { if (bleHid) bleHid->setBatteryLevel(pct, b
 
 static void hidBegin() {
   usbKb.begin();
+  usbCc.begin();
   USB.onEvent(usbEvent);
   USB.productName("Volkan Deck");
   USB.manufacturerName("Volkan");
@@ -105,6 +114,19 @@ static void tap(uint8_t mods, uint8_t key) {
   if (mods && key) { sendKey(mods, 0); delay(d); }
   sendKey(mods, key); delay(d);
   sendKey(0, 0); delay(d);
+}
+
+/* ---------- consumer keys: work on Windows and macOS without the desktop app ---------- */
+enum : uint16_t { CC_PLAY = 0xCD, CC_NEXT = 0xB5, CC_PREV = 0xB6, CC_VOL_UP = 0xE9, CC_VOL_DOWN = 0xEA, CC_MUTE = 0xE2,
+                  CC_BRIGHT_UP = 0x6F, CC_BRIGHT_DOWN = 0x70 };
+static bool consumerTap(uint16_t u) {
+  Link l = activeLink();
+  if (l == L_USB) { usbCc.press(u); delay(10); usbCc.release(); return true; }
+  if (l == L_BLE && bleCc) {
+    uint8_t r[2] = { (uint8_t)u, (uint8_t)(u >> 8) }; bleCc->setValue(r, 2); bleCc->notify(); delay(18);
+    r[0] = r[1] = 0; bleCc->setValue(r, 2); bleCc->notify(); return true;
+  }
+  return false;
 }
 
 /* ---------- character → key (US / Turkish Q) ---------- */

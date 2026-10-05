@@ -13,6 +13,8 @@ Uygulama arka planda çalışır. Cihazda bir tuşa bastığında, istediğin pr
 - **Ayarlar:** Aynı pencerede bütün ayar ekranı var: uygulama ekleme, Cihaza yaz, Firmware yükle.
 - **Arka plan:** Pencereyi kapatınca sistem tepsisinde (Windows) ya da menü çubuğunda (macOS) çalışmaya devam eder. Bilgisayar açılınca kendiliğinden başlar; tepsi menüsünden kapatabilirsin.
 - **Uygulama kapalıysa:** Cihaz hiçbir şey yazmaz; ekranında "Volkan Deck uygulaması açık değil" uyarısı çıkar. İstersen Cihaz ayarlarından eski klavye yöntemini (Win+R / Başlat / Spotlight) açabilirsin.
+- **Medya (firmware 1.3.0):** Spotify, Apple Music ve YouTube Music'te çalan şarkıyı cihaza gönderir; cihazdaki oynat/duraklat, ileri ve geri tuşları doğrudan o uygulamaya gider. macOS'te ilk seferde "Volkan Deck, Spotify'ı (Müzik'i, Chrome'u) denetlemek istiyor" izni sorulur: **İzin Ver** de.
+- **Ses ve parlaklık (firmware 1.3.0):** Bilgisayarın sesini ve ekran parlaklığını okuyup cihazdan ayarlatır. Windows'ta harici monitör için monitörün menüsünde DDC/CI açık olmalı.
 - **Arka planda aç:** Uygulama başına seçenek. İşaretlersen program odağı almadan açılır (Windows'ta simge durumunda, macOS'te arkada).
 
 ## Kurulum (bu klasörle)

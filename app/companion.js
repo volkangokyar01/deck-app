@@ -75,6 +75,39 @@
     setInterval(tick, 2000);
   }
 
+  /* ---- media + volume/brightness pages (firmware 1.3.0+): this computer feeds the deck ---- */
+  const MEDIA_FW = '1.3.0';
+  let mediaTarget = (cfg.pages && cfg.pages.media && cfg.pages.media.player) || 'auto', polling = false;
+  const pagesOn = () => { const p = cfg.pages || {}; return { media: !p.media || p.media.enabled !== false, sys: !p.system || p.system.enabled !== false }; };
+  async function pollHost() {
+    if (polling || busy || !writer || !deviceInfo || !direct || !deviceInfo.fw || !verGE(deviceInfo.fw, MEDIA_FW)) return;
+    const on = pagesOn(); if (!on.media && !on.sys) return;
+    polling = true;
+    try {
+      const st = await deck.hostState({ target: mediaTarget, media: on.media, sys: on.sys });
+      if (st && st.media) { await sendRaw({ cmd: 'media', ...st.media }); if (st.media.player) { Object.assign(hostDemo.media, st.media); hostDemo.at = performance.now(); } }
+      if (st && st.sys && st.sys.vol != null) Object.assign(hostDemo.sys, { vol: st.sys.vol, mute: !!st.sys.mute, bright: st.sys.bright ?? hostDemo.sys.bright });
+      if (st && st.sys) await sendRaw({ cmd: 'sys', vol: st.sys.vol, mute: !!st.sys.mute, bright: st.sys.bright });
+    } catch (e) {} finally { polling = false; }
+  }
+  setInterval(pollHost, 2000);
+  window.onDeckMedia = async m => {
+    if (m.player) mediaTarget = m.player;
+    if (m.action === 'select') { log('rx', '← oynatıcı: ' + mediaTarget); setTimeout(pollHost, 50); return; }
+    const r = await deck.mediaControl(m.action, mediaTarget);
+    if (!r || !r.ok) log('er', '  medya: ' + (r && r.error || 'hata'));
+    setTimeout(pollHost, 300);
+  };
+  // volume / brightness changes arrive every ~60 ms while the knob turns: keep only the newest, one call at a time
+  let sysPending = null, sysBusy = false;
+  window.onDeckSys = async m => {
+    sysPending = { ...(sysPending || {}), ...(m.vol != null ? { vol: m.vol } : {}), ...(m.mute != null ? { mute: m.mute } : {}), ...(m.bright != null ? { bright: m.bright } : {}) };
+    if (sysBusy) return;
+    sysBusy = true;
+    try { while (sysPending) { const p = sysPending; sysPending = null; await deck.sysSet(p); } }
+    finally { sysBusy = false; }
+  };
+
   /* ---- per-app direct targets in the editor ---- */
   const _renderEditor = renderEditor;
   renderEditor = function () { _renderEditor.apply(this, arguments); try { addTargetBox(); } catch (e) { console.error(e); } };

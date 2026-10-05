@@ -17,6 +17,7 @@ P="$A/Contents/Info.plist"
 plutil -replace CFBundleName -string "Volkan Deck" "$P"
 plutil -replace CFBundleDisplayName -string "Volkan Deck" "$P"
 plutil -replace CFBundleIdentifier -string "com.volkan.deck" "$P"
+plutil -replace NSAppleEventsUsageDescription -string "Volkan Deck, çalan şarkıyı göstermek ve Spotify / Müzik uygulamasını cihazdaki tuşlarla kontrol etmek için izin ister." "$P"
 codesign --force --deep --sign - "$A"
 pkill -f "Volkan Deck.app/Contents/MacOS" 2>/dev/null || true
 rm -rf "/Applications/Volkan Deck.app"

@@ -12,10 +12,20 @@
 - Boşta kalınca ana sayfaya dönüş (varsayılan 60 sn); karartma 30 sn; pilde uyku 5 dk
 - Ekran 180° çevirme: Cihaz ayarları → "Ekranı 180° çevir" (device.flip)
 
+## Medya ve Ses/parlaklık sayfaları (v1.3.0, 2026-10-05)
+- Döndürgeç listesi: [Ana sayfa] [Medya] [Ses ve parlaklık] + uygulamalar (pages.media.enabled / pages.system.enabled)
+- Medya: oynatıcı çipleri (Spotify / Apple Music / YouTube Music), şarkı, sanatçı, süre çubuğu, ses. Bas: oynat/duraklat · A: önceki · B: sonraki · basılı tut: ses modu (çevir: ses, 6 sn sonra çıkar) · çift bas: oynatıcı değiştir (oto → Spotify → Apple Music → YouTube Music). Varsayılan: pages.media.player
+- Ses ve parlaklık: iki satır. Bas: ayar modu ses ↔ parlaklık · çevir: değer (ses %2, parlaklık %5) · basılı tut: çık · A: sessiz · B: satır değiştir
+- Masaüstü uygulaması yoksa cihaz HID tüketici tuşları gönderir (oynat/duraklat, ileri, geri, ses ±, sessiz, parlaklık ±); BLE rapor haritasına rapor 2 eklendi (Bluetooth'ta yeniden eşleştirme gerekebilir)
+- Windows: win-helper.ps1 sürekli açık (SMTC medya oturumları, Core Audio, WMI + DDC/CI parlaklık; parlaklık 10 sn'de bir okunur). Tarayıcı oturumları YouTube Music sayılır
+- macOS: AppleScript (Spotify, Music; Chrome/Edge/Brave/Safari'de music.youtube.com sekme adı; ses), parlaklık JXA + DisplayServices (MacBook Air'de denendi, çalışıyor). YouTube Music kontrolü medya tuşuyla
+- Ekran fontlarında yalnız ASCII + Türkçe harfler var; şarkı adları uygulamada sadeleştirilir (é → e)
+
 ## Ana sayfa
 - Sol: 128x128 animasyon alanı (hazır: fan [CPU sıcaklığıyla hızlanır], radar, nabız, ekolayzer; veya kullanıcı GIF'i → RGB565 kareler, en fazla 60, /anim.bin)
 - GIF kalıcı (v1.2.1): yükleme doğrudan flash'a yazılır (/anim.tmp → /anim.bin), config'e home.anim.kind="custom" kaydedilir; açılışta PSRAM'e, olmazsa RAM'e (≤96 KB) yüklenir, o da olmazsa kareler flash'tan akıtılır
-- Sağ: CPU (Core Ultra 5 245KF) ve GPU (RTX 5070) sıcaklık kartları: büyük °C, yük %, son değerlerin çizgi grafiği, 0–110 °C çubuk; sarı/kırmızı eşikler (CPU 85/95, GPU 80/87)
+- Alt satır: A/B tuşlarına atanmış uygulamaların ikonu + adı (v1.3.0, harf yerine ikon)
+- Sağ: CPU (Core Ultra 5 245KF) ve GPU (RTX 5070) sıcaklık kartları (başlıklar "CPU" / "GPU"): büyük °C, yük %, son değerlerin çizgi grafiği, 0–110 °C çubuk; sarı/kırmızı eşikler (CPU 85/95, GPU 80/87)
 - Sıcaklık kaynağı: PC'de LibreHardwareMonitor (yönetici, Remote Web Server :8085) → cihaz Wi-Fi ile http://IP:8085/data.json okur; masaüstü uygulaması açıkken Windows'ta USB üzerinden de gönderilir
 
 ## Uygulama ekleme
@@ -43,7 +53,7 @@
 - Kaynak: GitHub volkangokyar01/deck-app (app/main.js, preload.js, companion.js — ayar sayfasının IIFE'sine gömülür, tools/build.py)
 - Sınır: doğrudan açma yalnız USB'de
 
-## Firmware (v1.2.1)
+## Firmware (v1.3.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -53,6 +63,7 @@
 - v1.1.1: güç ve reset tuşları yer değiştirdi (güç GPIO 0 / BOOT, reset GPIO 14)
 - v1.2.0: device.kbFallback (varsayılan kapalı) — masaüstü uygulaması yoksa Win+R / arama / Spotlight yazılmaz
 - v1.2.1: ana sayfa GIF'i kalıcı (flash'a akışla yazma, açılışta yükleme)
+- v1.3.0: Medya ve Ses/parlaklık sayfaları, HID tüketici tuşları, ana sayfada A/B ikonları, CPU/GPU başlıkları
 - Gözlem (2026-10-02): v1.0.0 kartta komutlara yanıt vermedi (RX). Sonraki sürümlerin kartta doğrulanması bekleniyor
 
 ## Kasa v4 (güncel) — case/v4
@@ -81,4 +92,4 @@
 | Pil ölçümü | | 4 (×2 bölücü) |
 
 ## Seri protokol
-115200 baud, satır başına bir JSON. Komutlar: hello, get_config, set_config, launch, companion, temps, sensor_test, anim_begin, anim_data, anim_end, icon_set, dfu, restart. Olaylar: evt=input, select, launch, status (fw, rx, lines, psram), temps.
+115200 baud, satır başına bir JSON. Komutlar: hello, get_config, set_config, launch, companion, temps, media (player, name, title, artist, playing, pos, dur, ctl app|keys), sys (vol, mute, bright), sensor_test, anim_begin, anim_data, anim_end, icon_set, dfu, restart. Olaylar: evt=input, select (home/media/system/uygulama id), launch, media (action play_pause|next|prev|select, player), sys (vol | bright | mute), status (fw, rx, lines, psram), temps.
