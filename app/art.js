@@ -23,8 +23,10 @@ async function fetchData(url, json = false) {
     return json ? await r.json() : Buffer.from(await r.arrayBuffer());
   } finally { clearTimeout(timer); }
 }
+// Apple Music for Windows reports "Artist — Album" as the artist; search with the artist part only.
+const mainArtist = a => String(a || '').split(/\s+[\u2014\u2013]\s+/)[0].trim();
 async function fallback(c) {
-  const r = await fetchData('https://itunes.apple.com/search?term=' + encodeURIComponent(c.artist + ' ' + c.title) + '&entity=song&limit=1', true);
+  const r = await fetchData('https://itunes.apple.com/search?term=' + encodeURIComponent(mainArtist(c.artist) + ' ' + c.title) + '&entity=song&limit=1', true);
   const url = r && r.results && r.results[0] && r.results[0].artworkUrl100;
   return url ? fetchData(url.replace('100x100', '300x300')) : null;
 }
@@ -35,8 +37,10 @@ function create({ run, ps }) {
   }
   async function source(c) {
     if (process.platform === 'win32') {
+      // Windows' media session thumbnail first; Apple Music for Windows often has none -> iTunes catalogue artwork
       const r = await ps('art', { app: c.app, title: c.title, artist: c.artist }, 12000);
-      return r.ok && r.r ? Buffer.from(r.r, 'base64') : null;
+      if (r.ok && r.r) return Buffer.from(r.r, 'base64');
+      return c.player === 'music' || c.tries > 1 ? fallback(c) : null;
     }
     const app = c.player === 'spotify' ? 'Spotify' : 'Music';
     // Verify the raw metadata again: a track can change while the background job is starting.
@@ -83,10 +87,17 @@ end if`;
     if (!c || !c.title || !['spotify', 'music'].includes(c.player) || !['darwin', 'win32'].includes(process.platform)) return '';
     const key = createHash('sha256').update(JSON.stringify([c.player, c.title, c.artist, c.app || ''])).digest('hex');
     let e = cache.get(key);
-    if (e) { cache.delete(key); cache.set(key, e); }
-    else {
-      e = { pending: true, data: null }; cache.set(key, e);
-      setImmediate(() => load(c).then(data => { e.data = data; }).catch(() => {}).finally(() => { e.pending = false; prune(); }));
+    const start = () => {
+      e.pending = true; e.tries = (e.tries || 0) + 1; e.at = Date.now();
+      const job = { ...c, tries: e.tries };
+      setImmediate(() => load(job).then(data => { e.data = data; }).catch(() => {}).finally(() => { e.pending = false; prune(); }));
+    };
+    if (e) {
+      cache.delete(key); cache.set(key, e);
+      // the player often publishes the cover a moment after the title: try again a few times
+      if (!e.pending && !e.data && e.tries < 3 && Date.now() - e.at > 4000) start();
+    } else {
+      e = { pending: false, data: null, tries: 0, at: 0 }; cache.set(key, e); start();
       prune();
     }
     return e.pending || e.data ? key : '';
