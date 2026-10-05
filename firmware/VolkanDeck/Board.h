@@ -1,8 +1,9 @@
 #pragma once
 // LilyGO T-Display-S3 + KY-040 + 2 buttons
-#define FW_VERSION "1.4.1"
+#define FW_VERSION "1.5.0"
 
 #define PIN_LCD_POWER 15
+#define PIN_LCD_BL    38
 #define PIN_BAT       4
 
 #define PIN_ENC_CLK   1
@@ -35,7 +36,7 @@ public:
       c.dlen_16bit = false; c.bus_shared = false;
       _panel.config(c); }
     { auto c = _light.config();
-      c.pin_bl = 38; c.invert = false; c.freq = 22000; c.pwm_channel = 7;
+      c.pin_bl = PIN_LCD_BL; c.invert = false; c.freq = 22000; c.pwm_channel = 7;
       _light.config(c); _panel.setLight(&_light); }
     setPanel(&_panel);
   }

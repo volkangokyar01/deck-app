@@ -7,6 +7,46 @@
 #include "Ui.h"
 #include "Proto.h"
 #include "esp_sleep.h"
+#include "esp_system.h"
+#include "driver/rtc_io.h"
+#include "tusb.h"
+
+static const uint32_t OFF_MAGIC = 0x56444F46;   // VDOF; survives software / watchdog resets too
+RTC_NOINIT_ATTR uint32_t offMarker;
+
+static void offSleep() {
+  offMarker = OFF_MAGIC;
+  Serial.enableReboot(false); tud_disconnect();   // CDCOnBoot starts USB in the core, before setup()
+  if (bleStarted) { NimBLEDevice::deinit(true); bleStarted = false; }
+  // Keep both display enables low, including during deep sleep (LCD power is RTC GPIO15).
+  gpio_set_direction((gpio_num_t)PIN_LCD_BL, GPIO_MODE_OUTPUT);
+  gpio_set_level((gpio_num_t)PIN_LCD_BL, 0);
+  gpio_hold_dis((gpio_num_t)PIN_LCD_BL);
+  gpio_hold_en((gpio_num_t)PIN_LCD_BL); gpio_deep_sleep_hold_en();
+  rtc_gpio_hold_dis((gpio_num_t)PIN_LCD_POWER);
+  rtc_gpio_init((gpio_num_t)PIN_LCD_POWER);
+  rtc_gpio_set_level((gpio_num_t)PIN_LCD_POWER, 0);
+  rtc_gpio_set_direction((gpio_num_t)PIN_LCD_POWER, RTC_GPIO_MODE_OUTPUT_ONLY);
+  rtc_gpio_hold_en((gpio_num_t)PIN_LCD_POWER);
+
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);   // no USB / BLE / timer wake; only BOOT low
+  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+  rtc_gpio_hold_dis((gpio_num_t)PIN_KEY_PWR);
+  rtc_gpio_init((gpio_num_t)PIN_KEY_PWR);
+  rtc_gpio_set_direction((gpio_num_t)PIN_KEY_PWR, RTC_GPIO_MODE_INPUT_ONLY);
+  rtc_gpio_pullup_en((gpio_num_t)PIN_KEY_PWR); rtc_gpio_pulldown_dis((gpio_num_t)PIN_KEY_PWR);
+  // Require a continuous released interval, not just one HIGH sample followed by a delay.
+  uint32_t releasedAt = 0; bool released = false;
+  for (;;) {
+    uint32_t now = millis();
+    if (!rtc_gpio_get_level((gpio_num_t)PIN_KEY_PWR)) released = false;
+    else if (!released) { released = true; releasedAt = now; }
+    else if (now - releasedAt >= 80) break;
+    delay(5);
+  }
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_KEY_PWR, 0);
+  esp_deep_sleep_start();
+}
 
 /* ---------- link name for status / protocol ---------- */
 const char* linkName() {
@@ -74,16 +114,14 @@ static void readBattery() {
 }
 
 static void goSleep() {
+  offMarker = OFF_MAGIC;
   spr.fillSprite(SC_BG);
   text("Kapanıyor", 160, 85, FB18, SC_SUB, textdatum_t::middle_center);
   spr.pushSprite(0, 0); delay(600);
   setBright(0);
-  while (digitalRead(PIN_KEY_PWR) == LOW) delay(10);
-  delay(50);
   lcd.sleep();
-  digitalWrite(PIN_LCD_POWER, LOW);
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_KEY_PWR, 0);
-  esp_deep_sleep_start();
+  ledcDetach(PIN_LCD_BL);
+  offSleep();
 }
 
 /* ---------- navigation & actions ---------- */
@@ -231,6 +269,7 @@ static void handleInput() {
 }
 
 static void applySideEffects() {
+  applyTheme(effectiveLight());
   buildItems(); adjust = 0; encDet = S.encDetent;
   mediaTarget = S.mediaPlayer;
   if (companionOn()) evtMedia("select");       // keep the desktop app on the same player
@@ -244,6 +283,12 @@ static void applySideEffects() {
 
 /* ---------- setup / loop ---------- */
 void setup() {
+  if (offMarker == OFF_MAGIC && esp_reset_reason() != ESP_RST_POWERON && esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_EXT0) offSleep();
+  offMarker = 0;   // real key wake or fresh power-on: boot normally
+  rtc_gpio_hold_dis((gpio_num_t)PIN_KEY_PWR); rtc_gpio_deinit((gpio_num_t)PIN_KEY_PWR);
+  rtc_gpio_hold_dis((gpio_num_t)PIN_LCD_POWER); rtc_gpio_deinit((gpio_num_t)PIN_LCD_POWER);
+  gpio_set_direction((gpio_num_t)PIN_LCD_BL, GPIO_MODE_OUTPUT); gpio_set_level((gpio_num_t)PIN_LCD_BL, 0);
+  gpio_hold_dis((gpio_num_t)PIN_LCD_BL); gpio_deep_sleep_hold_dis();
   pinMode(PIN_LCD_POWER, OUTPUT); digitalWrite(PIN_LCD_POWER, HIGH);
   for (uint8_t p : { PIN_ENC_CLK, PIN_ENC_DT, PIN_ENC_SW, PIN_BTN_A, PIN_BTN_B, PIN_KEY_PWR, PIN_KEY_RST }) pinMode(p, INPUT_PULLUP);
 
@@ -254,6 +299,7 @@ void setup() {
 
   LittleFS.begin(true);
   loadConfig();
+  applyTheme(effectiveLight());
   loadAnim();
   buildItems();
   mediaTarget = S.mediaPlayer;
@@ -281,7 +327,8 @@ void loop() {
   handleInput();
 
   uint32_t now = millis();
-  static uint32_t tBat = 0, tStatus = 0, tFrame = 0;
+  static uint32_t tBat = 0, tStatus = 0, tFrame = 0, tTheme = 0;
+  if (now - tTheme >= 3000) { tTheme = now; bool light = effectiveLight(); if (light != lightTheme) { applyTheme(light); dirty = true; } }
   static Link lastLink = L_NONE;
   if (now - tBat > 2000) { tBat = now; readBattery(); bleBattery(batPct); }
   if (now - tStatus > 5000) { tStatus = now; evtStatus(); dirty = true; }
@@ -301,7 +348,7 @@ void loop() {
 
   // idle handling
   uint32_t idle = (now - lastActivity) / 1000;
-  if (S.homeOn && S.returnAfter > 0 && idle >= (uint32_t)S.returnAfter && sel != 0 && !items.empty() && items[0].home) { sel = 0; dirty = true; evtSelect(); }
+  if (S.homeOn && !(S.mediaStay && curKind() == K_MEDIA) && S.returnAfter > 0 && idle >= (uint32_t)S.returnAfter && sel != 0 && !items.empty() && items[0].home) { sel = 0; dirty = true; evtSelect(); }
   if (!screenOff && !dimmed && S.dimAfter > 0 && idle >= (uint32_t)S.dimAfter) { dimmed = true; setBright(max(5, S.brightness / 6)); }
   if (!usbMounted && S.sleepAfter > 0 && idle >= (uint32_t)S.sleepAfter) goSleep();
 

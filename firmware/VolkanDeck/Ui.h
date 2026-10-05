@@ -6,9 +6,35 @@ LGFX lcd;
 LGFX_Sprite spr(&lcd);
 
 constexpr uint16_t C(uint32_t h) { return (((h >> 16) & 0xF8) << 8) | (((h >> 8) & 0xFC) << 3) | ((h & 0xFF) >> 3); }
-const uint16_t SC_BG = C(0x0A0C10), SC_PANEL = C(0x161A21), SC_LINE = C(0x262B35), SC_TEXT = C(0xF2F4F8),
-               SC_SUB = C(0x8B93A3), SC_DIM = C(0x4A5160), SC_HL = C(0xF2A93B), SC_RED = C(0xF06A6A),
-               SC_ACC = C(0x7D9BFF), ICON_BG = C(0x1E232C), HOME_COL = C(0x3B6CF6), WHITE = 0xFFFF;
+uint16_t SC_BG = C(0x000000), SC_PANEL = C(0x0F1012), SC_LINE = C(0x222326), SC_TEXT = C(0xF2F3F5),
+         SC_SUB = C(0x8E9199), SC_DIM = C(0x4A4C52), SC_HL = C(0xF2A93B), SC_RED = C(0xF06A6A),
+         SC_ACC = C(0x7D9BFF), ICON_BG = C(0x18191C), SC_GREEN = C(0x3DD68C), SC_SUN = C(0xF2C94C), SC_RAIN = C(0x5AB0FF);
+const uint16_t HOME_COL = C(0x3B6CF6), WHITE = 0xFFFF, INK = C(0x17181B);
+bool lightTheme = false;
+
+void applyTheme(bool light) {
+  lightTheme = light;
+  SC_BG = C(light ? 0xFAF8F3 : 0x000000); SC_PANEL = C(light ? 0xECE8E0 : 0x0F1012);
+  SC_LINE = C(light ? 0xD9D4CA : 0x222326); ICON_BG = C(light ? 0xE2DDD3 : 0x18191C);
+  SC_TEXT = C(light ? 0x17181B : 0xF2F3F5); SC_SUB = C(light ? 0x5C5F66 : 0x8E9199); SC_DIM = C(light ? 0xA29F98 : 0x4A4C52);
+  SC_HL = C(light ? 0xD4850A : 0xF2A93B); SC_RED = C(light ? 0xD64545 : 0xF06A6A); SC_ACC = C(light ? 0x3B5BDB : 0x7D9BFF);
+  SC_GREEN = C(light ? 0x1E9E5A : 0x3DD68C); SC_SUN = C(light ? 0xC08A00 : 0xF2C94C); SC_RAIN = C(light ? 0x2B7FD9 : 0x5AB0FF);
+}
+
+static bool effectiveLight() {
+  if (S.theme == "light") return true;
+  if (S.theme == "dark") return false;
+  struct tm t; if (!localTime(t)) return false;
+  int m = t.tm_hour * 60 + t.tm_min;
+  return S.lightFrom <= S.darkFrom ? m >= S.lightFrom && m < S.darkFrom : m >= S.lightFrom || m < S.darkFrom;
+}
+
+// Choose readable ink on page / player / user colours, without changing their fills.
+static float linear(float v) { return v <= .04045f ? v / 12.92f : powf((v + .055f) / 1.055f, 2.4f); }
+static uint16_t onColor(uint16_t c) {
+  float y = .2126f * linear((c >> 11) / 31.0f) + .7152f * linear(((c >> 5) & 63) / 63.0f) + .0722f * linear((c & 31) / 31.0f);
+  return y > .20f ? INK : WHITE;
+}
 
 struct UFont { lgfx::PointerWrapper pw; lgfx::VLWfont vf; void load(const uint8_t* a, size_t n) { pw.set(a, n); vf.loadFont(&pw); } };
 UFont FM9, FM10, FM16, FSB11, FSB12, FB10, FB11, FB18, FB26, FN36;
@@ -84,11 +110,11 @@ static String itemId(const Item& it) {
 const uint16_t MEDIA_COL = C(0xE0457B), SYS_COL = C(0x0EA5A4);
 static void bubble(bool home, App* a, int x, int y, int r, float alpha, uint8_t kind = 255) {
   if (kind == K_MEDIA || kind == K_SYS) {      // page bubbles use a line icon on their own colour
-    uint16_t fill = mix(kind == K_MEDIA ? MEDIA_COL : SYS_COL, SC_BG, alpha);
+    uint16_t col = kind == K_MEDIA ? MEDIA_COL : SYS_COL, fill = mix(col, SC_BG, alpha);
     spr.fillSmoothCircle(x, y, r, fill);
     const LineIcon* li = lineIcon(kind == K_MEDIA ? String("music") : String("gear"));
     const uint8_t* m = r >= 25 ? li->a34 : r >= 15 ? li->a21 : li->a11;
-    blendMask(m, (r >= 25 ? 34 : r >= 15 ? 21 : 11) + 4, x, y, mix(WHITE, SC_BG, alpha), fill);
+    blendMask(m, (r >= 25 ? 34 : r >= 15 ? 21 : 11) + 4, x, y, mix(onColor(col), SC_BG, alpha), fill);
     return;
   }
   uint16_t col = home ? HOME_COL : a->color;
@@ -104,7 +130,7 @@ static void bubble(bool home, App* a, int x, int y, int r, float alpha, uint8_t 
     const LineIcon* li = lineIcon(home ? String("home") : a->icon);
     const uint8_t* m = r >= 25 ? li->a34 : r >= 15 ? li->a21 : li->a11;
     int W = (r >= 25 ? 34 : r >= 15 ? 21 : 11) + 4;
-    blendMask(m, W, x, y, mix(WHITE, SC_BG, alpha), fill);
+    blendMask(m, W, x, y, mix(onColor(col), SC_BG, alpha), fill);
   }
 }
 
@@ -172,13 +198,12 @@ static void miniIcon(App* a, int cx, int cy) {
     }
   } else {
     spr.fillSmoothCircle(cx, cy, 7, a->color);
-    blendMask(lineIcon(a->icon)->a11, 15, cx, cy, WHITE, a->color);
+    blendMask(lineIcon(a->icon)->a11, 15, cx, cy, onColor(a->color), a->color);
   }
 }
 
 /* ---------- home: two widget slots ---------- */
 static bool companionOn();
-const uint16_t SC_GREEN = C(0x3DD68C), SC_SUN = C(0xF2C94C), SC_RAIN = C(0x5AB0FF);
 static const char* DAY_TR[7] = { "Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt" };
 static const char* MON_TR[12] = { "Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara" };
 
@@ -289,14 +314,14 @@ static void sun(int cx, int cy, int r, uint16_t c) {
   for (int i = 0; i < 8; i++) { float a = i * PI / 4; spr.drawWideLine(cx + cosf(a) * (r + 3), cy + sinf(a) * (r + 3), cx + cosf(a) * (r + 6), cy + sinf(a) * (r + 6), 1.0f, c); }
 }
 static void wxIcon(uint8_t k, int cx, int cy) {
-  const uint16_t CL = C(0xC9D1DE), CD = C(0x6B7383);
+  const uint16_t CL = mix(SC_TEXT, SC_SUB, .6f), CD = SC_SUB;
   switch (k) {
     case WX_CLEAR: sun(cx, cy, 7, SC_SUN); break;
     case WX_PARTLY: sun(cx + 5, cy - 6, 5, SC_SUN); cloud(cx - 2, cy + 4, SC_PANEL); cloud(cx - 2, cy + 5, CL); break;
     case WX_CLOUDY: cloud(cx + 5, cy - 5, CD); cloud(cx - 2, cy + 3, CL); break;
     case WX_FOG: cloud(cx, cy - 6, CD); for (int i = 0; i < 3; i++) spr.fillSmoothRoundRect(cx - 12 + (i & 1) * 3, cy + 5 + i * 4, 21, 2, 1, CL); break;
     case WX_RAIN: cloud(cx, cy - 5, CL); for (int i = 0; i < 3; i++) spr.drawWideLine(cx - 5 + i * 6, cy + 6, cx - 8 + i * 6, cy + 13, 1.1f, SC_RAIN); break;
-    case WX_SNOW: cloud(cx, cy - 5, CL); for (int i = 0; i < 3; i++) spr.fillSmoothCircle(cx - 7 + i * 7, cy + 9 + (i & 1) * 3, 2, WHITE); break;
+    case WX_SNOW: cloud(cx, cy - 5, CL); for (int i = 0; i < 3; i++) spr.fillSmoothCircle(cx - 7 + i * 7, cy + 9 + (i & 1) * 3, 2, SC_TEXT); break;
     case WX_THUNDER: cloud(cx, cy - 5, CD);
       spr.fillTriangle(cx + 2, cy + 2, cx - 5, cy + 10, cx, cy + 10, SC_SUN); spr.fillTriangle(cx + 2, cy + 8, cx - 2, cy + 8, cx - 4, cy + 16, SC_SUN); break;
     default: cloud(cx, cy, SC_LINE);
@@ -532,7 +557,7 @@ static void drawMedia() {
     bool active = live && media.player == id, target = mediaTarget == id;
     uint16_t pc = playerColor(id);
     spr.fillRoundRect(x, 16, w, 18, 9, active ? pc : target ? mix(pc, SC_PANEL, .3f) : SC_PANEL);   // chosen player: tinted, not outlined
-    text(PLAYER_NAMES[i], x + w / 2, 25, FSB11, active ? WHITE : target ? SC_TEXT : SC_SUB, textdatum_t::middle_center);
+    text(PLAYER_NAMES[i], x + w / 2, 25, FSB11, active ? onColor(pc) : target ? SC_TEXT : SC_SUB, textdatum_t::middle_center);
     x += w + 4;
   }
   if (companionOn()) text(mediaTarget == "auto" ? "oto" : "sabit", 318, 25, FM9, SC_DIM, textdatum_t::middle_right);
@@ -561,8 +586,9 @@ static void drawMedia() {
   bool playing = live ? media.playing : false;
   gSkip(112, 132, 16, fl && !strcmp(mediaFlashAct, "prev") ? pc : SC_TEXT, false);
   text("A", 112, 154, FM9, SC_DIM, textdatum_t::middle_center);
-  spr.fillSmoothCircle(160, 132, 21, fl && !strcmp(mediaFlashAct, "play_pause") ? mix(pc, WHITE, .7f) : pc);
-  if (playing) gPause(160, 132, 16, WHITE); else gPlay(162, 132, 18, WHITE);
+  uint16_t playBg = fl && !strcmp(mediaFlashAct, "play_pause") ? mix(pc, SC_PANEL, .7f) : pc;
+  spr.fillSmoothCircle(160, 132, 21, playBg);
+  if (playing) gPause(160, 132, 16, onColor(playBg)); else gPlay(162, 132, 18, onColor(playBg));
   gSkip(208, 132, 16, fl && !strcmp(mediaFlashAct, "next") ? pc : SC_TEXT, true);
   text("B", 208, 154, FM9, SC_DIM, textdatum_t::middle_center);
 
@@ -603,7 +629,7 @@ static void sysRow(int y, int h, bool vol, bool focus) {
   int bx = 132, bw = 178, by = y + 42;
   if (live) {
     spr.fillRoundRect(bx, by, bw, 8, 4, SC_LINE);
-    spr.fillRoundRect(bx, by, max(6, bw * constrain(v, 0, 100) / 100), 8, 4, muted ? SC_DIM : focus ? SC_HL : (vol ? SC_TEXT : C(0xF2C94C)));
+    spr.fillRoundRect(bx, by, max(6, bw * constrain(v, 0, 100) / 100), 8, 4, muted ? SC_DIM : focus ? SC_HL : (vol ? SC_TEXT : SC_SUN));
   }
   String hint;
   if (vol) hint = muted ? "SESSİZ · A: aç" : "A: sessiz";
@@ -621,7 +647,7 @@ static void drawToast() {
   if (millis() > toastUntil) return;
   int w = min(316, textW(toastMsg, FSB11) + 24);
   spr.fillRoundRect(160 - w / 2, 142, w, 26, 8, mix(SC_HL, SC_BG, .3f));   // filled amber pill, no outline
-  text(fit(toastMsg, w - 12, FSB11), 160, 155, FSB11, WHITE, textdatum_t::middle_center);
+  text(fit(toastMsg, w - 12, FSB11), 160, 155, FSB11, SC_TEXT, textdatum_t::middle_center);
 }
 
 static void render(const char* link) {

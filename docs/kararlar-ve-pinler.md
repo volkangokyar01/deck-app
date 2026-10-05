@@ -9,12 +9,18 @@
 - Döndürgeç listesi: [Ana sayfa] + uygulamalar. Sağa/sola: gezinir; basma: seçili uygulamayı açar (ana sayfada isteğe bağlı uygulama); uzun basma (0,7 sn): ana sayfaya dön
 - A ve B butonları: atanan uygulamayı doğrudan açar (hızlı açma)
 - Kartın kendi tuşları (v1.1.1'den itibaren yer değiştirdi): GPIO 0 (BOOT) = güç (kısa: ekran kapat/aç, 2 sn: derin uyku, tekrar basınca uyanır), GPIO 14 = reset (bırakınca ESP.restart; yalnız firmware çalışırken, yükleme modunda etkisiz)
+- Kapanma (2026-10-05): yazılımsal güç kesici yok; kapalı durum derin uykudur, USB takılıyken kart hâlâ güç çeker. GPIO0 RTC pull-up açık / pull-down kapalı, RTC çevre birimi açık; tuş kesintisiz 80 ms bırakılmadan EXT0 (LOW) kurulmaz. Arka ışık GPIO38 ve LCD güç GPIO15 LOW tutulur; diğer uyandırma kaynakları temizlenir, BLE durdurulur, USB bağlantısı kesilir
+- Kapalı durum RTC_NOINIT_ATTR içindeki 32 bit işaretle korunur: setup'ın ilk kontrolü, işaret varken POWERON ve EXT0 dışındaki reset/uyanışlarda ekranı açmadan sessizce yeniden uyutur (USB-Serial-JTAG DTR/RTS, watchdog, RTC belleği korunmuş brownout dahil). Gerçek EXT0 veya POWERON işareti temizler; GPIO0/LCD RTC hold ve RTC yapılandırması, arka ışık hold normal açılışta bırakılır. CDCOnBoot nedeniyle Arduino çekirdeği USB'yi setup'tan önce başlatır; sessiz yolda hemen bağlantısı kesilir, firmware HID/seri başlatmasına ulaşılmaz. ROM yükleme modu veya RTC belleğini kaybettiren güç düşüşü yazılımla engellenemez
+- Donanım doğrulaması bekliyor: pil/USB'de uzun basma → kapalı kalma → tekrar tuşla uyanma, masaüstünün 3 sn bağlantı denemeleri, DTR/RTS resetleri, watchdog/brownout sonrası RTC işareti ve ekran/arka ışık seviyeleri; kapalı akımı ölçülmeli
 - Boşta kalınca ana sayfaya dönüş (varsayılan 60 sn); karartma 30 sn; pilde uyku 5 dk
+- Ekran teması (2026-10-05): device.theme = auto (varsayılan) / dark / light. Koyu: saf siyah zemin, nötr griler; açık: kırık beyaz kasaya uygun sıcak beyaz. device.lightFrom = 420 (07:00), device.darkFrom = 1140 (19:00), yerel gece yarısından sonraki dakika; 0..1439 ile sınırlı. Eski config bu varsayılanları alır.
+- Otomatik tema: açık başlangıcı dahil, koyu başlangıcı hariç; açık başlangıcı daha geçse gece yarısını aşan aralık, başlangıçlar aynıysa tüm gün koyu. Saat masaüstünün `stats.time` (epoch + tz) verisinden, arada millis ile ilerler; ilk saat gelene kadar koyu. Açılışta ve ayar değişince uygulanır, döngüde 3 sn’de bir denetlenir; değişince tam ekran çizilir (kapatma/reset yazıları da aynı palet).
 - Ekran 180° çevirme: Cihaz ayarları → "Ekranı 180° çevir" (device.flip)
 
 ## Medya ve Ses/parlaklık sayfaları (v1.3.0, 2026-10-05)
 - Döndürgeç listesi: [Ana sayfa] [Medya] [Ses ve parlaklık] + uygulamalar (pages.media.enabled / pages.system.enabled)
 - Medya: oynatıcı çipleri (Spotify / Apple Music / YouTube Music), şarkı, sanatçı, süre çubuğu, ses. Bas: oynat/duraklat · A: önceki · B: sonraki · basılı tut: ses modu (çevir: ses, 6 sn sonra çıkar) · çift bas: oynatıcı değiştir (oto → Spotify → Apple Music → YouTube Music). Varsayılan: pages.media.player
+- Medya sayfasında kalma: pages.media.stay (bool, varsayılan true; eski config'te eksikse de true). Medya ayarındaki "Medya sayfasındayken ana sayfaya dönme" açıkken yalnız Medya sayfasında home.returnAfter atlanır; karartma ve pilde otomatik kapanma aynen devam eder. Kapatılırsa normal ana sayfaya dönüş süresi uygulanır
 - Ses ve parlaklık: iki satır. Bas: ayar modu ses ↔ parlaklık · çevir: değer (ses %2, parlaklık %5) · basılı tut: çık · A: sessiz · B: satır değiştir
 - Masaüstü uygulaması yoksa cihaz HID tüketici tuşları gönderir (oynat/duraklat, ileri, geri, ses ±, sessiz, parlaklık ±); BLE rapor haritasına rapor 2 eklendi (Bluetooth'ta yeniden eşleştirme gerekebilir)
 - Windows: win-helper.ps1 sürekli açık (SMTC medya oturumları, Core Audio, WMI + DDC/CI parlaklık; parlaklık 10 sn'de bir okunur). Tarayıcı oturumları YouTube Music sayılır
@@ -38,7 +44,7 @@
 - Ana sayfa veri kaynağı: masaüstü `app/stats.js` → USB `stats` (firmware ≥1.4.0). Windows NVIDIA GPU: sürücüyle gelen `nvidia-smi` sürekli CSV akışı; AMD/Intel GPU desteği henüz yok. CPU yükü `os.cpus()` farkları; desteklenmeyen alanlar `null`.
 
 ## Ekran yerleşimi (2026-10-05, "her pikseli kullan")
-- Kural: dış kenar 2 px, paneller arası 2 px; paneller çizgiyle değil zemin tonuyla ayrılır (SC_PANEL #161A21 / SC_BG #0A0C10). Seçili/odaklı alan çerçeve yerine renk tonuyla gösterilir (amber karışımı)
+- Kural: dış kenar 2 px, paneller arası 2 px; paneller çizgiyle değil zemin tonuyla ayrılır (koyu SC_PANEL #0F1012 / SC_BG #000000; açık #ECE8E0 / #FAF8F3). Seçili/odaklı alan çerçeve yerine renk tonuyla gösterilir (amber karışımı)
 - Üst renkli 3 px çizgi kaldırıldı; sayfa rengi artık sayfa sayacının önündeki 8 px noktada. Durum satırı y 0..13 (eskiden 0..23), içerik y 15..167
 - Ana sayfa: animasyon 128×128 sol üst köşede (2,2), köşe yarıçapı 8 aynı; durum satırı animasyonun sağında (sayaç x 134). A/B satırları animasyonun altında üst üste (A üstte; harf + ikon + ad, 128×17). CPU/GPU kartları 186×76/75 (eskiden 174×62); sıcaklık 36 px
 - Uygulama sayfası: ikon r 33 (eskiden 31), yan ikonlar r 21, ad tam genişlikte; A/B yuvaları 157×26, alt kenara yaslı
@@ -46,7 +52,7 @@
 - Ses ve parlaklık: iki satır 316×76/75, değer 36 px, çubuk 8 px; odaklı satır amber tonlu (çerçeve yok)
 - Bildirim (toast): çerçeveli siyah kutu yerine dolu amber hap, alt kenarda (y 142..167)
 - 36 px font: Fonts.h `fN36`, Inter SemiBold, yalnız " %+,-./0-9:" (8,6 KB; v1.4.0'da saat ve ondalıklar için ":,." eklendi, eski glifler aynı); üretimde mevcut fontların VLW kuralları (asc = boy, glif genişliği = ilerleme) kullanıldı. Diğer yazılarda en küçük boy yine 9 px
-- Simülatör (web/body.html) aynı koordinatları kullanır
+- Simülatör (web/body.html) aynı koordinatları ve koyu/açık paletleri kullanır; otomatik tema tarayıcının yerel saatine göre 3 sn’de bir denetlenir. Cihaz ayarları → Ekran teması; otomatik seçilince iki HH:MM başlangıç alanı açılır. Sayfa/marka, oynatıcı ve kullanıcı uygulama renkleri sabit; dolgularda kontrasta göre beyaz/koyu yazı, soluk renklerde mevcut zemin/panel ile karışım. Hazır Icons.h ikonları alfa maskesi; albüm kapağı, uygulama ikon görselleri ve kullanıcı GIF kareleri değiştirilmez
 
 ## Uygulama ekleme
 - "Bilgisayardan seç…" veya sürükle-bırak: .exe (PE'den ikon + ad), .lnk, .url
@@ -118,6 +124,7 @@
 | Güç tuşu (kart, BOOT) — v1.1.1+ | | 0 |
 | Reset tuşu (kart) — v1.1.1+ | | 14 |
 | LCD güç (pilde) | | 15 HIGH |
+| LCD arka ışık (PWM; uykuda LOW) | | 38 |
 | Pil ölçümü | | 4 (×2 bölücü) |
 
 ## Seri protokol

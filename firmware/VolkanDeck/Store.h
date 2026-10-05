@@ -32,6 +32,8 @@ struct Settings {
   uint8_t conn = 0;          // 0 auto, 1 usb, 2 ble
   int brightness = 80, dimAfter = 30, sleepAfter = 300, launchDelay = 400, encDetent = 4;
   bool wrap = true, encRev = false, flip = false;
+  String theme = "auto";
+  int lightFrom = 420, darkFrom = 1140;   // local minutes after midnight
   bool hostMac = false;
   bool kbFallback = false;   // type Win+R / Start / Spotlight when the desktop app is not running (off by default)      // keyboard fallback style: Windows (Win+R / Start) or macOS (Spotlight)
   // home
@@ -50,7 +52,7 @@ struct Settings {
   std::vector<App> apps;
   String quickA, quickB;
   // extra pages in the knob list
-  bool mediaOn = true, sysOn = true;
+  bool mediaOn = true, mediaStay = true, sysOn = true;
   String mediaPlayer = "auto";   // auto | spotify | music | ytmusic
 };
 
@@ -58,7 +60,7 @@ Settings S;
 
 static const char DEFAULT_CONFIG[] PROGMEM = R"JSON({
 "version":3,
-"device":{"name":"Volkan Deck","layout":"tr_q","connection":"auto","brightness":80,"dimAfter":30,"sleepAfter":300,"launchDelay":400,"wrap":true,"encReverse":false,"encDetent":4},
+"device":{"name":"Volkan Deck","layout":"tr_q","connection":"auto","brightness":80,"dimAfter":30,"sleepAfter":300,"launchDelay":400,"wrap":true,"encReverse":false,"encDetent":4,"theme":"auto","lightFrom":420,"darkFrom":1140},
 "home":{"enabled":true,"cards":["cpu","gpu"],"weather":{"city":"İstanbul","lat":41.01,"lon":28.97},"cpuLabel":"","gpuLabel":"","cpuWarn":85,"cpuCrit":95,"gpuWarn":80,"gpuCrit":87,"showLoad":true,"returnAfter":60,"pressApp":null,"anim":{"kind":"fan","color":"#3B6CF6","fps":15}},
 "apps":[
  {"id":"cs2","name":"Counter-Strike 2","icon":"game","color":"#E0A800","inWheel":true,"launch":{"method":"run","value":"steam://rungameid/730"}},
@@ -68,7 +70,7 @@ static const char DEFAULT_CONFIG[] PROGMEM = R"JSON({
  {"id":"steam","name":"Steam","icon":"game","color":"#1B6FD1","inWheel":true,"launch":{"method":"run","value":"steam://open/main"}}
 ],
 "quick":{"a":"discord","b":"cs2"},
-"pages":{"media":{"enabled":true,"player":"auto"},"system":{"enabled":true}}
+"pages":{"media":{"enabled":true,"player":"auto","stay":true},"system":{"enabled":true}}
 })JSON";
 
 static uint16_t parseColor(const char* s, uint16_t def) {
@@ -144,6 +146,9 @@ static void applyConfig(JsonObjectConst c) {
   N.brightness = d["brightness"] | 80; N.dimAfter = d["dimAfter"] | 30; N.sleepAfter = d["sleepAfter"] | 300;
   N.launchDelay = d["launchDelay"] | 400; N.encDetent = constrain(d["encDetent"] | 4, 1, 4);
   N.wrap = d["wrap"] | true; N.encRev = d["encReverse"] | false; N.flip = d["flip"] | false;
+  const char* th = d["theme"] | "auto";
+  N.theme = !strcmp(th, "dark") ? "dark" : !strcmp(th, "light") ? "light" : "auto";
+  N.lightFrom = constrain(d["lightFrom"] | 420, 0, 1439); N.darkFrom = constrain(d["darkFrom"] | 1140, 0, 1439);
   N.hostMac = !strcmp(d["host"] | "win", "mac");
   N.kbFallback = d["kbFallback"] | false;
 
@@ -180,6 +185,7 @@ static void applyConfig(JsonObjectConst c) {
   JsonObjectConst pg = c["pages"];
   N.mediaOn = pg["media"]["enabled"] | true; N.sysOn = pg["system"]["enabled"] | true;
   N.mediaPlayer = (const char*)(pg["media"]["player"] | "auto");
+  N.mediaStay = pg["media"]["stay"] | true;
 
   freeAppPix();
   S = N;
