@@ -1350,7 +1350,8 @@ function renderWidgetsEditor(body){
     box.append(el("div",{class:"field"},el("span",{},"Widget "+(i+1)+(i===0?"":" (isteğe bağlı)")),g));
   }
   body.append(box);
-  body.append(el("p",{class:"hint"},"1–4 widget seçilebilir; yerleşim sayıya göre değişir (1: tam ekran, 2: alt alta, 3: üstte bir geniş + altta iki, 4: 2×2). Aynı widget birden fazla kez de seçilebilir. Hava durumunun şehri ve CPU/GPU uyarı eşikleri Ana sayfa ayarlarından gelir; veriler masaüstü uygulamasından USB ile gelir."));
+  if (P.cards.includes("weather")) body.append(weatherCitySec());
+  body.append(el("p",{class:"hint"},"1–4 widget seçilebilir; yerleşim sayıya göre değişir (1: tam ekran, 2: alt alta, 3: üstte bir geniş + altta iki, 4: 2×2). Aynı widget birden fazla kez de seçilebilir. CPU/GPU uyarı eşikleri Ana sayfa ayarlarından gelir; veriler masaüstü uygulamasından USB ile gelir."));
 }
 function renderSysEditor(body){
   $("#edTitle").textContent="Ses ve parlaklık"; $("#btnTest").disabled=true;
@@ -1378,18 +1379,7 @@ function renderHomeEditor(body){
   });
   sec1.append(el("p",{class:"hint"},"Kartların verisini masaüstü uygulaması USB'den gönderir (Windows ve macOS; hava durumu ve döviz için internet gerekir). Uygulama kapalıyken kartlarda “-” görünür."));
   body.append(sec1);
-  if (H.cards.includes("weather")){
-    const W=H.weather, sw=el("div",{class:"sec"},el("h3",{},"Hava durumu · şehir"));
-    sw.append(el("div",{class:"summary"},el("span",{class:"eyebrow"},"Seçili şehir"),el("b",{},W.city?`${W.city} · ${Number(W.lat).toFixed(2)}, ${Number(W.lon).toFixed(2)}`:"Seçilmedi")));
-    const res=el("div",{class:"method",id:"wxResults"});
-    let tmr;
-    const inp=el("input",{type:"text",inputmode:"search",enterkeyhint:"search",id:"wxCity",placeholder:"Şehir ara (ör. İzmir)",autocomplete:"off","aria-label":"Şehir ara",
-      oninput:()=>{ clearTimeout(tmr); tmr=setTimeout(()=>geoSearch(inp.value,res),350); },
-      onkeydown:e=>{ if(e.key==="Enter"){ e.preventDefault(); clearTimeout(tmr); geoSearch(inp.value,res); } }});
-    sw.append(el("label",{class:"field"},el("span",{},"Şehir ara"),inp),res);
-    sw.append(el("p",{class:"hint"},"Arama Open-Meteo'nun ücretsiz şehir aramasıyla yapılır. Hava durumunu masaüstü uygulaması bu konuma göre 15 dakikada bir alır."));
-    body.append(sw);
-  }
+  if (H.cards.includes("weather")) body.append(weatherCitySec());
   if (H.cards.includes("cpu")||H.cards.includes("gpu")){
     const st=el("div",{class:"sec"},el("h3",{},"CPU / GPU kartları"));
     st.append(el("div",{class:"row"},
@@ -1449,6 +1439,18 @@ function renderHomeEditor(body){
   sec3.append(el("label",{class:"field"},el("span",{},"Boşta kalınca ana sayfaya dön · ",ro),el("input",{type:"range",id:"homeReturn",min:"0",max:"300",step:"15",value:H.returnAfter,oninput:e=>{H.returnAfter=Number(e.target.value); ro.textContent=H.returnAfter?H.returnAfter+" sn":"kapalı"; save();}})));
   sec3.append(el("p",{class:"hint"},"Medya sayfasında kalma ayarı açıksa bu süre medya sayfasında uygulanmaz; karartma ve pilde otomatik kapanma devam eder."));
   body.append(sec3);
+}
+function weatherCitySec(){
+    const W=cfg.home.weather||{}, sw=el("div",{class:"sec"},el("h3",{},"Hava durumu · şehir"));
+    sw.append(el("div",{class:"summary"},el("span",{class:"eyebrow"},"Seçili şehir"),el("b",{},W.city?`${W.city} · ${Number(W.lat).toFixed(2)}, ${Number(W.lon).toFixed(2)}`:"Seçilmedi")));
+    const res=el("div",{class:"method",id:"wxResults"});
+    let tmr;
+    const inp=el("input",{type:"text",inputmode:"search",enterkeyhint:"search",id:"wxCity",placeholder:"Şehir ara (ör. İzmir)",autocomplete:"off","aria-label":"Şehir ara",
+      oninput:()=>{ clearTimeout(tmr); tmr=setTimeout(()=>geoSearch(inp.value,res),350); },
+      onkeydown:e=>{ if(e.key==="Enter"){ e.preventDefault(); clearTimeout(tmr); geoSearch(inp.value,res); } }});
+    sw.append(el("label",{class:"field"},el("span",{},"Şehir ara"),inp),res);
+    sw.append(el("p",{class:"hint"},"Arama Open-Meteo'nun ücretsiz şehir aramasıyla yapılır. Hava durumunu masaüstü uygulaması bu konuma göre 15 dakikada bir alır. Ana sayfa ve Widgetlar sayfası aynı şehri kullanır."));
+    return sw;
 }
 // city search for the weather card (Open-Meteo geocoding, free, no key)
 let geoSeq=0;
