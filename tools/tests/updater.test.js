@@ -94,6 +94,8 @@ for (const channel of [false, true]) {
     const count = f.requests.length;
     await f.updater.check();
     assert.equal(f.requests.length, count, 'direction result is cached');
+    await f.updater.check({ manual: true });
+    assert.equal(f.requests.length, count, 'a manual check right after reuses the result for 30 s');
     if (localNewer) { await f.updater.apply(); assert.deepEqual(f.actions, []); }
   });
   test(`${channel ? 'release' : 'main'}: unpushed commit (404) is newer`, async t => {
@@ -236,4 +238,16 @@ test('failed apply restores the old app and its original stamp', async t => {
   assert.equal(await fs.readFile(path.join(f.current, 'build-info.json'), 'utf8'), originalStamp);
   assert.equal(f.actions.includes('relaunch'), false);
   assert.deepEqual(await fs.readdir(path.dirname(f.current)), ['app']);
+});
+
+test('manual check refreshes a result older than 30 s', async t => {
+  const f = await fixture(t, { platform: 'darwin' });
+  const realNow = Date.now; let now = realNow(); Date.now = () => now; t.after(() => { Date.now = realNow; });
+  await f.updater.check();
+  const count = f.requests.length;
+  now += 60e3;
+  await f.updater.check();
+  assert.equal(f.requests.length, count, 'automatic check keeps the 10 min cache');
+  await f.updater.check({ manual: true });
+  assert.ok(f.requests.length > count, 'manual check asks GitHub again after 30 s');
 });

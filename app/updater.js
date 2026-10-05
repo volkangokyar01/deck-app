@@ -8,7 +8,7 @@ const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 
 const REPO = 'volkangokyar01/deck-app', REPO_URL = 'https://github.com/' + REPO;
-const API = 'https://api.github.com/repos/' + REPO, CACHE_MS = 10 * 60e3;
+const API = 'https://api.github.com/repos/' + REPO, CACHE_MS = 10 * 60e3, MANUAL_CACHE_MS = 30e3;
 const REQUIRED = ['main.js', 'package.json', 'index.html', 'preload.js'];
 const blobHash = content => crypto.createHash('sha1').update('blob ' + content.length + '\0').update(content).digest('hex');
 const execFile = (cmd, args) => new Promise((resolve, reject) => cp.execFile(cmd, args,
@@ -254,10 +254,12 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
     if (diverged) message = "Bu bilgisayardaki sürümde GitHub'da olmayan değişiklikler var; güncellersen kaybolur." + (needsInstaller ? ' ' + message : '');
     return { result: { phase: available ? 'available' : 'current', available, localNewer: false, needsInstaller, latest, message, detail: null }, target: { latest, files } };
   }
-  async function check() {
+  // Automatic checks reuse a result for 10 min; the "check" button only for 30 s, so a push made a minute ago shows up
+  // (GitHub allows 60 unauthenticated API calls per hour, a check uses 3-4).
+  async function check({ manual = false } = {}) {
     if (applying) return getState();
     const channel = releasesOnly, cached = cache.get(channel);
-    if (cached && Date.now() - cached.at < CACHE_MS) { target = cached.target; return publish(cached.result); }
+    if (cached && Date.now() - cached.at < (manual ? MANUAL_CACHE_MS : CACHE_MS)) { target = cached.target; return publish(cached.result); }
     publish({ phase: 'checking', message: 'Kontrol ediliyor…', detail: null });
     if (!pending.has(channel)) {
       const work = detect(channel).then(value => { cache.set(channel, { ...value, at: Date.now() }); return value; })

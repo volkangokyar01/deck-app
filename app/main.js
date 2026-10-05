@@ -130,7 +130,7 @@ function refreshTray() {
     { label: 'Ayarları aç', click: showWindow },
     { label: updater.getState().available ? 'Güncelleme var — yükle…' : 'Güncellemeleri kontrol et', click: () => {
       openUpdateSection();
-      if (!updater.getState().available) updater.check();
+      if (!updater.getState().available) updater.check({ manual: true });
     } },
     { label: 'Bilgisayar açılınca başlat', type: 'checkbox', checked: login, click: m => setLogin(m.checked) },
     { type: 'separator' },
@@ -323,7 +323,7 @@ ipcMain.handle('notify', (ev, t, b) => { if (Notification.isSupported()) new Not
 ipcMain.on('status', (ev, s) => { const changed = JSON.stringify(s) !== JSON.stringify(status); status = s; if (changed) { refreshTray(); applyStatusVisual(); } });
 ipcMain.handle('version', () => app.getVersion());
 ipcMain.handle('update-state', () => updater.getState());
-ipcMain.handle('update-check', () => updater.check());
+ipcMain.handle('update-check', () => updater.check({ manual: true }));
 ipcMain.handle('update-apply', () => updater.apply());
 ipcMain.handle('update-channel', (ev, on) => updater.setChannel(!!on));
 ipcMain.handle('update-ack', () => updater.acknowledge());
