@@ -2,6 +2,11 @@
 # Volkan Deck — macOS kurulumu (Apple Silicon)
 set -e
 cd "$(dirname "$0")"
+# Kurulum paketinde app/ betiğin yanında; depodaki installer/ klasöründen çalıştırılınca bir üst klasörde
+if [ -d app ]; then SRC=app
+elif [ -d ../app ]; then SRC=../app
+else echo "HATA: app klasörü bulunamadı. Betiği kurulum paketinin içinden çalıştır." >&2; exit 1
+fi
 V=44.5.1
 T=$(mktemp -d)
 echo "Volkan Deck kuruluyor (Electron $V indiriliyor, ~130 MB)…"
@@ -10,7 +15,7 @@ ditto -x -k "$T/e.zip" "$T"
 A="$T/Volkan Deck.app"
 mv "$T/Electron.app" "$A"
 rm -f "$A/Contents/Resources/default_app.asar"
-cp -R app "$A/Contents/Resources/app"
+cp -R "$SRC" "$A/Contents/Resources/app"
 rm -f "$A/Contents/Resources/app/icon.ico"
 cp electron.icns "$A/Contents/Resources/electron.icns"
 P="$A/Contents/Info.plist"

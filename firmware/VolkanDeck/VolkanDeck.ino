@@ -3,7 +3,7 @@
 #include "Board.h"
 #include "Store.h"
 #include "Hid.h"
-#include "Sensors.h"
+#include "Stats.h"
 #include "Ui.h"
 #include "Proto.h"
 #include "esp_sleep.h"
@@ -231,7 +231,6 @@ static void applySideEffects() {
   if (sel >= (int)items.size()) sel = 0;
   lcd.setRotation(S.flip ? 3 : 1);
   if (!screenOff && !dimmed) { curBright = -1; setBright(S.brightness); }
-  sensorsConfigure();
   if (S.conn != 1 && !bleStarted) bleBegin(S.name);
   if (pendingName.length()) { bleRename(pendingName); pendingName = ""; }
   dirty = true;
@@ -259,7 +258,6 @@ void setup() {
   setBright(S.brightness);
 
   if (S.conn != 1) bleBegin(S.name);
-  sensorsBegin();
 
   attachInterrupt(digitalPinToInterrupt(PIN_ENC_CLK), encISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_ENC_DT), encISR, CHANGE);
@@ -275,19 +273,14 @@ void loop() {
   handleInput();
 
   uint32_t now = millis();
-  static uint32_t tBat = 0, tStatus = 0, tFrame = 0, lastStamp = 0;
+  static uint32_t tBat = 0, tStatus = 0, tFrame = 0;
   static Link lastLink = L_NONE;
   if (now - tBat > 2000) { tBat = now; readBattery(); bleBattery(batPct); }
   if (now - tStatus > 5000) { tStatus = now; evtStatus(); dirty = true; }
   Link l = activeLink(); if (l != lastLink) { lastLink = l; dirty = true; evtStatus(); }
 
-  if (temps.stamp != lastStamp) {
-    lastStamp = temps.stamp;
-    if (histN < 40) histN++; else for (int k = 0; k < 2; k++) memmove(hist[k], hist[k] + 1, 39 * sizeof(float));
-    hist[0][histN - 1] = isnan(temps.cpu) ? 0 : temps.cpu; hist[1][histN - 1] = isnan(temps.gpu) ? 0 : temps.gpu;
-    evtTemps();
-    dirty = true;
-  }
+  bool onHome = !items.empty() && items[sel].home;
+  if (statsDirty) { statsDirty = false; if (onHome) dirty = true; }
 
   // media / system pages: send level changes (throttled), leave adjust mode after a pause
   static uint32_t volSentAt = 0, brightSentAt = 0;
@@ -304,9 +297,9 @@ void loop() {
   if (!screenOff && !dimmed && S.dimAfter > 0 && idle >= (uint32_t)S.dimAfter) { dimmed = true; setBright(max(5, S.brightness / 6)); }
   if (!usbMounted && S.sleepAfter > 0 && idle >= (uint32_t)S.sleepAfter) goSleep();
 
-  bool onHome = !items.empty() && items[sel].home;
+  onHome = !items.empty() && items[sel].home;
   bool animate = onHome && !screenOff && S.animKind != A_NONE;
-  if (!screenOff && (dirty || (animate && now - tFrame >= 40) || (onPage && now - tFrame >= 250) || (toastUntil && now > toastUntil && now - toastUntil < 100))) {
+  if (!screenOff && (dirty || (animate && now - tFrame >= 40) || (onPage && now - tFrame >= 250) || (onHome && now - tFrame >= 1000) || (toastUntil && now > toastUntil && now - toastUntil < 100))) {
     tFrame = now; dirty = false;
     render(linkName());
   }

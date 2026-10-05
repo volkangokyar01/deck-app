@@ -5,6 +5,8 @@
 
 enum LaunchMethod : uint8_t { M_RUN = 0, M_SEARCH, M_TASKBAR, M_KEY };
 enum AnimKind : uint8_t { A_FAN = 0, A_RADAR, A_PULSE, A_EQ, A_CUSTOM, A_NONE };
+enum Widget : uint8_t { W_CPU = 0, W_GPU, W_CLOCK, W_WEATHER, W_FX, W_NET };
+static const char* WIDGET_IDS[6] = { "cpu", "gpu", "clock", "weather", "fx", "net" };
 
 struct Launch {
   uint8_t method = M_RUN;
@@ -34,7 +36,9 @@ struct Settings {
   bool kbFallback = false;   // type Win+R / Start / Spotlight when the desktop app is not running (off by default)      // keyboard fallback style: Windows (Win+R / Start) or macOS (Spotlight)
   // home
   bool homeOn = true;
-  String cpuLabel = "Core Ultra 5 245KF", gpuLabel = "RTX 5070";
+  uint8_t cards[2] = { W_CPU, W_GPU };   // the two home-screen slots
+  String cpuLabel, gpuLabel;              // "" = name from stats
+  String wxCity;                          // home.weather.city: label until the app sends weather
   int cpuWarn = 85, cpuCrit = 95, gpuWarn = 80, gpuCrit = 87;
   bool showLoad = true;
   int returnAfter = 60;
@@ -42,9 +46,6 @@ struct Settings {
   uint8_t animKind = A_FAN;
   uint16_t animColor = 0x3B7E;
   int animFps = 15;
-  // sensors
-  String ssid, pass, host, cpuSensor, gpuSensor;
-  int port = 8085, interval = 2;
   // apps
   std::vector<App> apps;
   String quickA, quickB;
@@ -58,8 +59,7 @@ Settings S;
 static const char DEFAULT_CONFIG[] PROGMEM = R"JSON({
 "version":3,
 "device":{"name":"Volkan Deck","layout":"tr_q","connection":"auto","brightness":80,"dimAfter":30,"sleepAfter":300,"launchDelay":400,"wrap":true,"encReverse":false,"encDetent":4},
-"home":{"enabled":true,"cpuLabel":"Core Ultra 5 245KF","gpuLabel":"RTX 5070","cpuWarn":85,"cpuCrit":95,"gpuWarn":80,"gpuCrit":87,"showLoad":true,"returnAfter":60,"pressApp":null,"anim":{"kind":"fan","color":"#3B6CF6","fps":15}},
-"sensors":{"wifiSsid":"","wifiPass":"","host":"","port":8085,"interval":2,"cpuSensor":"","gpuSensor":""},
+"home":{"enabled":true,"cards":["cpu","gpu"],"weather":{"city":"İstanbul","lat":41.01,"lon":28.97},"cpuLabel":"","gpuLabel":"","cpuWarn":85,"cpuCrit":95,"gpuWarn":80,"gpuCrit":87,"showLoad":true,"returnAfter":60,"pressApp":null,"anim":{"kind":"fan","color":"#3B6CF6","fps":15}},
 "apps":[
  {"id":"cs2","name":"Counter-Strike 2","icon":"game","color":"#E0A800","inWheel":true,"launch":{"method":"run","value":"steam://rungameid/730"}},
  {"id":"discord","name":"Discord","icon":"chat","color":"#5865F2","inWheel":true,"launch":{"method":"run","value":"discord://"}},
@@ -159,10 +159,12 @@ static void applyConfig(JsonObjectConst c) {
   N.animColor = parseColor(an["color"] | "#3B6CF6", 0x3B7E);
   N.animFps = constrain(an["fps"] | 15, 1, 30);
 
-  JsonObjectConst s = c["sensors"];
-  N.ssid = (const char*)(s["wifiSsid"] | ""); N.pass = (const char*)(s["wifiPass"] | "");
-  N.host = (const char*)(s["host"] | ""); N.port = s["port"] | 8085; N.interval = constrain(s["interval"] | 2, 1, 60);
-  N.cpuSensor = (const char*)(s["cpuSensor"] | ""); N.gpuSensor = (const char*)(s["gpuSensor"] | "");
+  JsonArrayConst cards = h["cards"];          // unknown / missing entries keep the defaults (cpu, gpu)
+  for (int i = 0; i < 2; i++) {
+    const char* w = cards[i] | "";
+    for (uint8_t k = 0; k < 6; k++) if (!strcmp(w, WIDGET_IDS[k])) N.cards[i] = k;
+  }
+  N.wxCity = (const char*)(h["weather"]["city"] | "");
 
   for (JsonObjectConst a : c["apps"].as<JsonArrayConst>()) {
     App A;
@@ -224,16 +226,18 @@ static void pruneIcons() {
 }
 
 /* ---------- custom animation (128x128 RGB565 frames) ----------
-   Stored in LittleFS as /anim.bin (12-byte header 'VDAN' w h n fps + frames), so it survives power-off.
+   Stored in LittleFS as /anim.bin (12-byte header 'VDAN' w h n fps flags + frames), so it survives power-off.
+   flags bit0: a table of n uint16 per-frame durations (ms) follows the header, so a GIF keeps its own timing.
    Loaded into PSRAM when possible; otherwise frames are streamed from flash one at a time. */
 static const size_t ANIM_FRAME = 128 * 128 * 2;
-struct Anim { int w = 0, h = 0, frames = 0, fps = 15; uint16_t* buf = nullptr; bool stream = false; uint16_t* frameBuf = nullptr; int cur = -1; } anim;
+struct Anim { int w = 0, h = 0, frames = 0, fps = 15; uint16_t* buf = nullptr; bool stream = false; uint16_t* frameBuf = nullptr; int cur = -1;
+               uint16_t delays[60]; uint32_t total = 0; size_t data = 12; } anim;
 File animFile;
 
 static void unloadAnim() {
   if (animFile) animFile.close();
   if (anim.buf) { free(anim.buf); anim.buf = nullptr; }
-  anim.frames = 0; anim.stream = false; anim.cur = -1;
+  anim.frames = 0; anim.stream = false; anim.cur = -1; anim.total = 0; anim.data = 12;
 }
 
 static bool loadAnim() {
@@ -243,9 +247,14 @@ static bool loadAnim() {
   uint8_t hd[12];
   if (f.read(hd, 12) != 12 || memcmp(hd, "VDAN", 4)) { f.close(); return false; }
   int w = hd[4] | hd[5] << 8, h = hd[6] | hd[7] << 8, n = hd[8] | hd[9] << 8;
-  size_t bytes = ANIM_FRAME * n;
-  if (w != 128 || h != 128 || n <= 0 || n > 60 || f.size() < 12 + bytes) { f.close(); return false; }
-  anim.w = w; anim.h = h; anim.frames = n; anim.fps = hd[10] ? hd[10] : 15;
+  size_t bytes = ANIM_FRAME * n, data = (hd[11] & 1) ? 12 + 2 * n : 12;
+  if (w != 128 || h != 128 || n <= 0 || n > 60 || f.size() < data + bytes) { f.close(); return false; }
+  anim.w = w; anim.h = h; anim.frames = n; anim.fps = hd[10] ? hd[10] : 15; anim.data = data;
+  if (hd[11] & 1) {
+    uint8_t dl[120];
+    if (f.read(dl, 2 * n) != (size_t)(2 * n)) { f.close(); anim.frames = 0; return false; }
+    for (int i = 0; i < n; i++) { anim.delays[i] = max(20, dl[2 * i] | dl[2 * i + 1] << 8); anim.total += anim.delays[i]; }
+  }
   uint16_t* b = psramFound() ? (uint16_t*)ps_malloc(bytes) : nullptr;
   if (!b && bytes <= 96 * 1024) b = (uint16_t*)malloc(bytes);
   if (b && f.read((uint8_t*)b, bytes) == bytes) { anim.buf = b; f.close(); return true; }
@@ -262,13 +271,21 @@ static const uint16_t* animFrame(int i) {
   if (anim.buf) return anim.buf + (size_t)i * 128 * 128;
   if (anim.stream && animFile) {
     if (i != anim.cur) {
-      animFile.seek(12 + (size_t)i * ANIM_FRAME);
+      animFile.seek(anim.data + (size_t)i * ANIM_FRAME);
       if (animFile.read((uint8_t*)anim.frameBuf, ANIM_FRAME) != ANIM_FRAME) return nullptr;
       anim.cur = i;
     }
     return anim.frameBuf;
   }
   return nullptr;
+}
+
+// frame to show at time t: the GIF's own durations if it has them, else a fixed fps
+static int animIndex(uint32_t t, int fps) {
+  if (!anim.total) return (int)(t / 1000.0f * fps) % anim.frames;
+  uint32_t m = t % anim.total;
+  for (int i = 0; i < anim.frames; i++) { if (m < anim.delays[i]) return i; m -= anim.delays[i]; }
+  return anim.frames - 1;
 }
 
 // keep "Kendi GIF'im" selected after a reboot even if the full settings were never written
@@ -285,6 +302,7 @@ static void persistAnimChoice(int fps) {
 struct MediaState {
   String player, name, title, artist;   // player: spotify | music | ytmusic | other | ""
   bool playing = false, appCtl = false; // appCtl: the desktop app controls the player (else media keys)
+  String artKey; uint16_t* art = nullptr; bool hasArt = false;
   float pos = -1, dur = -1; uint32_t posAt = 0, stamp = 0;
 } media;
 struct SysState { int vol = -1, bright = -1; bool mute = false; uint32_t stamp = 0; } sysSt;

@@ -11,12 +11,13 @@ const uint16_t SC_BG = C(0x0A0C10), SC_PANEL = C(0x161A21), SC_LINE = C(0x262B35
                SC_ACC = C(0x7D9BFF), ICON_BG = C(0x1E232C), HOME_COL = C(0x3B6CF6), WHITE = 0xFFFF;
 
 struct UFont { lgfx::PointerWrapper pw; lgfx::VLWfont vf; void load(const uint8_t* a, size_t n) { pw.set(a, n); vf.loadFont(&pw); } };
-UFont FM9, FM10, FM16, FSB11, FSB12, FB10, FB11, FB18, FB26;
+UFont FM9, FM10, FM16, FSB11, FSB12, FB10, FB11, FB18, FB26, FN36;
 
 static void fontsBegin() {
   FM9.load(fM9, sizeof(fM9)); FM10.load(fM10, sizeof(fM10)); FM16.load(fM16, sizeof(fM16));
   FSB11.load(fSB11, sizeof(fSB11)); FSB12.load(fSB12, sizeof(fSB12));
   FB10.load(fB10, sizeof(fB10)); FB11.load(fB11, sizeof(fB11)); FB18.load(fB18, sizeof(fB18)); FB26.load(fB26, sizeof(fB26));
+  FN36.load(fN36, sizeof(fN36));
 }
 
 static uint16_t mix(uint16_t a, uint16_t b, float t) {   // t = weight of a
@@ -111,29 +112,30 @@ static void bubble(bool home, App* a, int x, int y, int r, float alpha, uint8_t 
 int sel = 0;
 float launchP = -1;           // 0..1 while launching
 String toastMsg; uint32_t toastUntil = 0;
-float hist[2][40]; int histN = 0; uint32_t histStamp = 0;
 uint8_t batPct = 0; bool charging = false;
 
 static void toast(const String& m, uint32_t ms = 1800) { toastMsg = m; toastUntil = millis() + ms; }
 
-static void drawStatus(uint16_t accent, const char* link) {
-  spr.fillRect(0, 0, 320, 3, accent);
-  text(items.size() ? String(sel + 1) + "/" + String(items.size()) : String("0/0"), 8, 15, FSB11, SC_SUB);
-  text(link, 252, 15, FSB11, SC_SUB, textdatum_t::middle_right);
-  spr.drawRoundRect(258, 10, 22, 10, 2, SC_SUB); spr.fillRect(280, 13, 2, 4, SC_SUB);
-  spr.fillRect(260, 12, max(1, 18 * batPct / 100), 6, batPct < 20 ? SC_RED : SC_TEXT);
-  text(charging ? String("şarj") : String(batPct) + "%", 316, 15, FM9, SC_SUB, textdatum_t::middle_right);
+// Layout: 2 px outer margin, 2 px between panels, panels separated by tone only (no outlines).
+// Status row is y 0..13, content y 15..167. x0: where the row starts (home: right of the animation).
+static void drawStatus(uint16_t dot, const char* link, int x0 = 2) {
+  spr.fillSmoothCircle(x0 + 4, 7, 4, dot);     // page colour (was a 3 px bar across the top)
+  text(items.size() ? String(sel + 1) + "/" + String(items.size()) : String("0/0"), x0 + 12, 7, FSB11, SC_SUB);
+  text(link, 254, 7, FSB11, SC_SUB, textdatum_t::middle_right);
+  spr.drawRoundRect(260, 2, 22, 10, 2, SC_SUB); spr.fillRect(282, 5, 2, 4, SC_SUB);
+  spr.fillRect(262, 4, max(1, 18 * batPct / 100), 6, batPct < 20 ? SC_RED : SC_TEXT);
+  text(charging ? String("şarj") : String(batPct) + "%", 318, 7, FM9, SC_SUB, textdatum_t::middle_right);
 }
 
 static void drawQuickSlots() {
   const String* q[2] = { &S.quickA, &S.quickB };
   for (int i = 0; i < 2; i++) {
-    int x = i ? 164 : 4;
-    spr.fillRoundRect(x, 134, 152, 32, 7, SC_PANEL);
-    text(i ? "B" : "A", x + 8, 150, FB11, SC_DIM);
+    int x = i ? 161 : 2;
+    spr.fillRoundRect(x, 142, 157, 26, 6, SC_PANEL);
+    text(i ? "B" : "A", x + 8, 155, FB11, SC_DIM);
     App* a = appById(*q[i]);
-    if (a) { bubble(false, a, x + 31, 150, 10, 1); text(fit(a->name, 100, FSB12), x + 47, 150, FSB12, SC_TEXT); }
-    else text("Atanmadı", x + 24, 150, FSB12, SC_DIM);
+    if (a) { bubble(false, a, x + 28, 155, 10, 1); text(fit(a->name, 108, FSB12), x + 43, 155, FSB12, SC_TEXT); }
+    else text("Atanmadı", x + 24, 155, FSB12, SC_DIM);
   }
 }
 
@@ -149,13 +151,13 @@ static void drawAppView() {
     next = sel < n - 1 ? &items[sel + 1] : (S.wrap ? &items[0] : nullptr);
   }
   auto nm = [](Item* i) { return itemName(*i); };
-  if (prev && prev != &it) { bubble(prev->home, prev->app, 54, 62, 19, .42f, prev->kind); text(fit(nm(prev), 84, FM10), 54, 94, FM10, SC_DIM, textdatum_t::middle_center); text("‹", 14, 62, FM16, SC_SUB, textdatum_t::middle_center); }
-  if (next && next != &it) { bubble(next->home, next->app, 266, 62, 19, .42f, next->kind); text(fit(nm(next), 84, FM10), 266, 94, FM10, SC_DIM, textdatum_t::middle_center); text("›", 306, 62, FM16, SC_SUB, textdatum_t::middle_center); }
-  bubble(false, it.app, 160, 60, 31, 1);
+  if (prev && prev != &it) { bubble(prev->home, prev->app, 52, 58, 21, .42f, prev->kind); text(fit(nm(prev), 92, FM10), 52, 92, FM10, SC_DIM, textdatum_t::middle_center); text("‹", 10, 58, FM16, SC_SUB, textdatum_t::middle_center); }
+  if (next && next != &it) { bubble(next->home, next->app, 268, 58, 21, .42f, next->kind); text(fit(nm(next), 92, FM10), 268, 92, FM10, SC_DIM, textdatum_t::middle_center); text("›", 310, 58, FM16, SC_SUB, textdatum_t::middle_center); }
+  bubble(false, it.app, 160, 56, 33, 1);
   uint16_t col = it.app->color;
-  if (launchP >= 0) spr.fillArc(160, 60, 35, 38, -90, -90 + 360 * launchP, col);
-  text(fit(it.app->name, 150, FB18), 160, 104, FB18, SC_TEXT, textdatum_t::middle_center);
-  text(launchP >= 0 ? String("Açılıyor…") : String("çevir: gez  ·  bas: aç"), 160, 120, FM10, launchP >= 0 ? col : SC_SUB, textdatum_t::middle_center);
+  if (launchP >= 0) spr.fillArc(160, 56, 37, 40, -90, -90 + 360 * launchP, col);
+  text(fit(it.app->name, 296, FB18), 160, 107, FB18, SC_TEXT, textdatum_t::middle_center);   // below the side names, so it can use the full width
+  text(launchP >= 0 ? String("Açılıyor…") : String("çevir: gez  ·  bas: aç"), 160, 126, FM10, launchP >= 0 ? col : SC_SUB, textdatum_t::middle_center);
   drawQuickSlots();
 }
 
@@ -174,39 +176,219 @@ static void miniIcon(App* a, int cx, int cy) {
   }
 }
 
-/* ---------- home ---------- */
-static uint16_t tempColor(float v, int warn, int crit) { return v >= crit ? SC_RED : v >= warn ? SC_HL : SC_TEXT; }
+/* ---------- home: two widget slots ---------- */
+static bool companionOn();
+const uint16_t SC_GREEN = C(0x3DD68C), SC_SUN = C(0xF2C94C), SC_RAIN = C(0x5AB0FF);
+static const char* DAY_TR[7] = { "Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt" };
+static const char* MON_TR[12] = { "Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara" };
 
-static void drawTempCard(int x, int y, int w, int h, bool cpu) {
-  float v = cpu ? temps.cpu : temps.gpu, load = cpu ? temps.cpuLoad : temps.gpuLoad;
-  int warn = cpu ? S.cpuWarn : S.gpuWarn, crit = cpu ? S.cpuCrit : S.gpuCrit;
-  bool fresh = temps.stamp && millis() - temps.stamp < (uint32_t)max(10, S.interval * 4) * 1000;
-  bool ok = fresh && !isnan(v);
-  uint16_t col = ok ? tempColor(v, warn, crit) : SC_DIM;
-  uint16_t lineCol = col == SC_TEXT ? SC_ACC : col;
-  spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
-  text(cpu ? "CPU" : "GPU", x + 10, y + 11, FB10, SC_SUB);
-  String sub = cpu ? S.cpuLabel : S.gpuLabel;
-  if (!ok) sub = !S.ssid.length() ? "Wi-Fi ayarlı değil" : WiFi.status() != WL_CONNECTED ? "Wi-Fi bağlanıyor…" : !S.host.length() ? "Bilgisayar IP'si yok" : "Veri bekleniyor…";
-  text(fit(sub, w - 20, FM9), x + 10, y + 22, FM9, SC_DIM);
-  String tv = ok ? String((int)roundf(v)) : String("--");
-  text(tv, x + 10, y + 42, FB26, col);
-  text("°C", x + 12 + textW(tv, FB26), y + 37, FSB12, col);
-  if (S.showLoad && ok && !isnan(load)) text("%" + String((int)roundf(load)), x + w - 10, y + 11, FM10, SC_SUB, textdatum_t::middle_right);
-  int k = cpu ? 0 : 1;
-  if (ok && histN > 1) {
-    float mn = 999, mx = -999; for (int i = 0; i < histN; i++) { mn = min(mn, hist[k][i]); mx = max(mx, hist[k][i]); }
-    mn -= 2; mx += 2;
-    int sx = x + w - 74, sy = y + 30, sh = 18;
-    for (int i = 1; i < histN; i++) {
-      float x0 = sx + (i - 1) * (64.0f / 39), x1 = sx + i * (64.0f / 39);
-      float y0 = sy + sh - (hist[k][i - 1] - mn) / (mx - mn) * sh, y1 = sy + sh - (hist[k][i] - mn) / (mx - mn) * sh;
-      spr.drawWideLine(x0, y0, x1, y1, 0.7f, lineCol);
-    }
+static uint16_t tempColor(float v, int warn, int crit) { return v >= crit ? SC_RED : v >= warn ? SC_HL : SC_TEXT; }
+static String fmtNum(float v, int dec) {          // Turkish decimal comma
+  char b[16]; snprintf(b, sizeof b, "%.*f", dec, v);
+  for (char* p = b; *p; p++) if (*p == '.') *p = ',';
+  return b;
+}
+static String waitText() { return companionOn() ? "Veri bekleniyor…" : "Masaüstü uygulaması kapalı"; }
+static void tri(int cx, int cy, bool up, uint16_t c) {   // small ▲ / ▼
+  if (up) spr.fillTriangle(cx - 4, cy + 2, cx + 4, cy + 2, cx, cy - 3, c);
+  else spr.fillTriangle(cx - 4, cy - 2, cx + 4, cy - 2, cx, cy + 3, c);
+}
+// big value (36 px) with a small unit raised beside it, like "54 °C"
+static void bigValue(const String& v, const String& unit, int x, int y, uint16_t col) {
+  text(v, x, y, FN36, col);
+  if (unit.length()) text(unit, x + 2 + textW(v, FN36), y - 8, FSB12, col);
+}
+// trend line, newest sample at the right; NAN samples leave a gap. zero: scale from 0 (rates), else around the values
+static void trend(const Hist& h, int sx, int sy, int sw, int sh, uint16_t col, bool zero) {
+  float mn = 1e9, mx = -1e9; int n = 0;
+  for (int i = 0; i < h.n; i++) if (!isnan(h.v[i])) { mn = min(mn, h.v[i]); mx = max(mx, h.v[i]); n++; }
+  if (n < 2) return;
+  if (zero) { mn = 0; mx = max(mx * 1.15f, 1.0f); } else { mn -= 2; mx += 2; }
+  float step = sw / 39.0f, x0 = sx + (40 - h.n) * step;
+  for (int i = 1; i < h.n; i++) {
+    if (isnan(h.v[i - 1]) || isnan(h.v[i])) continue;
+    spr.drawWideLine(x0 + (i - 1) * step, sy + sh - (h.v[i - 1] - mn) / (mx - mn) * sh,
+                     x0 + i * step, sy + sh - (h.v[i] - mn) / (mx - mn) * sh, 0.7f, col);
   }
-  int bx = x + 10, bw = w - 20, by = y + h - 9;
+}
+
+// cpu / gpu: big temperature, name, load %, power, trend, 0–110 °C bar; no temperature (no driver) → load big
+static void drawPcCard(int x, int y, int w, int h, bool gpu) {
+  const PcStat& p = gpu ? st.gpu : st.cpu;
+  bool ok = gpu ? gpuFresh() : cpuFresh();
+  bool hasT = ok && !isnan(p.temp), hasL = ok && !isnan(p.load);
+  int warn = gpu ? S.gpuWarn : S.cpuWarn, crit = gpu ? S.gpuCrit : S.cpuCrit;
+  uint16_t col = hasT ? tempColor(p.temp, warn, crit) : hasL ? SC_TEXT : SC_DIM;
+  uint16_t lineCol = col == SC_TEXT || col == SC_DIM ? SC_ACC : col;
+  spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
+  String right;
+  if (ok && !isnan(p.power)) right = String((int)roundf(p.power)) + " W";
+  if (S.showLoad && hasT && hasL) right += (right.length() ? "  ·  %" : "%") + String((int)roundf(p.load));
+  text(gpu ? "GPU" : "CPU", x + 8, y + 9, FB10, SC_SUB);
+  if (right.length()) text(right, x + w - 8, y + 9, FSB11, SC_SUB, textdatum_t::middle_right);
+  // second line: name on the left, details on the right (gpu fan + VRAM, cpu clock)
+  String extra;
+  if (ok) {
+    if (gpu) {
+      if (!isnan(p.fan)) extra = "fan %" + String((int)roundf(p.fan));
+      if (!isnan(p.vram)) extra += (extra.length() ? " · " : "") + fmtNum(p.vram, 1) + (!isnan(p.vramTotal) ? "/" + String((int)roundf(p.vramTotal)) : String("")) + " GB";
+    } else if (!isnan(p.clock)) extra = fmtNum(p.clock, 1) + " GHz";
+  }
+  String name = gpu ? S.gpuLabel : S.cpuLabel;
+  if (!name.length()) name = p.name;
+  if (!ok) name = waitText();
+  int ew = extra.length() ? textW(extra, FM9) + 8 : 0;
+  if (extra.length()) text(extra, x + w - 8, y + 20, FM9, SC_DIM, textdatum_t::middle_right);
+  text(fit(name, w - 16 - ew, FM9), x + 8, y + 20, FM9, SC_DIM);
+  if (hasT) bigValue(String((int)roundf(p.temp)), "°C", x + 7, y + 45, col);
+  else if (hasL) { bigValue(String((int)roundf(p.load)), "%", x + 7, y + 45, col); text("sıcaklık okunamıyor", x + w - 8, y + 45, FM9, SC_DIM, textdatum_t::middle_right); }
+  else bigValue("--", "°C", x + 7, y + 45, SC_DIM);
+  if (hasT) trend(gpu ? st.gpuT : st.cpuT, x + w - 78, y + 30, 70, 26, lineCol, false);
+  int bx = x + 8, bw = w - 16, by = y + h - 9;
   spr.fillRoundRect(bx, by, bw, 4, 2, SC_LINE);
-  if (ok) spr.fillRoundRect(bx, by, max(4, (int)(bw * min(1.0f, v / 110.0f))), 4, 2, lineCol);
+  float frac = hasT ? p.temp / 110.0f : hasL ? p.load / 100.0f : -1;
+  if (frac >= 0) spr.fillRoundRect(bx, by, max(4, (int)(bw * min(1.0f, frac))), 4, 2, lineCol);
+}
+
+// clock: HH:MM (24 h) centred, Turkish date below ("Pzt 5 Eki")
+static void drawClockCard(int x, int y, int w, int h) {
+  spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
+  struct tm t;
+  if (localTime(t)) {
+    char b[8]; snprintf(b, sizeof b, "%02d:%02d", t.tm_hour, t.tm_min);
+    text(b, x + w / 2, y + 31, FN36, SC_TEXT, textdatum_t::middle_center);
+    text(String(DAY_TR[t.tm_wday]) + " " + String(t.tm_mday) + " " + MON_TR[t.tm_mon], x + w / 2, y + 60, FSB12, SC_SUB, textdatum_t::middle_center);
+  } else {
+    text("--:--", x + w / 2, y + 31, FN36, SC_DIM, textdatum_t::middle_center);
+    text(fit(waitText(), w - 16, FM9), x + w / 2, y + 60, FM9, SC_DIM, textdatum_t::middle_center);
+  }
+}
+
+/* weather icon from the WMO code (Open-Meteo), about 30 x 30 centred at (cx, cy) */
+enum WxKind : uint8_t { WX_CLEAR, WX_PARTLY, WX_CLOUDY, WX_FOG, WX_RAIN, WX_SNOW, WX_THUNDER, WX_NONE };
+static uint8_t wxKind(int code) {
+  if (code < 0) return WX_NONE;
+  if (code == 0) return WX_CLEAR;
+  if (code <= 2) return WX_PARTLY;
+  if (code == 3) return WX_CLOUDY;
+  if (code == 45 || code == 48) return WX_FOG;
+  if ((code >= 71 && code <= 77) || code == 85 || code == 86) return WX_SNOW;
+  if (code >= 95) return WX_THUNDER;
+  if (code >= 51 && code <= 82) return WX_RAIN;
+  return WX_CLOUDY;
+}
+static const char* WX_NAME[8] = { "Açık", "Parçalı bulutlu", "Bulutlu", "Sisli", "Yağmurlu", "Karlı", "Gök gürültülü", "" };
+static void cloud(int cx, int cy, uint16_t c) {   // about 26 x 17 around (cx, cy)
+  spr.fillSmoothCircle(cx - 6, cy + 1, 6, c);
+  spr.fillSmoothCircle(cx + 2, cy - 3, 8, c);
+  spr.fillSmoothCircle(cx + 8, cy + 2, 5, c);
+  spr.fillSmoothRoundRect(cx - 12, cy + 1, 25, 7, 3, c);
+}
+static void sun(int cx, int cy, int r, uint16_t c) {
+  spr.fillSmoothCircle(cx, cy, r, c);
+  for (int i = 0; i < 8; i++) { float a = i * PI / 4; spr.drawWideLine(cx + cosf(a) * (r + 3), cy + sinf(a) * (r + 3), cx + cosf(a) * (r + 6), cy + sinf(a) * (r + 6), 1.0f, c); }
+}
+static void wxIcon(uint8_t k, int cx, int cy) {
+  const uint16_t CL = C(0xC9D1DE), CD = C(0x6B7383);
+  switch (k) {
+    case WX_CLEAR: sun(cx, cy, 7, SC_SUN); break;
+    case WX_PARTLY: sun(cx + 5, cy - 6, 5, SC_SUN); cloud(cx - 2, cy + 4, SC_PANEL); cloud(cx - 2, cy + 5, CL); break;
+    case WX_CLOUDY: cloud(cx + 5, cy - 5, CD); cloud(cx - 2, cy + 3, CL); break;
+    case WX_FOG: cloud(cx, cy - 6, CD); for (int i = 0; i < 3; i++) spr.fillSmoothRoundRect(cx - 12 + (i & 1) * 3, cy + 5 + i * 4, 21, 2, 1, CL); break;
+    case WX_RAIN: cloud(cx, cy - 5, CL); for (int i = 0; i < 3; i++) spr.drawWideLine(cx - 5 + i * 6, cy + 6, cx - 8 + i * 6, cy + 13, 1.1f, SC_RAIN); break;
+    case WX_SNOW: cloud(cx, cy - 5, CL); for (int i = 0; i < 3; i++) spr.fillSmoothCircle(cx - 7 + i * 7, cy + 9 + (i & 1) * 3, 2, WHITE); break;
+    case WX_THUNDER: cloud(cx, cy - 5, CD);
+      spr.fillTriangle(cx + 2, cy + 2, cx - 5, cy + 10, cx, cy + 10, SC_SUN); spr.fillTriangle(cx + 2, cy + 8, cx - 2, cy + 8, cx - 4, cy + 16, SC_SUN); break;
+    default: cloud(cx, cy, SC_LINE);
+  }
+}
+
+// weather: icon, big temperature, city, condition, hi / lo, chance of rain
+static void drawWeatherCard(int x, int y, int w, int h) {
+  bool ok = wxFresh();
+  spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
+  String city = st.wx.city.length() ? st.wx.city : S.wxCity.length() ? S.wxCity : String("Hava durumu");
+  String rain = ok && !isnan(st.wx.rain) ? "yağış %" + String((int)roundf(st.wx.rain)) : String("yağış -");
+  text(rain, x + w - 8, y + 9, FSB11, SC_SUB, textdatum_t::middle_right);
+  text(fit(city, w - 24 - textW(rain, FSB11), FB10), x + 8, y + 9, FB10, SC_SUB);
+  uint8_t k = ok ? wxKind(st.wx.code) : (uint8_t)WX_NONE;
+  text(fit(ok ? String(WX_NAME[k]) : waitText(), w - 16, FM9), x + 8, y + 20, FM9, SC_DIM);
+  wxIcon(k, x + 23, y + 47);
+  bool hasT = ok && !isnan(st.wx.temp);
+  bigValue(hasT ? String((int)roundf(st.wx.temp)) : String("--"), "°", x + 45, y + 47, hasT ? SC_TEXT : SC_DIM);
+  auto deg = [&](float v) { return ok && !isnan(v) ? String((int)roundf(v)) + "°" : String("-"); };
+  String hi = deg(st.wx.hi), lo = deg(st.wx.lo);
+  int cw = max(textW(hi, FSB12), textW(lo, FSB12));
+  text(hi, x + w - 8, y + 38, FSB12, SC_TEXT, textdatum_t::middle_right);
+  text(lo, x + w - 8, y + 56, FSB12, SC_SUB, textdatum_t::middle_right);
+  tri(x + w - 15 - cw, y + 38, true, SC_HL);
+  tri(x + w - 15 - cw, y + 56, false, SC_ACC);
+}
+
+// fx: USD and EUR in TRY (2 decimals) with the change vs the previous day
+static void drawFxCard(int x, int y, int w, int h) {
+  bool ok = fxFresh();
+  spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
+  for (int i = 0; i < 2; i++) {
+    int ry = i ? y + h - 20 : y + 20;
+    float v = i ? st.fx.eur : st.fx.usd, chg = i ? st.fx.eurChg : st.fx.usdChg;
+    text(i ? "EUR" : "USD", x + 8, ry, FB11, SC_SUB);
+    bool has = ok && !isnan(v);
+    String vs = has ? fmtNum(v, 2) : String("-");
+    text(vs, x + 42, ry, FB26, has ? SC_TEXT : SC_DIM);
+    if (has) text("TL", x + 45 + textW(vs, FB26), ry + 4, FM9, SC_DIM);
+    if (ok && !isnan(chg)) {
+      bool up = chg > 0.004f, down = chg < -0.004f;
+      uint16_t c = up ? SC_GREEN : down ? SC_RED : SC_DIM;
+      String cs = "%" + fmtNum(fabsf(chg), 2);
+      text(cs, x + w - 8, ry, FSB12, c, textdatum_t::middle_right);
+      if (up || down) tri(x + w - 15 - textW(cs, FSB12), ry, up, c);
+    } else text("-", x + w - 8, ry, FSB12, SC_DIM, textdatum_t::middle_right);
+  }
+  if (!ok) text(fit(waitText(), w - 16, FM9), x + w / 2, y + h / 2, FM9, SC_DIM, textdatum_t::middle_center);
+}
+
+// net: download big (Mb/s, kB/s when small), upload, ping coloured by quality, download trend
+static void rate(float mbps, String& v, String& unit) {
+  unit = "Mb/s";
+  if (isnan(mbps)) { v = "--"; return; }
+  if (mbps < 1) { float kb = mbps * 125; unit = "kB/s"; v = kb < 10 ? fmtNum(kb, 1) : String((int)roundf(kb)); }
+  else if (mbps < 10) v = fmtNum(mbps, 1);
+  else if (mbps < 1000) v = String((int)roundf(mbps));
+  else { v = fmtNum(mbps / 1000, 1); unit = "Gb/s"; }
+}
+static void drawNetCard(int x, int y, int w, int h) {
+  bool ok = netFresh();
+  spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
+  text("AĞ", x + 8, y + 9, FB10, SC_SUB);
+  if (ok && !isnan(st.net.ping)) {
+    float p = st.net.ping;
+    String ps = String((int)roundf(p)) + " ms";
+    text(ps, x + w - 8, y + 9, FSB11, p < 40 ? SC_GREEN : p < 100 ? SC_HL : SC_RED, textdatum_t::middle_right);
+    text("ping", x + w - 12 - textW(ps, FSB11), y + 9, FM9, SC_DIM, textdatum_t::middle_right);
+  } else text("ping -", x + w - 8, y + 9, FSB11, SC_DIM, textdatum_t::middle_right);
+  if (!ok) text(fit(waitText(), w - 16, FM9), x + 8, y + 20, FM9, SC_DIM);
+  else { tri(x + 11, y + 20, false, SC_ACC); text("indirme", x + 18, y + 20, FM9, SC_DIM); }
+  String v, u;
+  rate(ok ? st.net.down : NAN, v, u);
+  bigValue(v, u, x + 7, y + 43, ok && !isnan(st.net.down) ? SC_TEXT : SC_DIM);
+  if (ok) trend(st.netD, x + w - 72, y + 28, 64, 28, SC_ACC, true);
+  rate(ok ? st.net.up : NAN, v, u);
+  String up = v == "--" ? String("-") : v + " " + u;
+  tri(x + 11, y + h - 10, true, SC_SUB);
+  text(up, x + 18, y + h - 10, FSB12, SC_SUB);
+  text("yükleme", x + 22 + textW(up, FSB12), y + h - 10, FM9, SC_DIM);
+}
+
+static void drawCard(uint8_t wdg, int x, int y, int w, int h) {
+  switch (wdg) {
+    case W_GPU: drawPcCard(x, y, w, h, true); break;
+    case W_CLOCK: drawClockCard(x, y, w, h); break;
+    case W_WEATHER: drawWeatherCard(x, y, w, h); break;
+    case W_FX: drawFxCard(x, y, w, h); break;
+    case W_NET: drawNetCard(x, y, w, h); break;
+    default: drawPcCard(x, y, w, h, false);
+  }
 }
 
 static void drawAnim(int x, int y, int w, int h, uint32_t t) {
@@ -216,7 +398,7 @@ static void drawAnim(int x, int y, int w, int h, uint32_t t) {
   int mx = x + w / 2, my = y + h / 2; float s = t / 1000.0f;
   switch (S.animKind) {
     case A_FAN: {
-      float cpu = isnan(temps.cpu) ? 45 : temps.cpu;
+      float cpu = cpuFresh() && !isnan(st.cpu.temp) ? st.cpu.temp : 45;
       float speed = 0.6f + max(0.0f, cpu - 35) / 25;
       float ang = s * speed * TWO_PI;
       spr.fillArc(mx, my, 50, 52, 0, 360, SC_LINE);
@@ -262,7 +444,7 @@ static void drawAnim(int x, int y, int w, int h, uint32_t t) {
       break; }
     case A_CUSTOM:
       if (anim.frames) {
-        int f = (int)(s * S.animFps) % anim.frames;
+        int f = animIndex(t, S.animFps);
         const uint16_t* px = animFrame(f);
         if (px) spr.pushImage(x, y, 128, 128, (const lgfx::rgb565_t*)px);
       } else text("Animasyon yüklenmedi", mx, my, FM10, SC_DIM, textdatum_t::middle_center);
@@ -274,21 +456,22 @@ static void drawAnim(int x, int y, int w, int h, uint32_t t) {
 }
 
 static void drawHome() {
-  drawAnim(6, 24, 128, 128, millis());
-  drawTempCard(140, 24, 174, 62, true);
-  drawTempCard(140, 90, 174, 62, false);
+  drawAnim(2, 2, 128, 128, millis());               // top-left corner; the status row sits to its right
+  drawCard(S.cards[0], 132, 15, 186, 76);   // the two widget slots (home.cards)
+  drawCard(S.cards[1], 132, 93, 186, 75);
+  // A / B under the animation, one row each (A on top): letter, the app's icon, name
   const String* q[2] = { &S.quickA, &S.quickB };
   for (int i = 0; i < 2; i++) {
-    int x = i ? 164 : 8; App* a = appById(*q[i]);
-    if (a) miniIcon(a, x + 6, 161);                 // the app's own icon instead of the A / B letter
-    else text(i ? "B" : "A", x, 162, FM10, SC_DIM);
-    text(a ? fit(a->name, 126, FM10) : String("-"), x + 17, 162, FM10, a ? SC_SUB : SC_DIM);
+    int y = i ? 151 : 132; App* a = appById(*q[i]);
+    spr.fillRoundRect(2, y, 128, 17, 4, SC_PANEL);
+    text(i ? "B" : "A", 7, y + 8, FB10, SC_DIM);
+    if (a) { miniIcon(a, 22, y + 8); text(fit(a->name, 94, FSB11), 32, y + 8, FSB11, SC_SUB); }
+    else text("-", 18, y + 8, FSB11, SC_DIM);
   }
 }
 
 
 /* ---------- media & system pages ---------- */
-static bool companionOn();
 uint8_t adjust = 0;            // 0 off · media: 1 volume · system: 1 volume, 2 brightness
 uint32_t adjustAt = 0;
 int8_t keyFlash = 0; uint8_t keyFlashWhat = 0; uint32_t keyFlashAt = 0;   // feedback when only media keys are available
@@ -342,112 +525,114 @@ static void drawMedia() {
   bool live = mediaLive();
   uint32_t now = millis();
   // player chips: which app the controls go to
-  int x = 8;
+  int x = 2;
   for (int i = 0; i < 3; i++) {
     String id = PLAYER_IDS[i];
     int w = textW(PLAYER_NAMES[i], FSB11) + 16;
     bool active = live && media.player == id, target = mediaTarget == id;
     uint16_t pc = playerColor(id);
-    spr.fillRoundRect(x, 29, w, 18, 9, active ? pc : SC_PANEL);
-    if (target && !active) spr.drawRoundRect(x, 29, w, 18, 9, pc);
-    text(PLAYER_NAMES[i], x + w / 2, 38, FSB11, active ? WHITE : target ? SC_TEXT : SC_SUB, textdatum_t::middle_center);
-    x += w + 5;
+    spr.fillRoundRect(x, 16, w, 18, 9, active ? pc : target ? mix(pc, SC_PANEL, .3f) : SC_PANEL);   // chosen player: tinted, not outlined
+    text(PLAYER_NAMES[i], x + w / 2, 25, FSB11, active ? WHITE : target ? SC_TEXT : SC_SUB, textdatum_t::middle_center);
+    x += w + 4;
   }
-  if (companionOn()) text(mediaTarget == "auto" ? "oto" : "sabit", 314, 38, FM9, SC_DIM, textdatum_t::middle_right);
+  if (companionOn()) text(mediaTarget == "auto" ? "oto" : "sabit", 318, 25, FM9, SC_DIM, textdatum_t::middle_right);
 
   // now playing
   String title, sub;
   if (live && media.title.length()) { title = media.title; sub = media.artist.length() ? media.artist : media.name; }
   else if (live) { title = "Çalan bir şey yok"; sub = mediaTarget == "auto" ? String("Bir müzik uygulaması aç") : String(PLAYER_NAMES[mediaTarget == "spotify" ? 0 : mediaTarget == "music" ? 1 : 2]) + " açık değil"; }
   else { title = "Medya tuşları"; sub = companionOn() ? "Bilgi bekleniyor…" : "Masaüstü uygulaması kapalı: çalan uygulamayı bilgisayar seçer"; }
-  text(fit(title, 300, FB18), 10, 66, FB18, SC_TEXT);
-  text(fit(sub, 300, FSB12), 10, 88, FSB12, SC_SUB);
+  bool cover = live && media.hasArt;
+  int tx = cover ? 72 : 4, tw = 318 - tx;
+  if (cover) spr.pushImage(2, 37, 64, 64, (const lgfx::rgb565_t*)media.art);
+  text(fit(title, tw, FB18), tx, 47, FB18, SC_TEXT);
+  text(fit(sub, tw, FSB12), tx, 67, FSB12, SC_SUB);
   uint16_t pc = live && media.player.length() ? playerColor(media.player) : MEDIA_COL;
   if (live && media.dur > 0) {
     float pos = media.pos + (media.playing ? (now - media.posAt) / 1000.0f : 0);
     pos = constrain(pos, 0, media.dur);
-    spr.fillRoundRect(10, 102, 300, 3, 1, SC_LINE);
-    spr.fillRoundRect(10, 102, max(3, (int)(300 * pos / media.dur)), 3, 1, pc);
-    text(mmss(pos), 10, 113, FM9, SC_DIM); text(mmss(media.dur), 310, 113, FM9, SC_DIM, textdatum_t::middle_right);
+    spr.fillRoundRect(tx, 80, tw, 4, 2, SC_LINE);
+    spr.fillRoundRect(tx, 80, max(4, (int)(tw * pos / media.dur)), 4, 2, pc);
+    text(mmss(pos), tx, 93, FM9, SC_DIM); text(mmss(media.dur), 318, 93, FM9, SC_DIM, textdatum_t::middle_right);
   }
 
   // transport: A = previous, press = play/pause, B = next
   bool fl = now - mediaFlashAt < 250;
   bool playing = live ? media.playing : false;
-  gSkip(116, 142, 14, fl && !strcmp(mediaFlashAct, "prev") ? pc : SC_TEXT, false);
-  text("A", 116, 161, FM9, SC_DIM, textdatum_t::middle_center);
-  spr.fillSmoothCircle(160, 142, 18, fl && !strcmp(mediaFlashAct, "play_pause") ? mix(pc, WHITE, .7f) : pc);
-  if (playing) gPause(160, 142, 14, WHITE); else gPlay(162, 142, 16, WHITE);
-  gSkip(204, 142, 14, fl && !strcmp(mediaFlashAct, "next") ? pc : SC_TEXT, true);
-  text("B", 204, 161, FM9, SC_DIM, textdatum_t::middle_center);
+  gSkip(112, 132, 16, fl && !strcmp(mediaFlashAct, "prev") ? pc : SC_TEXT, false);
+  text("A", 112, 154, FM9, SC_DIM, textdatum_t::middle_center);
+  spr.fillSmoothCircle(160, 132, 21, fl && !strcmp(mediaFlashAct, "play_pause") ? mix(pc, WHITE, .7f) : pc);
+  if (playing) gPause(160, 132, 16, WHITE); else gPlay(162, 132, 18, WHITE);
+  gSkip(208, 132, 16, fl && !strcmp(mediaFlashAct, "next") ? pc : SC_TEXT, true);
+  text("B", 208, 154, FM9, SC_DIM, textdatum_t::middle_center);
 
-  // volume
+  // volume: its own panel, amber-tinted while the knob sets the volume
   bool vlive = sysLive() && sysSt.vol >= 0;
-  if (adjust == 1) spr.drawRoundRect(232, 124, 84, 38, 7, SC_HL);
-  gSpeaker(248, 143, adjust == 1 ? SC_HL : SC_SUB, vlive && sysSt.mute, vlive ? sysSt.vol : -1);
+  uint16_t vbg = adjust == 1 ? mix(SC_HL, SC_PANEL, .2f) : SC_PANEL;
+  spr.fillRoundRect(232, 106, 86, 62, 8, vbg);
+  gSpeaker(250, 124, adjust == 1 ? SC_HL : SC_SUB, vlive && sysSt.mute, vlive ? sysSt.vol : -1);
   if (vlive) {
-    text(String(sysSt.vol) + "%", 310, 134, FM10, SC_TEXT, textdatum_t::middle_right);
-    spr.fillRoundRect(262, 145, 48, 4, 2, SC_LINE);
-    spr.fillRoundRect(262, 145, max(2, 48 * sysSt.vol / 100), 4, 2, sysSt.mute ? SC_DIM : (adjust == 1 ? SC_HL : SC_TEXT));
-  } else if (keyFlashWhat == 1 && now - keyFlashAt < 700) text(keyFlash > 0 ? "ses +" : "ses -", 310, 143, FSB11, SC_HL, textdatum_t::middle_right);
-  else text("ses", 310, 143, FM10, SC_DIM, textdatum_t::middle_right);
-  text(adjust == 1 ? "çevir: ses" : "basılı tut: ses", 10, 136, FM9, adjust == 1 ? SC_HL : SC_DIM);
-  if (companionOn()) text("çift bas: oynatıcı", 10, 150, FM9, SC_DIM);
+    text(String(sysSt.vol) + "%", 312, 124, FB18, sysSt.mute ? SC_DIM : SC_TEXT, textdatum_t::middle_right);
+    spr.fillRoundRect(240, 150, 72, 6, 3, SC_LINE);
+    spr.fillRoundRect(240, 150, max(3, 72 * sysSt.vol / 100), 6, 3, sysSt.mute ? SC_DIM : (adjust == 1 ? SC_HL : SC_TEXT));
+  } else if (keyFlashWhat == 1 && now - keyFlashAt < 700) text(keyFlash > 0 ? "ses +" : "ses -", 312, 124, FSB12, SC_HL, textdatum_t::middle_right);
+  else text("ses", 312, 124, FSB12, SC_DIM, textdatum_t::middle_right);
+  text(adjust == 1 ? "çevir: ses" : "basılı tut: ses", 4, 125, FM9, adjust == 1 ? SC_HL : SC_DIM);
+  if (companionOn()) text("çift bas: oynatıcı", 4, 140, FM9, SC_DIM);
 }
 
-static void sysRow(int y, bool vol, bool focus) {
+static void sysRow(int y, int h, bool vol, bool focus) {
   bool live = sysLive() && (vol ? sysSt.vol >= 0 : sysSt.bright >= 0);
   int v = vol ? sysSt.vol : sysSt.bright;
   bool muted = vol && live && sysSt.mute;
-  spr.fillRoundRect(6, y, 308, 64, 8, SC_PANEL);
-  if (focus) spr.drawRoundRect(6, y, 308, 64, 8, SC_HL);
+  spr.fillRoundRect(2, y, 316, h, 8, focus ? mix(SC_HL, SC_PANEL, .16f) : SC_PANEL);   // focused row: amber tint, not an outline
   uint16_t ic = focus ? SC_HL : SC_SUB;
-  if (vol) gSpeaker(30, y + 32, ic, muted, live ? v : -1); else gSun(28, y + 32, ic);
-  text(vol ? "SES" : "PARLAKLIK", 52, y + 14, FB10, SC_SUB);
+  if (vol) gSpeaker(26, y + 44, ic, muted, live ? v : -1); else gSun(24, y + 44, ic);
+  text(vol ? "SES" : "PARLAKLIK", 46, y + 12, FB10, SC_SUB);
   uint32_t now = millis();
   if (live) {
     String t = String(v);
-    text(t, 52, y + 40, FB26, muted ? SC_DIM : SC_TEXT);
-    text("%", 54 + textW(t, FB26), y + 35, FSB12, muted ? SC_DIM : SC_TEXT);
+    text(t, 45, y + 46, FN36, muted ? SC_DIM : SC_TEXT);
+    text("%", 47 + textW(t, FN36), y + 38, FSB12, muted ? SC_DIM : SC_TEXT);
   } else {
     bool fl = keyFlashWhat == (vol ? 1 : 2) && now - keyFlashAt < 700;
-    text(fl ? (keyFlash > 0 ? "+" : "-") : "+/-", 52, y + 40, FB26, fl ? SC_HL : SC_DIM);
-    text(companionOn() ? (vol ? "okunamadı · tuşla" : "bu ekranda yok · tuşla") : "tuşla ayarlanır", 84, y + 40, FM9, SC_DIM);
+    String t = fl ? (keyFlash > 0 ? "+" : "-") : "+/-";
+    text(t, 45, y + 46, FN36, fl ? SC_HL : SC_DIM);
+    text(companionOn() ? (vol ? "okunamadı · tuşla" : "bu ekranda yok · tuşla") : "tuşla ayarlanır", 55 + textW("+/-", FN36), y + 46, FM9, SC_DIM);
   }
-  int bx = 130, bw = 170, by = y + 38;
+  int bx = 132, bw = 178, by = y + 42;
   if (live) {
-    spr.fillRoundRect(bx, by, bw, 6, 3, SC_LINE);
-    spr.fillRoundRect(bx, by, max(4, bw * constrain(v, 0, 100) / 100), 6, 3, muted ? SC_DIM : focus ? SC_HL : (vol ? SC_TEXT : C(0xF2C94C)));
+    spr.fillRoundRect(bx, by, bw, 8, 4, SC_LINE);
+    spr.fillRoundRect(bx, by, max(6, bw * constrain(v, 0, 100) / 100), 8, 4, muted ? SC_DIM : focus ? SC_HL : (vol ? SC_TEXT : C(0xF2C94C)));
   }
   String hint;
   if (vol) hint = muted ? "SESSİZ · A: aç" : "A: sessiz";
   else hint = focus ? "çevir: ayarla" : adjust ? "B: buraya geç" : "bas: ayarla";
   if (vol && focus && !muted) hint = "çevir: ayarla · A: sessiz";
-  text(hint, 306, y + 14, FM9, muted ? SC_RED : focus ? SC_HL : SC_DIM, textdatum_t::middle_right);
+  text(hint, 310, y + 12, FM9, muted ? SC_RED : focus ? SC_HL : SC_DIM, textdatum_t::middle_right);
 }
 
 static void drawSystem() {
-  sysRow(28, true, adjust == 1);
-  sysRow(98, false, adjust == 2);
+  sysRow(15, 76, true, adjust == 1);
+  sysRow(93, 75, false, adjust == 2);
 }
 
 static void drawToast() {
   if (millis() > toastUntil) return;
-  int w = min(300, textW(toastMsg, FSB11) + 28);
-  spr.fillRoundRect(160 - w / 2, 138, w, 26, 8, SC_BG);
-  spr.drawRoundRect(160 - w / 2, 138, w, 26, 8, SC_HL);
-  text(toastMsg, 160, 151, FSB11, SC_TEXT, textdatum_t::middle_center);
+  int w = min(316, textW(toastMsg, FSB11) + 24);
+  spr.fillRoundRect(160 - w / 2, 142, w, 26, 8, mix(SC_HL, SC_BG, .3f));   // filled amber pill, no outline
+  text(fit(toastMsg, w - 12, FSB11), 160, 155, FSB11, WHITE, textdatum_t::middle_center);
 }
 
 static void render(const char* link) {
   spr.fillSprite(SC_BG);
   if (items.empty()) {
     drawStatus(SC_DIM, link);
-    text("Döndürgeç listesi boş", 160, 80, FSB12, SC_SUB, textdatum_t::middle_center);
+    text("Döndürgeç listesi boş", 160, 91, FSB12, SC_SUB, textdatum_t::middle_center);
   } else {
     if (sel >= (int)items.size()) sel = items.size() - 1;
     Item& it = items[sel];
-    drawStatus(itemColor(it), link);
+    drawStatus(itemColor(it), link, it.kind == K_HOME ? 134 : 2);
     switch (it.kind) { case K_HOME: drawHome(); break; case K_MEDIA: drawMedia(); break; case K_SYS: drawSystem(); break; default: drawAppView(); }
   }
   drawToast();

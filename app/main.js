@@ -1,30 +1,44 @@
 // Volkan Deck — desktop companion (Windows + macOS)
 // Keeps the USB link to the deck, opens apps directly when a key is pressed (no Win+R / Spotlight typing),
-// forwards PC temperatures (Windows + LibreHardwareMonitor) and hosts the settings UI.
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog, nativeImage, session, Notification, nativeTheme } = require('electron');
+// forwards home-screen statistics and hosts the settings UI.
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog, nativeImage, session, Notification, nativeTheme, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const cp = require('child_process');
 const media = require('./media');
+const { createStats } = require('./stats');
+const { createSensorInstaller } = require('./sensor-install');
+const { createUpdater, REPO_URL } = require('./updater');
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
 const ESP_VID = 0x303a;
 
 app.setName('Volkan Deck');
+const sensorInstaller = createSensorInstaller({ fetch: (...args) => net.fetch(...args), cacheDir: path.join(app.getPath('userData'), 'stats-cache') });
+const stats = createStats({ fetch: (...args) => net.fetch(...args), cacheDir: path.join(app.getPath('userData'), 'stats-cache'), sensorFile: sensorInstaller.sensorFile });
 if (IS_WIN) app.setAppUserModelId('com.volkan.deck');
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 
 let win = null, tray = null, quitting = false;
 let status = { connected: false, text: 'Bağlı değil', direct: false };
+let statsPausedForUpdate = false;
 const statePath = () => path.join(app.getPath('userData'), 'state.json');
 function readState() { try { return JSON.parse(fs.readFileSync(statePath(), 'utf8')); } catch (e) { return {}; } }
-function writeState(s) { try { fs.writeFileSync(statePath(), JSON.stringify(s)); } catch (e) {} }
+function writeState(s, strict = false) { try { fs.mkdirSync(app.getPath('userData'), { recursive: true }); fs.writeFileSync(statePath(), JSON.stringify(s)); } catch (e) { if (strict) throw e; } }
+const updater = createUpdater({ app, net, media, readState, writeState, onState: s => {
+  if (s.phase === 'installing') { stats.stop(); statsPausedForUpdate = true; }
+  else if (statsPausedForUpdate) { statsPausedForUpdate = false; stats.start(); }
+  refreshTray();
+  if (win && !win.isDestroyed()) win.webContents.send('update-state', s);
+} });
+let updateSectionPending = false;
 
 const startHidden = process.argv.includes('--hidden') || (IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin);
 
 /* ---------------- window ---------------- */
 function createWindow() {
+  const updatedAtStart = !!updater.getState().receipt;
   win = new BrowserWindow({
     width: 1320, height: 900, minWidth: 980, minHeight: 640, show: false,
     title: 'Volkan Deck', icon: path.join(__dirname, 'icon.png'), backgroundColor: '#0E1116',
@@ -33,9 +47,12 @@ function createWindow() {
   });
   win.removeMenu?.();
   win.loadFile(path.join(__dirname, 'index.html'));
+  win.webContents.on('did-finish-load', () => {
+    if (updateSectionPending) { win.webContents.send('update-open'); updateSectionPending = false; }
+  });
   win.on('page-title-updated', e => e.preventDefault());   // keep the status in the title bar / taskbar
   win.once('ready-to-show', () => {
-    if (!startHidden) showWindow();
+    if (!startHidden || updatedAtStart) showWindow();
     else if (IS_MAC) setDock(false);                           // started at login: menu bar only
     applyStatusVisual();
   });
@@ -70,6 +87,12 @@ function showWindow() { setDock(true); if (IS_MAC) app.show(); if (win.isMinimiz
 // The X button never quits: the window hides and the app lives only as a status icon
 // (macOS: menu bar, no Dock icon; Windows: notification area of the taskbar).
 function hideWindow() { win.hide(); setDock(false); }
+function openUpdateSection() {
+  if (!win || win.isDestroyed()) return;
+  showWindow();
+  if (win.webContents.isLoading()) updateSectionPending = true;
+  else win.webContents.send('update-open');
+}
 
 /* ---------------- running status, always visible (Dock icon / taskbar overlay / tray) ---------------- */
 function statusKey() { return status.connected ? (status.direct ? 'on' : 'warn') : 'off'; }
@@ -105,6 +128,10 @@ function refreshTray() {
     { label: status.direct ? 'Uygulamalar doğrudan açılıyor' : 'Doğrudan açma kapalı (klavye yöntemi)', enabled: false },
     { type: 'separator' },
     { label: 'Ayarları aç', click: showWindow },
+    { label: updater.getState().available ? 'Güncelleme var — yükle…' : 'Güncellemeleri kontrol et', click: () => {
+      openUpdateSection();
+      if (!updater.getState().available) updater.check();
+    } },
     { label: 'Bilgisayar açılınca başlat', type: 'checkbox', checked: login, click: m => setLogin(m.checked) },
     { type: 'separator' },
     { label: 'Çık', click: () => { quitting = true; app.quit(); } }
@@ -241,30 +268,6 @@ async function launch(e) {
   catch (err) { return fail(err.message); }
 }
 
-/* ---------------- temperatures (Windows: LibreHardwareMonitor web server) ---------------- */
-async function readTemps(o = {}) {
-  if (!IS_WIN) return null;
-  try {
-    const res = await fetch('http://127.0.0.1:' + (o.port || 8085) + '/data.json', { signal: AbortSignal.timeout(1500) });
-    const root = await res.json();
-    const all = [];
-    (function walk(n) { if (!n) return; if (typeof n.Text === 'string' && typeof n.Value === 'string') all.push(n); (n.Children || []).forEach(walk); })(root);
-    const num = s => { const v = parseFloat(String(s).replace(',', '.')); return isNaN(v) ? null : v; };
-    const isT = n => /°?\s*C$/.test(n.Value) && !/Hz/.test(n.Value), isL = n => /%$/.test(n.Value);
-    const pick = (names, test, own) => {
-      if (own) { const x = all.find(n => n.Text === own && test(n)); if (x) return num(x.Value); }
-      for (const nm of names) { const x = all.find(n => n.Text === nm && test(n)); if (x) return num(x.Value); }
-      return null;
-    };
-    return {
-      cpu: pick(['CPU Package', 'Core (Tctl/Tdie)', 'CPU (Tctl/Tdie)', 'Core Average', 'Package'], isT, o.cpu),
-      gpu: pick(['GPU Core', 'GPU Hot Spot'], isT, o.gpu),
-      cpuLoad: pick(['CPU Total'], isL),
-      gpuLoad: pick(['GPU Core'], isL)
-    };
-  } catch (e) { return null; }
-}
-
 /* ---------------- app picker (native dialog, real paths + icons) ---------------- */
 async function pickApps(multi) {
   const r = await dialog.showOpenDialog(win, {
@@ -312,20 +315,34 @@ async function appInfo(p) {
 ipcMain.handle('launch', (ev, e) => launch(e));
 ipcMain.handle('pick-apps', (ev, multi) => pickApps(!!multi));
 ipcMain.handle('app-info', (ev, p) => appInfo(String(p || '')));
-ipcMain.handle('read-temps', (ev, o) => readTemps(o));
+ipcMain.handle('stats-get', (ev, o) => stats.get(o));
+ipcMain.handle('sensor-status', () => sensorInstaller.status());
+ipcMain.handle('sensor-install', () => sensorInstaller.install());
+ipcMain.handle('sensor-uninstall', () => sensorInstaller.uninstall());
 ipcMain.handle('notify', (ev, t, b) => { if (Notification.isSupported()) new Notification({ title: t, body: b }).show(); });
 ipcMain.on('status', (ev, s) => { const changed = JSON.stringify(s) !== JSON.stringify(status); status = s; if (changed) { refreshTray(); applyStatusVisual(); } });
 ipcMain.handle('version', () => app.getVersion());
-ipcMain.handle('host-state', (ev, o) => media.hostState(o || {}).catch(e => ({ error: e.message })));
-ipcMain.handle('media-ctl', (ev, action, target) => media.mediaControl(String(action || ''), String(target || 'auto')).catch(e => ({ ok: false, error: e.message })));
-ipcMain.handle('sys-set', (ev, o) => media.sysSet(o || {}).catch(e => ({ error: e.message })));
-app.on('will-quit', () => media.stop());
+ipcMain.handle('update-state', () => updater.getState());
+ipcMain.handle('update-check', () => updater.check());
+ipcMain.handle('update-apply', () => updater.apply());
+ipcMain.handle('update-channel', (ev, on) => updater.setChannel(!!on));
+ipcMain.handle('update-ack', () => updater.acknowledge());
+ipcMain.handle('update-repo', () => shell.openExternal(REPO_URL));
+const mediaPaused = () => updater.getState().phase === 'installing';
+ipcMain.handle('host-state', (ev, o) => mediaPaused() ? {} : media.hostState(o || {}).catch(e => ({ error: e.message })));
+ipcMain.handle('media-art', (ev, key) => mediaPaused() ? null : media.mediaArt(String(key || '')));
+ipcMain.handle('media-ctl', (ev, action, target) => mediaPaused() ? { ok: false, error: 'Güncelleme kuruluyor.' } : media.mediaControl(String(action || ''), String(target || 'auto')).catch(e => ({ ok: false, error: e.message })));
+ipcMain.handle('sys-set', (ev, o) => mediaPaused() ? {} : media.sysSet(o || {}).catch(e => ({ error: e.message })));
+app.on('will-quit', () => { updater.stop(); media.stop(); stats.stop(); });
 
 /* ---------------- lifecycle ---------------- */
 app.on('second-instance', () => { if (win) showWindow(); });
 app.on('activate', () => { if (win) showWindow(); });
 app.on('before-quit', () => { quitting = true; });
 app.whenReady().then(() => {
+  sensorInstaller.init().catch(() => {});
+  stats.start();
+  updater.start();
   setupSerial();
   createWindow();
   buildTray(); applyStatusVisual();

@@ -52,45 +52,53 @@ function pick(cands, target) {
   return list.slice().sort(byPrio)[0];
 }
 function shape(c) {
-  if (!c) return { player: '', name: '', title: '', artist: '', playing: false, pos: -1, dur: -1, ctl: 'keys' };
+  if (!c) return { player: '', name: '', title: '', artist: '', playing: false, pos: -1, dur: -1, ctl: 'keys', artKey: '' };
   if (c.playing) lastPlayer = c.player;
   return { player: c.player, name: devText(c.name, 30), title: devText(c.title), artist: devText(c.artist), playing: !!c.playing,
-           pos: c.pos >= 0 ? Math.round(c.pos * 10) / 10 : -1, dur: c.dur > 0 ? Math.round(c.dur * 10) / 10 : -1, ctl: c.ctl || 'app' };
+           pos: c.pos >= 0 ? Math.round(c.pos * 10) / 10 : -1, dur: c.dur > 0 ? Math.round(c.dur * 10) / 10 : -1, ctl: c.ctl || 'app', artKey: art.request(c) };
 }
 
 /* ===================== Windows ===================== */
-let helper = null, helperBuf = '', helperQ = [], helperReady = null, helperId = 0;
-function startHelper() {
-  if (helper) return helperReady;
-  helperBuf = ''; helperQ = [];
-  helper = cp.spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-helper.ps1')],
-                    { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
-  let readyRes; helperReady = new Promise(r => { readyRes = r; });
-  const t = setTimeout(() => readyRes(false), 20000);
-  helper.stdout.setEncoding('utf8');
-  helper.stdout.on('data', d => {
-    helperBuf += d; let i;
-    while ((i = helperBuf.indexOf('\n')) >= 0) {
-      const line = helperBuf.slice(0, i).trim(); helperBuf = helperBuf.slice(i + 1);
-      if (!line) continue;
-      let m; try { m = JSON.parse(line); } catch (e) { continue; }
-      if (m.ready) { clearTimeout(t); readyRes(true); continue; }
-      const p = helperQ.shift(); if (p) { clearTimeout(p.timer); p.res(m); }
-    }
-  });
-  const dead = () => { helper = null; readyRes(false); for (const p of helperQ) { clearTimeout(p.timer); p.res({ ok: false, error: 'helper exited' }); } helperQ = []; };
-  helper.on('exit', dead); helper.on('error', dead);
-  return helperReady;
+function helperClient() {
+  let helper = null, helperBuf = '', helperQ = [], helperReady = null, helperId = 0;
+  function startHelper() {
+    if (helper) return helperReady;
+    helperBuf = ''; helperQ = [];
+    helper = cp.spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-helper.ps1')],
+                      { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    let readyRes; helperReady = new Promise(r => { readyRes = r; });
+    const t = setTimeout(() => readyRes(false), 20000);
+    helper.stdout.setEncoding('utf8');
+    helper.stdout.on('data', d => {
+      helperBuf += d; let i;
+      while ((i = helperBuf.indexOf('\n')) >= 0) {
+        const line = helperBuf.slice(0, i).trim(); helperBuf = helperBuf.slice(i + 1);
+        if (!line) continue;
+        let m; try { m = JSON.parse(line); } catch (e) { continue; }
+        if (m.ready) { clearTimeout(t); readyRes(true); continue; }
+        const p = helperQ.shift(); if (p) { clearTimeout(p.timer); p.res(m); }
+      }
+    });
+    const dead = () => { helper = null; readyRes(false); for (const p of helperQ) { clearTimeout(p.timer); p.res({ ok: false, error: 'helper exited' }); } helperQ = []; };
+    helper.on('exit', dead); helper.on('error', dead);
+    return helperReady;
+  }
+  async function call(op, args = {}, timeout = 6000) {
+    if (!IS_WIN) return { ok: false, error: 'not windows' };
+    if (!(await startHelper()) || !helper) return { ok: false, error: 'helper not running' };
+    return new Promise(res => {
+      const p = { res, timer: setTimeout(() => { try { helper && helper.kill(); } catch (e) {} res({ ok: false, error: 'timeout' }); }, timeout) };
+      helperQ.push(p);
+      try { helper.stdin.write(JSON.stringify({ id: ++helperId, op, ...args }) + '\n'); } catch (e) { clearTimeout(p.timer); res({ ok: false, error: e.message }); }
+    });
+  }
+  function stop() { try { helper && helper.kill(); } catch (e) {} }
+  return { call, stop };
 }
-async function ps(op, args = {}, timeout = 6000) {
-  if (!IS_WIN) return { ok: false, error: 'not windows' };
-  if (!(await startHelper()) || !helper) return { ok: false, error: 'helper not running' };
-  return new Promise(res => {
-    const p = { res, timer: setTimeout(() => { try { helper && helper.kill(); } catch (e) {} res({ ok: false, error: 'timeout' }); }, timeout) };
-    helperQ.push(p);
-    try { helper.stdin.write(JSON.stringify({ id: ++helperId, op, ...args }) + '\n'); } catch (e) { clearTimeout(p.timer); res({ ok: false, error: e.message }); }
-  });
-}
+const hostHelper = helperClient(), artHelper = helperClient();
+// Thumbnail reads use their own helper so WinRT artwork never holds up the normal poll.
+const ps = (op, args, timeout) => (op === 'art' ? artHelper : hostHelper).call(op, args, timeout);
+const art = require('./art').create({ run, ps });
 function winClass(app) {
   const a = String(app || '').toLowerCase();
   if (/spotify/.test(a)) return ['spotify', 'Spotify', true];
@@ -287,5 +295,5 @@ async function sysSet(o = {}) {
   return res;
 }
 
-function stop() { try { helper && helper.kill(); } catch (e) {} }
-module.exports = { hostState, mediaControl, sysSet, stop, devText };
+function stop() { hostHelper.stop(); artHelper.stop(); }
+module.exports = { hostState, mediaArt: art.get, mediaControl, sysSet, stop, devText };

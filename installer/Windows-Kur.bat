@@ -3,6 +3,14 @@ setlocal
 set "V=44.5.1"
 set "DEST=%LOCALAPPDATA%\Programs\Volkan Deck"
 set "SRC=%~dp0app"
+rem Kurulum paketinde app\ betigin yaninda; depodaki installer\ klasorunden calistirilinca bir ust klasorde
+if not exist "%SRC%\main.js" set "SRC=%~dp0..\app"
+if not exist "%SRC%\main.js" (
+  echo.
+  echo  HATA: app klasoru bulunamadi. Betigi kurulum paketinin veya deponun installer klasorunden calistir.
+  pause
+  exit /b 1
+)
 echo.
 echo  Volkan Deck kuruluyor (Electron %V% indiriliyor, ~150 MB)...
 echo.

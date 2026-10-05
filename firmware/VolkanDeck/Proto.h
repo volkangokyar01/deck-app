@@ -45,13 +45,6 @@ static void evtSys(const char* key, int value) {  // vol | bright (0..100), mute
   if (!strcmp(key, "mute")) d["mute"] = value != 0; else d[key] = value;
   sendJson(d);
 }
-static void evtTemps() {
-  if (!Serial) return;
-  JsonDocument d; d["evt"] = "temps";
-  if (!isnan(temps.cpu)) d["cpu"] = temps.cpu; if (!isnan(temps.cpuLoad)) d["cpuLoad"] = temps.cpuLoad;
-  if (!isnan(temps.gpu)) d["gpu"] = temps.gpu; if (!isnan(temps.gpuLoad)) d["gpuLoad"] = temps.gpuLoad;
-  sendJson(d);
-}
 
 static size_t b64decode(const char* src, uint8_t* dst, size_t cap) {
   size_t olen = 0;
@@ -72,14 +65,13 @@ static void handleLine(char* buf, size_t len) {
   else if (!strcmp(cmd, "get_config")) {
     JsonDocument c;
     if (!loadConfigFile(c)) deserializeJson(c, DEFAULT_CONFIG);
-    c["sensors"]["wifiPass"] = "";
+    c.remove("sensors");                           // pre-1.4.0 Wi-Fi settings (with the password) are never sent back
     JsonDocument r; r["id"] = id; r["ok"] = true; r["config"] = c; sendJson(r);
   }
   else if (!strcmp(cmd, "set_config")) {
     JsonObject c = doc["config"];
     if (c.isNull() || !c["apps"].is<JsonArray>()) { replyErr(id, "bad_config"); return; }
-    const char* pw = c["sensors"]["wifiPass"] | "";
-    if (!*pw && S.pass.length()) c["sensors"]["wifiPass"] = S.pass;
+    c.remove("sensors");                           // old settings pages may still send it; nothing reads it any more
     size_t n = saveConfig(c);
     if (!n) { replyErr(id, "fs"); return; }
     String oldName = S.name;
@@ -115,8 +107,11 @@ static void handleLine(char* buf, size_t len) {
     LittleFS.remove("/anim.tmp");
     animUp = LittleFS.open("/anim.tmp", "w");
     if (!animUp) { replyErr(id, "fs"); return; }
-    uint8_t hd[12] = { 'V','D','A','N', (uint8_t)animW, (uint8_t)(animW >> 8), (uint8_t)animH, (uint8_t)(animH >> 8), (uint8_t)animN, (uint8_t)(animN >> 8), (uint8_t)animFpsIn, 0 };
+    JsonArrayConst dl = doc["delays"];               // optional per-frame durations (ms), the GIF's own timing
+    bool hasDl = dl.size() == (size_t)animN;
+    uint8_t hd[12] = { 'V','D','A','N', (uint8_t)animW, (uint8_t)(animW >> 8), (uint8_t)animH, (uint8_t)(animH >> 8), (uint8_t)animN, (uint8_t)(animN >> 8), (uint8_t)animFpsIn, (uint8_t)(hasDl ? 1 : 0) };
     animUp.write(hd, 12);
+    if (hasDl) for (JsonVariantConst v : dl) { uint16_t ms = constrain(v.as<int>(), 20, 60000); uint8_t b[2] = { (uint8_t)ms, (uint8_t)(ms >> 8) }; animUp.write(b, 2); }
     animBytes = bytes; animGot = 0;
     replyOk(id);
   }
@@ -143,23 +138,6 @@ static void handleLine(char* buf, size_t len) {
     configChangedFlag = true;
     JsonDocument r; r["id"] = id; r["ok"] = true; r["mode"] = anim.buf ? "ram" : "flash"; sendJson(r);
   }
-  else if (!strcmp(cmd, "sensor_test")) {
-    if (!S.ssid.length()) { replyErr(id, "wifi_not_set"); return; }
-    uint32_t t0 = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 10000) delay(100);
-    if (WiFi.status() != WL_CONNECTED) { replyErr(id, "wifi_connect"); return; }
-    uint32_t before = temps.stamp; sensKick = true;
-    t0 = millis();
-    while (sensKick && millis() - t0 < 8000) delay(50);
-    if (temps.stamp == before) { replyErr(id, temps.err.length() ? temps.err.c_str() : "timeout"); return; }
-    JsonDocument r; r["id"] = id; r["ok"] = true;
-    xSemaphoreTake(sensMux, portMAX_DELAY);
-    r["cpu"]["name"] = temps.cpuName; r["gpu"]["name"] = temps.gpuName;
-    xSemaphoreGive(sensMux);
-    if (!isnan(temps.cpu)) r["cpu"]["temp"] = temps.cpu; if (!isnan(temps.gpu)) r["gpu"]["temp"] = temps.gpu;
-    r["ip"] = WiFi.localIP().toString();
-    sendJson(r);
-  }
   else if (!strcmp(cmd, "companion")) {           // heartbeat from the desktop app (every ~2 s)
     if (!companionOn()) companionNew = true;
     companionAt = millis();
@@ -167,18 +145,25 @@ static void handleLine(char* buf, size_t len) {
     if (*os) S.hostMac = !strcmp(os, "mac");
     if (doc["ack"] | false) { JsonDocument r; r["id"] = id; r["ok"] = true; r["fw"] = FW_VERSION; sendJson(r); }
   }
-  else if (!strcmp(cmd, "temps")) {               // temperatures pushed by the desktop app
-    JsonVariantConst c = doc["cpu"], g = doc["gpu"], cl = doc["cpuLoad"], gl = doc["gpuLoad"];
-    temps.cpu = c.isNull() ? NAN : c.as<float>(); temps.gpu = g.isNull() ? NAN : g.as<float>();
-    temps.cpuLoad = cl.isNull() ? NAN : cl.as<float>(); temps.gpuLoad = gl.isNull() ? NAN : gl.as<float>();
-    temps.stamp = millis() | 1;
-  }
+  else if (!strcmp(cmd, "stats")) parseStats(doc.as<JsonObjectConst>());   // home-screen widgets, pushed by the desktop app (no reply)
   else if (!strcmp(cmd, "media")) {              // now playing, pushed by the desktop app
+    String key = (const char*)(doc["artKey"] | "");
+    if (key != media.artKey || media.player != (doc["player"] | "") || media.title != (doc["title"] | "") || media.artist != (doc["artist"] | "")) media.hasArt = false;
+    media.artKey = key;
     media.player = (const char*)(doc["player"] | ""); media.name = (const char*)(doc["name"] | "");
     media.title = (const char*)(doc["title"] | ""); media.artist = (const char*)(doc["artist"] | "");
     media.playing = doc["playing"] | false; media.appCtl = !strcmp(doc["ctl"] | "keys", "app");
     media.pos = doc["pos"] | -1.0f; media.dur = doc["dur"] | -1.0f; media.posAt = millis();
     media.stamp = millis() | 1; mediaDirty = true;
+  }
+  else if (!strcmp(cmd, "media_art")) {
+    const char* key = doc["key"] | "";
+    if (!*key) { media.hasArt = false; mediaDirty = true; replyOk(id); return; }
+    static uint8_t tmp[8192];
+    if ((doc["w"] | 0) != 64 || (doc["h"] | 0) != 64 || b64decode(doc["data"] | "", tmp, sizeof(tmp)) != sizeof(tmp)) { replyErr(id, "bad_art"); return; }
+    if (!media.art) media.art = (uint16_t*)bigAlloc(sizeof(tmp));
+    if (!media.art) { replyErr(id, "bad_art"); return; }
+    memcpy(media.art, tmp, sizeof(tmp)); media.artKey = key; media.hasArt = true; mediaDirty = true; replyOk(id);
   }
   else if (!strcmp(cmd, "sys")) {                // volume / brightness, pushed by the desktop app
     uint32_t now = millis();
@@ -205,7 +190,7 @@ static QueueHandle_t lineQ = nullptr;
 static void serialTask(void*) {
   size_t cap = psramFound() ? LINEBUF_MAX : 24 * 1024;
   char* buf = (char*)bigAlloc(cap);
-  while (!buf) { vTaskDelay(100); buf = (char*)bigAlloc(cap = 8 * 1024); }
+  while (!buf) { vTaskDelay(100); buf = (char*)bigAlloc(cap = 16 * 1024); } // also fits a 64x64 media_art line
   size_t len = 0;
   for (;;) {
     int n = Serial.available();

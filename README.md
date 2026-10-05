@@ -4,7 +4,7 @@ LilyGO T-Display-S3 tabanlı, kendin yap (DIY) bir stream deck. Döndürgeç ve 
 
 | Klasör | İçerik |
 |---|---|
-| `firmware/VolkanDeck/` | ESP32-S3 firmware kaynağı (Arduino), **v1.3.0** |
+| `firmware/VolkanDeck/` | ESP32-S3 firmware kaynağı (Arduino), **v1.3.2** |
 | `firmware/bin/` | Derlenmiş firmware (`flash_args` adresleriyle) |
 | `web/` | Ayar sayfası kaynağı (`head.css.html` + `body.html`) ve derlenmiş `StreamDeck-Ayar.html` |
 | `app/` | Masaüstü uygulaması (Electron 44.5.1, Windows + macOS); `media.js` + `win-helper.ps1` medya, ses ve parlaklık |
@@ -20,7 +20,17 @@ LilyGO T-Display-S3 tabanlı, kendin yap (DIY) bir stream deck. Döndürgeç ve 
 
 İki kurulum betiği de Electron'u GitHub'dan indirir ve içine `app/` klasörünü koyar.
 
+Windows’ta CPU sıcaklığı için **Cihaz ayarları → CPU sıcaklığı için sürücüyü kur** düğmesine basıp **Anladım, kur** ile onaylayın. Tek yönetici onayıyla imzalı, açık kaynaklı PawnIO çekirdek sürücüsü ve bu kullanıcı oturum açtığında SYSTEM yetkileriyle sensör okuyan, ağda dinlemeyen bir görev kurulur; **Sensör sürücüsünü kaldır → Kaldır** düğmesi görevi ve dosyaları siler, PawnIO’yu yalnız Volkan Deck kurduysa ve başka bir kullanıcının sensör görevi kalmadıysa kaldırır. Elle kaldırmak gerekirse Görev Zamanlayıcı’da `VolkanDeckSensors-<sid>` görevini durdurup silin, `%ProgramFiles%\VolkanDeckSensors\<sid>` ve `%ProgramData%\VolkanDeckSensors\<sid>` klasörlerini (boşsa ana klasörleri de) silin; başka program veya kullanıcı kullanmıyorsa PawnIO’yu **Uygulamalar ve özellikler (Apps & features)** bölümünden kaldırın (`<sid>` için `whoami /user`). Bu adım olmadan CPU yükü ve diğer kartlar çalışır, CPU sıcaklığı “—” görünür.
+
 Firmware'i uygulamadan yükle: **Cihaz ayarları → Firmware yükle**. Firmware dosyaları ayar sayfasının içine gömülüdür. Yükleme bitince kart kendiliğinden yeniden başlar.
+
+## Güncelleme
+
+Kullanıcılar uygulamanın tepsi/menü çubuğundaki **Güncellemeleri kontrol et** düğmesinden veya **Cihaz ayarları → Uygulama güncellemesi** bölümünden kontrol edip **Güncelle ve yeniden başlat** ile yükleyebilir. Electron sürümü değiştiyse kurulum betiğini yeniden çalıştırmak gerekir.
+
+Varsayılan kanal **main**: her push kullanıcılara ulaşır, bu yüzden yalnızca tamamlanmış işleri gönderin. **Sadece yayınlanan sürümler (Releases)** seçiliyse yalnızca GitHub'da yayınlanan en son Release'in etiketindeki uygulama yüklenir; henüz Release yoksa güncelleme yapılmaz.
+
+Uygulama hedef commit'in `app/` klasörünü indirir. Push veya Release öncesinde `python3 tools/build.py` çalıştırın ve üretilen `app/index.html` ile `web/StreamDeck-Ayar.html` dosyalarını commit edin. Firmware değiştiyse önce aşağıdaki derleme/kopyalama adımlarını ve `python3 tools/embed_firmware.py` komutunu çalıştırın; firmware ikililerini ve üretilen sayfaları da commit edin.
 
 ## Geliştirme
 
@@ -46,7 +56,7 @@ python3 tools/build.py            # → web/StreamDeck-Ayar.html ve app/index.ht
 
 - `app/index.html` dosyası üretilir, elle düzenlenmez. Sayfanın kendisi `web/body.html` dosyasından gelir.
 - Masaüstüne özel eklemeler `app/companion.js` dosyasında. Derleme bu kodu sayfanın IIFE'sinin içine yerleştirir.
-- Uygulamanın ana süreci `app/main.js` dosyası. Seri port seçimi, uygulama başlatma, tepsi/menü çubuğu ve sıcaklıklar burada.
+- Uygulamanın ana süreci `app/main.js` dosyası. Seri port seçimi, uygulama başlatma, tepsi/menü çubuğu burada; ana sayfa verileri `app/stats.js` içinde.
 
 Uygulamayı geliştirme modunda çalıştırmak için: `npx electron@44.5.1 app`
 

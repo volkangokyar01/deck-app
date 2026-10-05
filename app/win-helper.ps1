@@ -1,6 +1,7 @@
 # Volkan Deck - Windows helper (kept running by the desktop app, one JSON request per line on stdin)
 #   media     : media sessions (Spotify, Apple Music, browsers, ...) via Windows' System Media Transport Controls
 #   mctl      : play/pause, next, previous on one session
+#   art       : current track thumbnail as base64 (on a separate helper instance)
 #   vol/setvol/setmute : default output device volume via Core Audio
 #   bright/setbright   : laptop panel (WMI) and external monitors (DDC/CI)
 $ErrorActionPreference = 'Stop'
@@ -165,6 +166,29 @@ function Invoke-Media([string]$app, [string]$action) {
   }
   return $false
 }
+function Get-Art([string]$app, [string]$title, [string]$artist) {
+  $stream = $null; $reader = $null
+  try {
+    $s = $mgr.GetSessions() | Where-Object { $_.SourceAppUserModelId -eq $app } | Select-Object -First 1
+    if (-not $s) { return $null }
+    $p = Await ($s.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
+    if (-not $p.Thumbnail -or [string]$p.Title -cne $title -or [string]$p.Artist -cne $artist) { return $null }
+    $null = [Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime]
+    $null = [Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType = WindowsRuntime]
+    $stream = Await ($p.Thumbnail.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
+    if (-not $stream -or $stream.Size -eq 0 -or $stream.Size -gt 8MB) { return $null }
+    $reader = [Windows.Storage.Streams.DataReader]::new($stream.GetInputStreamAt(0))
+    $n = Await ($reader.LoadAsync([uint32]$stream.Size)) ([uint32])
+    if ($n -ne $stream.Size) { return $null }
+    $bytes = New-Object byte[] ([int]$n)
+    $reader.ReadBytes($bytes)
+    return [Convert]::ToBase64String($bytes)
+  } catch { return $null }
+  finally {
+    if ($reader) { try { $reader.Dispose() } catch {} }
+    if ($stream) { try { $stream.Dispose() } catch {} }
+  }
+}
 
 [Console]::Out.WriteLine('{"ready":true,"smtc":' + ($(if ($smtcOk) { 'true' } else { 'false' })) + '}')
 [Console]::Out.Flush()
@@ -177,6 +201,7 @@ while ($true) {
     $res.id = $q.id
     switch ($q.op) {
       'media' { if (-not $smtcOk) { throw "smtc: $smtcErr" }; $res.r = Get-Media }
+      'art' { if (-not $smtcOk) { throw "smtc: $smtcErr" }; $res.r = Get-Art $q.app $q.title $q.artist }
       'mctl' { if (-not $smtcOk) { throw "smtc: $smtcErr" }; $res.r = Invoke-Media $q.app $q.action }
       'vol' { $res.r = @{ vol = [VolkanDeck.Audio]::GetVolume(); mute = [VolkanDeck.Audio]::GetMute() } }
       'setvol' { [VolkanDeck.Audio]::SetVolume([int]$q.v); $res.r = $true }
