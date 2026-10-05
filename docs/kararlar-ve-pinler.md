@@ -12,7 +12,7 @@
 - Kapanma (2026-10-05): yazılımsal güç kesici yok; kapalı durum derin uykudur, USB takılıyken kart hâlâ güç çeker. GPIO0 RTC pull-up açık / pull-down kapalı, RTC çevre birimi açık; tuş kesintisiz 80 ms bırakılmadan EXT0 (LOW) kurulmaz. Arka ışık GPIO38 ve LCD güç GPIO15 LOW tutulur; diğer uyandırma kaynakları temizlenir, BLE durdurulur, USB bağlantısı kesilir
 - Kapalı durum RTC_NOINIT_ATTR içindeki 32 bit işaretle korunur: setup'ın ilk kontrolü, işaret varken POWERON ve EXT0 dışındaki reset/uyanışlarda ekranı açmadan sessizce yeniden uyutur (USB-Serial-JTAG DTR/RTS, watchdog, RTC belleği korunmuş brownout dahil). Gerçek EXT0 veya POWERON işareti temizler; GPIO0/LCD RTC hold ve RTC yapılandırması, arka ışık hold normal açılışta bırakılır. CDCOnBoot nedeniyle Arduino çekirdeği USB'yi setup'tan önce başlatır; sessiz yolda hemen bağlantısı kesilir, firmware HID/seri başlatmasına ulaşılmaz. ROM yükleme modu veya RTC belleğini kaybettiren güç düşüşü yazılımla engellenemez
 - Donanım doğrulaması bekliyor: pil/USB'de uzun basma → kapalı kalma → tekrar tuşla uyanma, masaüstünün 3 sn bağlantı denemeleri, DTR/RTS resetleri, watchdog/brownout sonrası RTC işareti ve ekran/arka ışık seviyeleri; kapalı akımı ölçülmeli
-- Boşta kalınca ana sayfaya dönüş (varsayılan 60 sn); karartma 30 sn; pilde uyku 5 dk
+- Boşta kalınca ana sayfaya dönüş (varsayılan 60 sn). Karartma ve otomatik kapanma kabloda ve pilde ayrı (v1.5.1): device.dimAfterUsb / sleepAfterUsb (varsayılan 30 sn / kapalı), device.dimAfter / sleepAfter (pilde, varsayılan 30 sn / 5 dk); 0 = kapalı. Kablo = USB'ye bağlı ya da şarj oluyor
 - Ekran teması (2026-10-05): device.theme = auto (varsayılan) / dark / light. Koyu: saf siyah zemin, nötr griler; açık: kırık beyaz kasaya uygun sıcak beyaz. device.lightFrom = 420 (07:00), device.darkFrom = 1140 (19:00), yerel gece yarısından sonraki dakika; 0..1439 ile sınırlı. Eski config bu varsayılanları alır.
 - Otomatik tema: açık başlangıcı dahil, koyu başlangıcı hariç; açık başlangıcı daha geçse gece yarısını aşan aralık, başlangıçlar aynıysa tüm gün koyu. Saat masaüstünün `stats.time` (epoch + tz) verisinden, arada millis ile ilerler; ilk saat gelene kadar koyu. Açılışta ve ayar değişince uygulanır, döngüde 3 sn’de bir denetlenir; değişince tam ekran çizilir (kapatma/reset yazıları da aynı palet).
 - Ekran 180° çevirme: Cihaz ayarları → "Ekranı 180° çevir" (device.flip)
@@ -84,7 +84,7 @@
 - Kaynak: GitHub volkangokyar01/deck-app (app/main.js, preload.js, companion.js — ayar sayfasının IIFE'sine gömülür, tools/build.py)
 - Sınır: doğrudan açma yalnız USB'de
 
-## Firmware (v1.4.1)
+## Firmware (v1.5.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -114,6 +114,7 @@
 - v3: tek gövde kama, 5° tuş güvertesi + 60° ekran; 126 × 114 × 70
 - v2: açılımlı taban + A çerçeve kule; estetik bulunmadı, kancalar pinlerle çakışıyordu
 - v1.1: 74,5 × 80 × 60 mm, ekran 60°
+- v1.5.1: karartma ve otomatik kapanma kabloda / pilde ayrı ayarlanır, ikisi de kapatılabilir (dimAfterUsb, sleepAfterUsb; eski config'te kablo = eski karartma süresi, kapanma yok)
 
 ## Pinler
 | Parça | Pin | GPIO |

@@ -349,8 +349,12 @@ void loop() {
   // idle handling
   uint32_t idle = (now - lastActivity) / 1000;
   if (S.homeOn && !(S.mediaStay && curKind() == K_MEDIA) && S.returnAfter > 0 && idle >= (uint32_t)S.returnAfter && sel != 0 && !items.empty() && items[0].home) { sel = 0; dirty = true; evtSelect(); }
-  if (!screenOff && !dimmed && S.dimAfter > 0 && idle >= (uint32_t)S.dimAfter) { dimmed = true; setBright(max(5, S.brightness / 6)); }
-  if (!usbMounted && S.sleepAfter > 0 && idle >= (uint32_t)S.sleepAfter) goSleep();
+  // dimming / auto power-off: separate settings on cable (USB host or charger) and on battery, 0 = off
+  bool onCable = usbMounted || charging;
+  int dimLimit = onCable ? S.dimAfterUsb : S.dimAfter, sleepLimit = onCable ? S.sleepAfterUsb : S.sleepAfter;
+  if (dimmed && dimLimit <= 0) { dimmed = false; setBright(S.brightness); }          // switched to a source with dimming off
+  if (!screenOff && !dimmed && dimLimit > 0 && idle >= (uint32_t)dimLimit) { dimmed = true; setBright(max(5, S.brightness / 6)); }
+  if (sleepLimit > 0 && idle >= (uint32_t)sleepLimit) goSleep();
 
   onHome = !items.empty() && items[sel].home;
   bool animate = onHome && !screenOff && S.animKind != A_NONE;
