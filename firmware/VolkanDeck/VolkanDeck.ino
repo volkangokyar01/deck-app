@@ -14,13 +14,21 @@ const char* linkName() {
 }
 
 /* ---------- input ---------- */
-volatile int32_t encCount = 0;
-volatile uint8_t encState = 0;
+volatile int32_t encSteps = 0;           // whole clicks, taken by handleInput()
+volatile uint8_t encState = 0, encDet = 4;
+volatile int8_t encAcc = 0;
 static const int8_t ENC_TAB[16] = { 0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0 };
 void IRAM_ATTR encISR() {
   uint8_t s = (digitalRead(PIN_ENC_CLK) << 1) | digitalRead(PIN_ENC_DT);
   encState = ((encState << 2) | s) & 0x0F;
-  encCount += ENC_TAB[encState];
+  encAcc += ENC_TAB[encState];
+  // Count only when the knob sits in a detent (both pins high; half-step knobs also rest at both low) and start
+  // from zero there: a stray or missed edge can't build up and swallow the first click after a direction change.
+  if (encDet <= 1 || s == 3 || (encDet == 2 && s == 0)) {
+    int8_t a = encAcc, h = (encDet + 1) / 2;
+    encSteps += a >= 0 ? (a + encDet - h) / encDet : -((-a + encDet - h) / encDet);
+    encAcc = 0;
+  }
 }
 
 struct Btn {
@@ -163,10 +171,8 @@ static void onPress() {
 
 static void handleInput() {
   // encoder
-  int32_t c; noInterrupts(); c = encCount; interrupts();
-  int steps = c / S.encDetent;
+  int steps; noInterrupts(); steps = encSteps; encSteps = 0; interrupts();
   if (steps) {
-    noInterrupts(); encCount -= steps * S.encDetent; interrupts();
     if (!wakeUp()) {
       if (S.encRev) steps = -steps;
       uint8_t k = curKind();
@@ -225,7 +231,7 @@ static void handleInput() {
 }
 
 static void applySideEffects() {
-  buildItems(); adjust = 0;
+  buildItems(); adjust = 0; encDet = S.encDetent;
   mediaTarget = S.mediaPlayer;
   if (companionOn()) evtMedia("select");       // keep the desktop app on the same player
   if (sel >= (int)items.size()) sel = 0;
@@ -259,6 +265,8 @@ void setup() {
 
   if (S.conn != 1) bleBegin(S.name);
 
+  encDet = S.encDetent;
+  encState = (digitalRead(PIN_ENC_CLK) << 1) | digitalRead(PIN_ENC_DT);   // start from where the knob really is
   attachInterrupt(digitalPinToInterrupt(PIN_ENC_CLK), encISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_ENC_DT), encISR, CHANGE);
   analogReadResolution(12);

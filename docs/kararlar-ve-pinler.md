@@ -78,7 +78,7 @@
 - Kaynak: GitHub volkangokyar01/deck-app (app/main.js, preload.js, companion.js — ayar sayfasının IIFE'sine gömülür, tools/build.py)
 - Sınır: doğrudan açma yalnız USB'de
 
-## Firmware (v1.4.0)
+## Firmware (v1.4.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -92,6 +92,7 @@
 - v1.3.1: ana sayfa GIF'i kare başına süreleri korur
 - v1.3.2: medya sayfasında albüm kapağı
 - v1.4.0: ana sayfada iki kart yuvası (cpu, gpu, clock, weather, fx, net) ve `stats` komutu; Wi-Fi / LibreHardwareMonitor yolu, sensor_test, temps kaldırıldı (Wi-Fi kitaplığı çıkınca program ~1,6 MB → ~0,96 MB). Yerleşim yenilemesi ve albüm kapağı da bu sürümde
+- v1.4.1: döndürgeç yön değiştirince ilk tık kaybolmuyor (açılışta gerçek pin durumu, her tık yuvasında sayaç sıfırlanır)
 - Gözlem (2026-10-02): v1.0.0 kartta komutlara yanıt vermedi (RX). Sonraki sürümlerin kartta doğrulanması bekleniyor
 
 ## Kasa v4 (güncel) — case/v4

@@ -24,11 +24,11 @@ Kurulum bitince uygulama açılır.
 
 **Kontrol et:** **Cihaz ayarları** sekmesinde **Uygulama güncellemesi** bölümü görünmeli ve **Güncel** yazmalı.
 
-### 3. Cihaz yazılımını 1.4.0'a güncelle
+### 3. Cihaz yazılımını 1.4.1'e güncelle
 1. Kartı USB ile bağla.
 2. Uygulamada **Cihaz ayarları → Firmware yükle** yolunu izle. Bitince kart kendiliğinden yeniden başlar.
 
-Yeni widget'lar, kompakt ekran ve albüm kapağı 1.4.0 ister.
+Yeni widget'lar, kompakt ekran ve albüm kapağı 1.4 ister.
 
 ### 4. Ana sayfa kartlarını seç
 1. Ana sayfa ayarlarında **Kart 1** ve **Kart 2** için şunlardan birini seç: CPU, GPU, Saat, Hava durumu, Döviz, Ağ.
