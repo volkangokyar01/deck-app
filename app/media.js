@@ -122,15 +122,16 @@ async function macRunning() {
   return new Set(r.stdout.split('\n').map(s => s.trim()).filter(Boolean));
 }
 function asPlayer(id, app, durDiv) {
+  // variable names carry a vd prefix: Music's dictionary reserves short words such as "st"
   return `try
   tell application "${app}"
-    set st to player state as text
-    set ln to "${id}" & tab & st
+    set vdState to player state as text
+    set vdLine to "${id}" & tab & vdState
     try
-      set t to current track
-      set ln to ln & tab & (name of t) & tab & (artist of t) & tab & (player position as text) & tab & ((duration of t) / ${durDiv} as text)
+      set vdTrack to current track
+      set vdLine to vdLine & tab & (name of vdTrack) & tab & (artist of vdTrack) & tab & (player position as text) & tab & ((duration of vdTrack) / ${durDiv} as text)
     end try
-    set out to out & ln & linefeed
+    set vdOut to vdOut & vdLine & linefeed
   end tell
 end try
 `;
@@ -139,9 +140,9 @@ function asBrowser(app, kind) {
   const title = kind === 'safari' ? 'name' : 'title';
   return `try
   tell application "${app}"
-    repeat with w in windows
-      repeat with t in tabs of w
-        if (URL of t) contains "music.youtube.com" then set out to out & "ytmusic" & tab & (${title} of t) & linefeed
+    repeat with vdWin in windows
+      repeat with vdTab in tabs of vdWin
+        if (URL of vdTab) contains "music.youtube.com" then set vdOut to vdOut & "ytmusic" & tab & (${title} of vdTab) & linefeed
       end repeat
     end repeat
   end tell
@@ -149,14 +150,14 @@ end try
 `;
 }
 const AS_VOL = `try
-  set v to get volume settings
-  set out to out & "vol" & tab & (output volume of v as text) & tab & (output muted of v as text) & linefeed
+  set vdVol to get volume settings
+  set vdOut to vdOut & "vol" & tab & (output volume of vdVol as text) & tab & (output muted of vdVol as text) & linefeed
 end try
 `;
 let macVol = { vol: null, mute: false };
 const macSkip = {};             // app -> time until which we leave it alone (permission prompt pending / timed out)
 async function osa(script, timeout) {
-  const r = await run('osascript', ['-'], timeout, 'set out to ""\n' + script + 'return out');
+  const r = await run('osascript', ['-'], timeout, 'set vdOut to ""\n' + script + 'return vdOut');
   return r;
 }
 async function macVolume() {
