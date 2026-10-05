@@ -1507,7 +1507,7 @@ function renderDeviceForm(){
   f.append(range("launchDelay","Açarken bekleme",150,1500,50,v=>v+" ms"));
   f.append(el("p",{class:"hint"},"Win+R kutusu veya Başlat menüsü açılmadan yazmaya başlarsa harfler kaybolur. Uygulamalar açılmıyorsa bu süreyi artır."));
   f.append(range("brightness","Ekran parlaklığı",10,100,5,v=>v+"%"));
-  f.append(range("dimAfter","Ekranı karart",5,120,5,v=>v+" sn"));
+  f.append(range("dimAfter","Ekranı karart",0,120,5,v=>v?v+" sn":"kapalı (hiç kararmaz)"));
   f.append(range("sleepAfter","Pilde otomatik kapanma",60,1800,60,v=>v/60+" dk"));
   f.append(range("encDetent","Döndürgeç: tık başına sinyal",1,4,1,v=>v+(v===4?" (KY-040 için tipik)":"")));
   f.append(el("label",{class:"row",style:"cursor:pointer"},el("input",{type:"checkbox",id:"wrap",checked:d.wrap,onchange:e=>set("wrap",e.target.checked)}),"Listenin sonundan başa dön"));
