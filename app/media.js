@@ -159,10 +159,10 @@ end try
 }
 const AS_VOL = `try
   set vdVol to get volume settings
-  set vdOut to vdOut & "vol" & tab & (output volume of vdVol as text) & tab & (output muted of vdVol as text) & linefeed
+  set vdOut to vdOut & "vol" & tab & (output volume of vdVol as text) & tab & (output muted of vdVol as text) & tab & (input volume of vdVol as text) & linefeed
 end try
 `;
-let macVol = { vol: null, mute: false };
+let macVol = { vol: null, mute: false, mic: null, micPrev: 75 };   // mic: input level (macOS has no mic mute: 0 = muted)
 async function osa(script, timeout) {
   const r = await run('osascript', ['-'], timeout, 'set vdOut to ""\n' + script + 'return vdOut');
   return r;
@@ -171,7 +171,7 @@ async function macVolume() {
   // volume needs no permission: keep it in its own call so a pending "control Chrome?" prompt never blocks it
   const r = await osa(AS_VOL, 3000);
   const f = r.stdout.trim().split('\t');
-  if (f[0] === 'vol') { const v = num(f[1]); macVol = { vol: v >= 0 ? Math.round(v) : null, mute: f[2] === 'true' }; }
+  if (f[0] === 'vol') { const v = num(f[1]), m = num(f[3]); macVol = { ...macVol, vol: v >= 0 ? Math.round(v) : null, mute: f[2] === 'true', mic: m >= 0 ? Math.round(m) : null }; if (macVol.mic > 0) macVol.micPrev = macVol.mic; }
   return macVol;
 }
 // Each app is queried in the background and the newest answer is cached, so the 2 s poll never waits.
@@ -235,19 +235,19 @@ async function macBrightness(set) {
 }
 
 /* ===================== public API ===================== */
-let winSys = { vol: null, mute: false }, winBright = { v: null, at: 0 };
+let winSys = { vol: null, mute: false, mic: -1 }, winBright = { v: null, at: 0 };
 async function hostState({ target = 'auto', media = true, sys = true } = {}) {
   const out = {};
   if (IS_WIN) {
     if (media) out.media = shape(pick((await winMedia(target)) || [], target));
     if (sys) {
       const v = await ps('vol', {}, 3000);
-      if (v.ok && v.r) winSys = { vol: v.r.vol, mute: !!v.r.mute };
+      if (v.ok && v.r) winSys = { vol: v.r.vol, mute: !!v.r.mute, mic: v.r.mic ?? -1 };
       if (Date.now() - winBright.at > 10000) {          // DDC/CI is slow: read the monitor every 10 s
         const b = await ps('bright', {}, 8000);
         winBright = { v: b.ok && b.r >= 0 ? b.r : null, at: Date.now() };
       }
-      out.sys = { vol: winSys.vol, mute: winSys.mute, bright: winBright.v };
+      out.sys = { vol: winSys.vol, mute: winSys.mute, bright: winBright.v, micMute: winSys.mic < 0 ? null : winSys.mic === 1 };
     }
   } else if (IS_MAC) {
     const cands = await macPoll(media, sys);
@@ -255,7 +255,7 @@ async function hostState({ target = 'auto', media = true, sys = true } = {}) {
     if (sys) {
       if (!macBright.broken && Date.now() - macBright.at > 5000) await macBrightness();
       else if (macBright.broken && Date.now() - macBright.at > 60000) { macBright.broken = false; await macBrightness(); }
-      out.sys = { vol: macVol.vol, mute: macVol.mute, bright: macBright.broken ? null : macBright.v };
+      out.sys = { vol: macVol.vol, mute: macVol.mute, bright: macBright.broken ? null : macBright.v, micMute: macVol.mic == null ? null : macVol.mic === 0 };
     }
   }
   return out;
@@ -284,12 +284,15 @@ async function sysSet(o = {}) {
   if (IS_WIN) {
     if (o.vol != null) { const r = await ps('setvol', { v: Math.round(o.vol) }, 3000); res.vol = r.ok; if (r.ok) winSys.vol = Math.round(o.vol); }
     if (o.mute != null) { const r = await ps('setmute', { v: !!o.mute }, 3000); res.mute = r.ok; if (r.ok) winSys.mute = !!o.mute; }
+    if (o.micMute != null) { const r = await ps('setmicmute', { v: !!o.micMute }, 3000); res.micMute = r.ok && r.r > 0; if (res.micMute) winSys.mic = o.micMute ? 1 : 0; }
     if (o.bright != null) { const r = await ps('setbright', { v: Math.round(o.bright) }, 8000); res.bright = r.ok && r.r > 0; if (res.bright) winBright = { v: Math.round(o.bright), at: Date.now() }; }
   } else if (IS_MAC) {
     const lines = [];
     if (o.vol != null) lines.push(`set volume output volume ${Math.max(0, Math.min(100, Math.round(o.vol)))}`);
     if (o.mute != null) lines.push(`set volume output muted ${o.mute ? 'true' : 'false'}`);
-    if (lines.length) { const r = await run('osascript', lines.flatMap(l => ['-e', l]), 3000); res.vol = r.code === 0; if (res.vol) { if (o.vol != null) macVol.vol = Math.round(o.vol); if (o.mute != null) macVol.mute = !!o.mute; } }
+    const micTo = o.micMute == null ? null : o.micMute ? 0 : Math.max(5, macVol.micPrev || 75);
+    if (micTo != null) lines.push(`set volume input volume ${micTo}`);
+    if (lines.length) { const r = await run('osascript', lines.flatMap(l => ['-e', l]), 3000); res.vol = r.code === 0; if (res.vol) { if (o.vol != null) macVol.vol = Math.round(o.vol); if (o.mute != null) macVol.mute = !!o.mute; if (micTo != null) macVol.mic = micTo; } }
     if (o.bright != null) { const v = await macBrightness(o.bright); res.bright = v != null; }
   }
   return res;

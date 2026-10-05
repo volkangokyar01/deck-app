@@ -171,6 +171,11 @@ static void levelStep(bool vol, int steps) {
   adjustAt = millis(); dirty = true;
 }
 
+static void toggleMic() {      // microphone mute needs the desktop app (no standard keyboard key for it)
+  if (sysLive() && sysSt.mic >= 0) { sysSt.mic = sysSt.mic ? 0 : 1; sysLocalAt = millis(); evtSys("micMute", sysSt.mic); }
+  else toast(companionOn() ? "Mikrofon bulunamadı" : "Mikrofon için masaüstü uygulaması gerekli");
+  dirty = true;
+}
 static void toggleMute() {
   if (sysLive() && sysSt.vol >= 0) { sysSt.mute = !sysSt.mute; sysLocalAt = millis(); evtSys("mute", sysSt.mute); }
   else consumerTap(CC_MUTE);
@@ -203,6 +208,7 @@ static void onPress() {
     case K_HOME: { App* a = appById(S.pressApp); if (a) doLaunch(a); break; }
     case K_MEDIA: mediaAction("play_pause", CC_PLAY); break;
     case K_SYS: adjust = adjust == 1 ? 2 : 1; adjustAt = millis(); dirty = true; break;   // volume ↔ brightness
+    case K_WIDGETS: break;
     default: doLaunch(it.app);
   }
 }
@@ -252,7 +258,7 @@ static void handleInput() {
   if (b == 1 && !wakeUp()) {
     evtInput("b"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("next", CC_NEXT);
-    else if (k == K_SYS) { adjust = adjust == 2 ? 1 : 2; adjustAt = now; dirty = true; }
+    else if (k == K_SYS) { toggleMic(); if (adjust) adjustAt = now; }
     else doLaunch(appById(S.quickB));
   }
 
@@ -335,7 +341,8 @@ void loop() {
   Link l = activeLink(); if (l != lastLink) { lastLink = l; dirty = true; evtStatus(); }
 
   bool onHome = !items.empty() && items[sel].home;
-  if (statsDirty) { statsDirty = false; if (onHome) dirty = true; }
+  bool onWidgets = curKind() == K_WIDGETS;
+  if (statsDirty) { statsDirty = false; if (onHome || onWidgets) dirty = true; }
 
   // media / system pages: send level changes (throttled), leave adjust mode after a pause
   static uint32_t volSentAt = 0, brightSentAt = 0;
@@ -348,7 +355,7 @@ void loop() {
 
   // idle handling
   uint32_t idle = (now - lastActivity) / 1000;
-  if (S.homeOn && !(S.mediaStay && curKind() == K_MEDIA) && S.returnAfter > 0 && idle >= (uint32_t)S.returnAfter && sel != 0 && !items.empty() && items[0].home) { sel = 0; dirty = true; evtSelect(); }
+  if (S.homeOn && !(S.mediaStay && curKind() == K_MEDIA) && curKind() != K_WIDGETS && S.returnAfter > 0 && idle >= (uint32_t)S.returnAfter && sel != 0 && !items.empty() && items[0].home) { sel = 0; dirty = true; evtSelect(); }
   // dimming / auto power-off: separate settings on cable (USB host or charger) and on battery, 0 = off
   bool onCable = usbMounted || charging;
   int dimLimit = onCable ? S.dimAfterUsb : S.dimAfter, sleepLimit = onCable ? S.sleepAfterUsb : S.sleepAfter;
@@ -358,7 +365,7 @@ void loop() {
 
   onHome = !items.empty() && items[sel].home;
   bool animate = onHome && !screenOff && S.animKind != A_NONE;
-  if (!screenOff && (dirty || (animate && now - tFrame >= 40) || (onPage && now - tFrame >= 250) || (onHome && now - tFrame >= 1000) || (toastUntil && now > toastUntil && now - toastUntil < 100))) {
+  if (!screenOff && (dirty || (animate && now - tFrame >= 40) || (onPage && now - tFrame >= 250) || ((onHome || curKind() == K_WIDGETS) && now - tFrame >= 1000) || (toastUntil && now > toastUntil && now - toastUntil < 100))) {
     tFrame = now; dirty = false;
     render(linkName());
   }

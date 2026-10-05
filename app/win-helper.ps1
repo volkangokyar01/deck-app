@@ -30,10 +30,11 @@ namespace VolkanDeck {
   [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorComObject { }
 
   public static class Audio {
-    static IAudioEndpointVolume Vol() {
+    static IAudioEndpointVolume Vol() { return Vol(0, 1); }                     // eRender, eMultimedia
+    static IAudioEndpointVolume Vol(int flow, int role) {
       var en = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator;
       IMMDevice dev = null;
-      Marshal.ThrowExceptionForHR(en.GetDefaultAudioEndpoint(0, 1, out dev));   // eRender, eMultimedia
+      Marshal.ThrowExceptionForHR(en.GetDefaultAudioEndpoint(flow, role, out dev));
       IAudioEndpointVolume epv = null;
       var id = typeof(IAudioEndpointVolume).GUID;
       Marshal.ThrowExceptionForHR(dev.Activate(ref id, 23, 0, out epv));        // CLSCTX_ALL
@@ -43,6 +44,14 @@ namespace VolkanDeck {
     public static void SetVolume(int pct) { Marshal.ThrowExceptionForHR(Vol().SetMasterVolumeLevelScalar(Math.Max(0, Math.Min(100, pct)) / 100f, Guid.Empty)); }
     public static bool GetMute() { bool m; Marshal.ThrowExceptionForHR(Vol().GetMute(out m)); return m; }
     public static void SetMute(bool m) { Marshal.ThrowExceptionForHR(Vol().SetMute(m, Guid.Empty)); }
+    // microphone = default capture device (eCapture); -1 when there is none
+    public static int GetMicMute() { try { bool m; Marshal.ThrowExceptionForHR(Vol(1, 0).GetMute(out m)); return m ? 1 : 0; } catch { return -1; } }
+    // set both the default (eConsole) and the default communications (eCommunications) microphone
+    public static int SetMicMute(bool m) {
+      int n = 0;
+      foreach (int role in new[] { 0, 2 }) { try { Marshal.ThrowExceptionForHR(Vol(1, role).SetMute(m, Guid.Empty)); n++; } catch { } }
+      return n;
+    }
   }
 
   public static class Ddc {
@@ -203,7 +212,8 @@ while ($true) {
       'media' { if (-not $smtcOk) { throw "smtc: $smtcErr" }; $res.r = Get-Media }
       'art' { if (-not $smtcOk) { throw "smtc: $smtcErr" }; $res.r = Get-Art $q.app $q.title $q.artist }
       'mctl' { if (-not $smtcOk) { throw "smtc: $smtcErr" }; $res.r = Invoke-Media $q.app $q.action }
-      'vol' { $res.r = @{ vol = [VolkanDeck.Audio]::GetVolume(); mute = [VolkanDeck.Audio]::GetMute() } }
+      'vol' { $res.r = @{ vol = [VolkanDeck.Audio]::GetVolume(); mute = [VolkanDeck.Audio]::GetMute(); mic = [VolkanDeck.Audio]::GetMicMute() } }
+      'setmicmute' { $res.r = [VolkanDeck.Audio]::SetMicMute([bool]$q.v) }
       'setvol' { [VolkanDeck.Audio]::SetVolume([int]$q.v); $res.r = $true }
       'setmute' { [VolkanDeck.Audio]::SetMute([bool]$q.v); $res.r = $true }
       'bright' { $res.r = Get-Bright }

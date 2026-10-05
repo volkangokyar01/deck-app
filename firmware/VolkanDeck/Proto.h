@@ -40,9 +40,9 @@ static void evtLaunch(App* a) {
 static void evtMedia(const char* action) {      // play_pause | next | prev | select
   JsonDocument d; d["evt"] = "media"; d["action"] = action; d["player"] = mediaTarget; sendJson(d);
 }
-static void evtSys(const char* key, int value) {  // vol | bright (0..100), mute (0/1)
+static void evtSys(const char* key, int value) {  // vol | bright (0..100), mute / micMute (0/1)
   JsonDocument d; d["evt"] = "sys";
-  if (!strcmp(key, "mute")) d["mute"] = value != 0; else d[key] = value;
+  if (!strcmp(key, "mute") || !strcmp(key, "micMute")) d[key] = value != 0; else d[key] = value;
   sendJson(d);
 }
 
@@ -171,6 +171,7 @@ static void handleLine(char* buf, size_t len) {
     if (now - sysLocalAt > 1500) {               // the user is turning the knob: keep the local value
       sysSt.vol = v.isNull() ? -1 : v.as<int>(); sysSt.bright = b.isNull() ? -1 : b.as<int>();
       sysSt.mute = doc["mute"] | false;
+      JsonVariantConst mm = doc["micMute"]; sysSt.mic = mm.isNull() ? -1 : (mm.as<bool>() ? 1 : 0);
     }
     sysSt.stamp = now | 1; mediaDirty = true;
   }

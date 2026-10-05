@@ -225,8 +225,8 @@
           else if (lastArtKey !== '') { await sendRaw({ cmd: 'media_art', key: '' }); lastArtKey = ''; }
         }
       }
-      if (st && st.sys && st.sys.vol != null) Object.assign(hostDemo.sys, { vol: st.sys.vol, mute: !!st.sys.mute, bright: st.sys.bright ?? hostDemo.sys.bright });
-      if (st && st.sys) await sendRaw({ cmd: 'sys', vol: st.sys.vol, mute: !!st.sys.mute, bright: st.sys.bright });
+      if (st && st.sys && st.sys.vol != null) Object.assign(hostDemo.sys, { vol: st.sys.vol, mute: !!st.sys.mute, bright: st.sys.bright ?? hostDemo.sys.bright, micMute: st.sys.micMute ?? null });
+      if (st && st.sys) await sendRaw({ cmd: 'sys', vol: st.sys.vol, mute: !!st.sys.mute, bright: st.sys.bright, micMute: st.sys.micMute ?? null });
     } catch (e) {} finally { polling = false; }
   }
   setInterval(pollHost, 2000);
@@ -240,7 +240,7 @@
   // volume / brightness changes arrive every ~60 ms while the knob turns: keep only the newest, one call at a time
   let sysPending = null, sysBusy = false;
   window.onDeckSys = async m => {
-    sysPending = { ...(sysPending || {}), ...(m.vol != null ? { vol: m.vol } : {}), ...(m.mute != null ? { mute: m.mute } : {}), ...(m.bright != null ? { bright: m.bright } : {}) };
+    sysPending = { ...(sysPending || {}), ...(m.vol != null ? { vol: m.vol } : {}), ...(m.mute != null ? { mute: m.mute } : {}), ...(m.micMute != null ? { micMute: m.micMute } : {}), ...(m.bright != null ? { bright: m.bright } : {}) };
     if (sysBusy) return;
     sysBusy = true;
     try { while (sysPending) { const p = sysPending; sysPending = null; await deck.sysSet(p); } }

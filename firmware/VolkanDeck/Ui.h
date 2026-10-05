@@ -92,27 +92,28 @@ static void drawPix(const uint16_t* pix, int cx, int cy, int size, float alpha, 
   }
 }
 
-enum ItemKind : uint8_t { K_HOME = 0, K_MEDIA, K_SYS, K_APP };
+enum ItemKind : uint8_t { K_HOME = 0, K_MEDIA, K_SYS, K_APP, K_WIDGETS };
 struct Item { bool home; App* app; uint8_t kind; };
 std::vector<Item> items;
 
 static void buildItems() {
   items.clear();
   if (S.homeOn) items.push_back({ true, nullptr, K_HOME });
+  if (S.widgetsOn) items.push_back({ false, nullptr, K_WIDGETS });
   if (S.mediaOn) items.push_back({ false, nullptr, K_MEDIA });
   if (S.sysOn) items.push_back({ false, nullptr, K_SYS });
   for (auto& a : S.apps) if (a.inWheel) items.push_back({ false, &a, K_APP });
 }
 static String itemId(const Item& it) {
-  switch (it.kind) { case K_HOME: return "home"; case K_MEDIA: return "media"; case K_SYS: return "system"; default: return it.app->id; }
+  switch (it.kind) { case K_HOME: return "home"; case K_MEDIA: return "media"; case K_SYS: return "system"; case K_WIDGETS: return "widgets"; default: return it.app->id; }
 }
 
-const uint16_t MEDIA_COL = C(0xE0457B), SYS_COL = C(0x0EA5A4);
+const uint16_t MEDIA_COL = C(0xE0457B), SYS_COL = C(0x0EA5A4), WIDG_COL = C(0x8B5CF6);
 static void bubble(bool home, App* a, int x, int y, int r, float alpha, uint8_t kind = 255) {
-  if (kind == K_MEDIA || kind == K_SYS) {      // page bubbles use a line icon on their own colour
-    uint16_t col = kind == K_MEDIA ? MEDIA_COL : SYS_COL, fill = mix(col, SC_BG, alpha);
+  if (kind == K_MEDIA || kind == K_SYS || kind == K_WIDGETS) {      // page bubbles use a line icon on their own colour
+    uint16_t col = kind == K_MEDIA ? MEDIA_COL : kind == K_SYS ? SYS_COL : WIDG_COL, fill = mix(col, SC_BG, alpha);
     spr.fillSmoothCircle(x, y, r, fill);
-    const LineIcon* li = lineIcon(kind == K_MEDIA ? String("music") : String("gear"));
+    const LineIcon* li = lineIcon(kind == K_MEDIA ? String("music") : kind == K_SYS ? String("gear") : String("activity"));
     const uint8_t* m = r >= 25 ? li->a34 : r >= 15 ? li->a21 : li->a11;
     blendMask(m, (r >= 25 ? 34 : r >= 15 ? 21 : 11) + 4, x, y, mix(onColor(col), SC_BG, alpha), fill);
     return;
@@ -166,7 +167,7 @@ static void drawQuickSlots() {
 }
 
 static String itemName(const Item& i) {
-  switch (i.kind) { case K_HOME: return "Ana sayfa"; case K_MEDIA: return "Medya"; case K_SYS: return "Ses ve parlaklık"; default: return i.app->name; }
+  switch (i.kind) { case K_HOME: return "Ana sayfa"; case K_MEDIA: return "Medya"; case K_SYS: return "Ses ve parlaklık"; case K_WIDGETS: return "Widgetlar"; default: return i.app->name; }
 }
 static void drawAppView() {
   int n = items.size();
@@ -360,8 +361,10 @@ static void drawFxCard(int x, int y, int w, int h) {
     text(i ? "EUR" : "USD", x + 8, ry, FB11, SC_SUB);
     bool has = ok && !isnan(v);
     String vs = has ? fmtNum(v, 2) : String("-");
-    text(vs, x + 42, ry, FB26, has ? SC_TEXT : SC_DIM);
-    if (has) text("TL", x + 45 + textW(vs, FB26), ry + 4, FM9, SC_DIM);
+    bool narrow = w < 180;                       // half-width card on the widgets page
+    UFont& vf = narrow ? FB18 : FB26;
+    text(vs, x + 42, ry, vf, has ? SC_TEXT : SC_DIM);
+    if (has && !narrow) text("TL", x + 45 + textW(vs, vf), ry + 4, FM9, SC_DIM);
     if (ok && !isnan(chg)) {
       bool up = chg > 0.004f, down = chg < -0.004f;
       uint16_t c = up ? SC_GREEN : down ? SC_RED : SC_DIM;
@@ -480,6 +483,20 @@ static void drawAnim(int x, int y, int w, int h, uint32_t t) {
   spr.clearClipRect();
 }
 
+// widgets page: 1 = full screen, 2 = stacked, 3 = wide top + two below, 4 = 2×2 (same rects as the settings preview)
+static void drawWidgets() {
+  static const int16_t RF[4] = { 2, 15, 316, 153 }, RT[4] = { 2, 15, 316, 76 }, RB[4] = { 2, 93, 316, 75 },
+    RTL[4] = { 2, 15, 157, 76 }, RTR[4] = { 161, 15, 157, 76 }, RBL[4] = { 2, 93, 157, 75 }, RBR[4] = { 161, 93, 157, 75 };
+  const int16_t* L1[1] = { RF }; const int16_t* L2[2] = { RT, RB }; const int16_t* L3[3] = { RT, RBL, RBR }; const int16_t* L4[4] = { RTL, RTR, RBL, RBR };
+  uint8_t n = constrain(S.wcount, 1, 4);
+  const int16_t* const* L = n == 1 ? L1 : n == 2 ? L2 : n == 3 ? L3 : L4;
+  for (uint8_t i = 0; i < n; i++) {
+    const int16_t* r = L[i];
+    if (r[3] > 100) { spr.fillRoundRect(r[0], r[1], r[2], r[3], 8, SC_PANEL); drawCard(S.wcards[i], r[0], r[1] + (r[3] - 76) / 2, r[2], 76); }   // single card: centred
+    else drawCard(S.wcards[i], r[0], r[1], r[2], r[3]);
+  }
+}
+
 static void drawHome() {
   drawAnim(2, 2, 128, 128, millis());               // top-left corner; the status row sits to its right
   drawCard(S.cards[0], 132, 15, 186, 76);   // the two widget slots (home.cards)
@@ -519,6 +536,7 @@ static uint16_t itemColor(const Item& it) {
     case K_HOME: return HOME_COL;
     case K_MEDIA: return mediaLive() && media.player.length() ? playerColor(media.player) : MEDIA_COL;
     case K_SYS: return SYS_COL;
+    case K_WIDGETS: return WIDG_COL;
     default: return it.app->color;
   }
 }
@@ -607,40 +625,60 @@ static void drawMedia() {
   if (companionOn()) text("çift bas: oynatıcı", 4, 140, FM9, SC_DIM);
 }
 
+static void gMic(int cx, int cy, uint16_t c, bool muted) {
+  spr.fillRoundRect(cx - 3, cy - 9, 7, 11, 3, c);                 // capsule
+  spr.drawArc(cx, cy - 2, 7, 6, 0, 180, c);                       // holder
+  spr.drawFastVLine(cx, cy + 5, 3, c); spr.drawFastHLine(cx - 3, cy + 8, 7, c);
+  if (muted) spr.drawWideLine(cx - 8, cy - 9, cx + 8, cy + 8, 1.3f, SC_RED);
+}
+
 static void sysRow(int y, int h, bool vol, bool focus) {
   bool live = sysLive() && (vol ? sysSt.vol >= 0 : sysSt.bright >= 0);
   int v = vol ? sysSt.vol : sysSt.bright;
   bool muted = vol && live && sysSt.mute;
+  int cy = y + h * 5 / 8;                                          // number / bar line
   spr.fillRoundRect(2, y, 316, h, 8, focus ? mix(SC_HL, SC_PANEL, .16f) : SC_PANEL);   // focused row: amber tint, not an outline
   uint16_t ic = focus ? SC_HL : SC_SUB;
-  if (vol) gSpeaker(26, y + 44, ic, muted, live ? v : -1); else gSun(24, y + 44, ic);
-  text(vol ? "SES" : "PARLAKLIK", 46, y + 12, FB10, SC_SUB);
+  if (vol) gSpeaker(26, cy, ic, muted, live ? v : -1); else gSun(24, cy, ic);
+  text(vol ? "SES" : "PARLAKLIK", 46, y + 10, FB10, SC_SUB);
   uint32_t now = millis();
   if (live) {
     String t = String(v);
-    text(t, 45, y + 46, FN36, muted ? SC_DIM : SC_TEXT);
-    text("%", 47 + textW(t, FN36), y + 38, FSB12, muted ? SC_DIM : SC_TEXT);
+    text(t, 45, cy, FN36, muted ? SC_DIM : SC_TEXT);
+    text("%", 47 + textW(t, FN36), cy - 8, FSB12, muted ? SC_DIM : SC_TEXT);
   } else {
     bool fl = keyFlashWhat == (vol ? 1 : 2) && now - keyFlashAt < 700;
     String t = fl ? (keyFlash > 0 ? "+" : "-") : "+/-";
-    text(t, 45, y + 46, FN36, fl ? SC_HL : SC_DIM);
-    text(companionOn() ? (vol ? "okunamadı · tuşla" : "bu ekranda yok · tuşla") : "tuşla ayarlanır", 55 + textW("+/-", FN36), y + 46, FM9, SC_DIM);
+    text(t, 45, cy, FN36, fl ? SC_HL : SC_DIM);
+    text(companionOn() ? (vol ? "okunamadı · tuşla" : "bu ekranda yok · tuşla") : "tuşla ayarlanır", 55 + textW("+/-", FN36), cy, FM9, SC_DIM);
   }
-  int bx = 132, bw = 178, by = y + 42;
+  int bx = 132, bw = 178, by = cy - 4;
   if (live) {
     spr.fillRoundRect(bx, by, bw, 8, 4, SC_LINE);
     spr.fillRoundRect(bx, by, max(6, bw * constrain(v, 0, 100) / 100), 8, 4, muted ? SC_DIM : focus ? SC_HL : (vol ? SC_TEXT : SC_SUN));
   }
   String hint;
   if (vol) hint = muted ? "SESSİZ · A: aç" : "A: sessiz";
-  else hint = focus ? "çevir: ayarla" : adjust ? "B: buraya geç" : "bas: ayarla";
+  else hint = focus ? "çevir: ayarla" : adjust ? "bas: buraya geç" : "bas: ayarla";
   if (vol && focus && !muted) hint = "çevir: ayarla · A: sessiz";
-  text(hint, 310, y + 12, FM9, muted ? SC_RED : focus ? SC_HL : SC_DIM, textdatum_t::middle_right);
+  text(hint, 310, y + 10, FM9, muted ? SC_RED : focus ? SC_HL : SC_DIM, textdatum_t::middle_right);
+}
+
+// microphone: on / muted, toggled with B (desktop app only)
+static void micRow(int y, int h) {
+  bool live = sysLive() && sysSt.mic >= 0, muted = live && sysSt.mic == 1;
+  spr.fillRoundRect(2, y, 316, h, 8, muted ? mix(SC_RED, SC_PANEL, .14f) : SC_PANEL);
+  gMic(24, y + h / 2 + 1, muted ? SC_RED : SC_SUB, muted);
+  text("MİKROFON", 46, y + h / 2, FB10, SC_SUB);
+  String st = live ? (muted ? "Kapalı" : "Açık") : (companionOn() ? "bulunamadı" : "masaüstü uygulaması gerekli");
+  text(st, 120, y + h / 2, live ? FSB12 : FM9, muted ? SC_RED : live ? SC_TEXT : SC_DIM);
+  if (live) text(muted ? "B: aç" : "B: kapat", 310, y + h / 2, FM9, muted ? SC_RED : SC_DIM, textdatum_t::middle_right);
 }
 
 static void drawSystem() {
-  sysRow(15, 76, true, adjust == 1);
-  sysRow(93, 75, false, adjust == 2);
+  sysRow(15, 56, true, adjust == 1);
+  sysRow(73, 56, false, adjust == 2);
+  micRow(131, 37);
 }
 
 static void drawToast() {
@@ -659,7 +697,7 @@ static void render(const char* link) {
     if (sel >= (int)items.size()) sel = items.size() - 1;
     Item& it = items[sel];
     drawStatus(itemColor(it), link, it.kind == K_HOME ? 134 : 2);
-    switch (it.kind) { case K_HOME: drawHome(); break; case K_MEDIA: drawMedia(); break; case K_SYS: drawSystem(); break; default: drawAppView(); }
+    switch (it.kind) { case K_HOME: drawHome(); break; case K_MEDIA: drawMedia(); break; case K_SYS: drawSystem(); break; case K_WIDGETS: drawWidgets(); break; default: drawAppView(); }
   }
   drawToast();
   spr.pushSprite(0, 0);
