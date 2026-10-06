@@ -8,7 +8,7 @@ bool configChangedFlag = false;
 uint32_t rxBytes = 0, rxLines = 0;
 static void* bigAlloc(size_t n) { void* p = psramFound() ? ps_malloc(n) : nullptr; if (!p) p = malloc(n); return p; }      // main applies side effects
 String pendingName;
-uint32_t companionAt = 0; bool companionNew = false;
+uint32_t companionAt = 0; bool companionNew = false, companionMediaLaunch = false;
 bool mediaDirty = false; uint32_t sysLocalAt = 0;
 static bool companionOn() { return companionAt && millis() - companionAt < 6000 && Serial; }
 
@@ -140,6 +140,7 @@ static void handleLine(char* buf, size_t len) {
   }
   else if (!strcmp(cmd, "companion")) {           // heartbeat from the desktop app (every ~2 s)
     if (!companionOn()) companionNew = true;
+    companionMediaLaunch = doc["mediaLaunch"] | false;
     companionAt = millis();
     const char* os = doc["os"] | "";
     if (*os) S.hostMac = !strcmp(os, "mac");

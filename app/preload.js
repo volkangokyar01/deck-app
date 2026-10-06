@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('deck', {
   launch: e => ipcRenderer.invoke('launch', e),
   pickApps: multi => ipcRenderer.invoke('pick-apps', multi),
   appInfo: p => ipcRenderer.invoke('app-info', p),
+  locationAvailable: () => ipcRenderer.invoke('location-available'),
   stats: o => ipcRenderer.invoke('stats-get', o),
   sensorStatus: () => ipcRenderer.invoke('sensor-status'),
   installSensors: () => ipcRenderer.invoke('sensor-install'),
@@ -21,7 +22,7 @@ contextBridge.exposeInMainWorld('deck', {
   onUpdateOpen: fn => { const listener = () => fn(); ipcRenderer.on('update-open', listener); return () => ipcRenderer.removeListener('update-open', listener); },
   hostState: o => ipcRenderer.invoke('host-state', o),
   mediaArt: key => ipcRenderer.invoke('media-art', key),
-  mediaControl: (action, target) => ipcRenderer.invoke('media-ctl', action, target),
+  mediaControl: (action, target, options) => ipcRenderer.invoke('media-ctl', action, target, options),
   sysSet: o => ipcRenderer.invoke('sys-set', o),
   pathForFile: f => { try { return webUtils.getPathForFile(f) || ''; } catch (e) { return ''; } }
 });

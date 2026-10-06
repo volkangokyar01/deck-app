@@ -58,11 +58,59 @@ async function findNvidia() {
   try { for (const d of fs.readdirSync(drivers).filter(d => /^nv_dispi/i.test(d)).sort().reverse()) paths.push(path.join(drivers, d, 'nvidia-smi.exe')); } catch (_) {}
   return paths.find(p => fs.existsSync(p)) || null;
 }
+// Both providers use latitude/longitude; error responses can still have HTTP 200.
+function parseLocation(j) {
+  if (!j || j.error || j.success === false || typeof j.city !== 'string' || !j.city.trim()) return null;
+  const lat = range(j.latitude, -90, 90), lon = range(j.longitude, -180, 180);
+  if (lat === null || lon === null) return null;
+  const city = [...j.city.trim()].map(ch => /[\x20-\x7EÇÖÜçöüĞğİıŞş]/.test(ch) ? ch : ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '')).join('').replace(/[^\x20-\x7EÇÖÜçöüĞğİıŞş]/g, '').trim().slice(0, 24);
+  return city ? { city, lat: Math.round(lat * 1e4) / 1e4, lon: Math.round(lon * 1e4) / 1e4 } : null;
+}
+async function resolveLocation(fetch) {
+  for (const url of ['https://ipapi.co/json/', 'https://ipwho.is/']) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      const location = r.ok ? parseLocation(await r.json()) : null;
+      if (location) return location;
+    } catch (_) {}
+  }
+  return null;
+}
+// Coordinates come only from the renderer's OS location request; providers supply the label.
+function parseReverseLocation(j, lat, lon) {
+  if (!j || j.error) return null;
+  const a = j.address || {};
+  return parseLocation({ city: j.city || j.locality || a.city || a.town || a.village || a.municipality || a.state, latitude: lat, longitude: lon });
+}
+async function reverseLocation(fetch, geo) {
+  const lat = range(geo?.lat, -90, 90), lon = range(geo?.lon, -180, 180);
+  if (lat === null || lon === null) return null;
+  const queries = [
+    ['https://api.bigdatacloud.net/data/reverse-geocode-client?' + new URLSearchParams({ latitude: lat, longitude: lon, localityLanguage: 'tr' }), {}],
+    ['https://nominatim.openstreetmap.org/reverse?' + new URLSearchParams({ lat, lon, format: 'jsonv2', 'accept-language': 'tr', zoom: 10 }), { 'User-Agent': 'VolkanDeck/1.5.3 (https://github.com/volkangokyar01/deck-app)' }]
+  ];
+  for (const [url, headers] of queries) {
+    try {
+      const r = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
+      const loc = r.ok ? parseReverseLocation(await r.json(), lat, lon) : null;
+      if (loc) return { ...loc, source: 'geo' };
+    } catch (_) {}
+  }
+  return { ...parseLocation({ city: 'Konumum', latitude: lat, longitude: lon }), source: 'geo' };
+}
+async function resolveWeatherLocation(fetch, geo) {
+  const loc = await reverseLocation(fetch, geo);
+  if (loc) return loc;
+  const ip = await resolveLocation(fetch);
+  return ip ? { ...ip, source: 'ip' } : null;
+}
 function createStats({ fetch, cacheDir, platform = process.platform, arch = process.arch, sensorFile } = {}) {
   const cache = { cpu: { name: cpuName(os.cpus()[0]?.model), temp: null, load: null, power: null, clock: null }, gpu: gpuEmpty(), net: { down: null, up: null, ping: null }, fx: { usd: null, eur: null, usdChg: null, eurChg: null } };
   let running = false, previousCpu = null, previousNet = null, netAt = 0, netSeen = 0, sensorAt = 0, pingAt = 0;
   let weather = null, weatherKey = '', weatherGeneration = 0, weatherBusy = false, fxBusy = false, weatherAt = 0, fxAt = 0;
   let macSample = null, macAt = 0;
+  let geoCoordinates = null, geoPending = false;
+  let autoLocation = false, locationBusy = false, locationAt = 0, locationGeneration = 0;
   const timers = new Set(), children = new Set(), sockets = new Set();
   function every(fn, ms) { const t = setInterval(() => { Promise.resolve().then(fn).catch(() => {}); }, ms); timers.add(t); }
   function stream(file, args, onLine) {
@@ -171,15 +219,39 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
       cache.fx = { usd, eur, usdChg: prev ? (usd / (prev.TRY / prev.USD) - 1) * 100 : null, eurChg: prev ? (eur / prev.TRY - 1) * 100 : null }; fxAt = Date.now();
     } catch (_) {} finally { fxBusy = false; }
   }
-  function configure(w) {
-    const valid = w && range(w.lat, -90, 90) !== null && range(w.lon, -180, 180) !== null;
-    const next = valid ? { lat: Number(w.lat), lon: Number(w.lon), city: String(w.city || '').slice(0, 64) } : null;
+  function setWeather(next) {
+    if (next) next = { lat: next.lat, lon: next.lon, city: next.city };
     const key = JSON.stringify(next); if (key === weatherKey) return;
     weatherKey = key; weather = next; weatherGeneration++; weatherAt = 0;
     if (!weather) delete cache.weather;
     else { cache.weather = { city: weather.city, temp: null, code: null, hi: null, lo: null, rain: null }; refreshWeather(); }
   }
+  async function refreshLocation() {
+    if (!running || !autoLocation || geoPending || locationBusy) return;
+    locationBusy = true; const generation = locationGeneration;
+    cache.location = { ...cache.location, pending: true };
+    try {
+      const next = await resolveWeatherLocation(fetch, geoCoordinates);
+      if (!running || generation !== locationGeneration) return;
+      locationAt = Date.now();
+      cache.location = { ...(next || cache.location), pending: false, error: next ? '' : 'Konum bulunamadı' };
+      if (next) setWeather(next);
+    } finally { locationBusy = false; if (running && autoLocation && generation !== locationGeneration) refreshLocation(); }
+  }
+  function configure(w) {
+    const auto = !!w?.auto;
+    if (auto !== autoLocation) { autoLocation = auto; locationGeneration++; locationAt = 0; }
+    const valid = w && range(w.lat, -90, 90) !== null && range(w.lon, -180, 180) !== null;
+    const next = valid ? { lat: Number(w.lat), lon: Number(w.lon), city: String(w.city || '').slice(0, 64) } : null;
+    const known = autoLocation && cache.location?.city ? cache.location : null;
+    setWeather(known ? { lat: known.lat, lon: known.lon, city: known.city } : next);
+    if (autoLocation && !locationAt) refreshLocation();
+  }
   function get(options) {
+    if (options && Object.hasOwn(options, 'geolocation')) {
+      geoPending = !!options.geolocation?.pending;
+      geoCoordinates = geoPending ? null : options.geolocation; locationGeneration++; locationAt = 0;
+    }
     if (options && Object.hasOwn(options, 'weather')) configure(options.weather);
     cache.time = { epoch: Math.floor(Date.now() / 1000), tz: -new Date().getTimezoneOffset() * 60 };
     if (weatherAt && Date.now() - weatherAt > 7200000) cache.weather = { city: weather.city, temp: null, code: null, hi: null, lo: null, rain: null };
@@ -190,6 +262,7 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
   function start() {
     if (running) return; running = true; cpu(); every(cpu, RATES.cpu);
     ping(); every(ping, 5000); refreshFx(); every(refreshFx, RATES.fx); refreshWeather(); every(refreshWeather, RATES.weather);
+    locationAt = 0; refreshLocation(); every(refreshLocation, 6 * 3600000);
     if (platform === 'darwin') {
       macNetwork().catch(() => {}); every(macNetwork, RATES.net);
       if (arch === 'arm64' && cacheDir) assets.macmon(fetch, cacheDir).then(binary => {
@@ -206,7 +279,7 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
       }).catch(() => {});
     }
   }
-  function stop() { running = false; for (const t of timers) clearInterval(t); timers.clear(); for (const c of children) c.kill(); children.clear(); for (const s of sockets) s.destroy(); sockets.clear(); }
-  return { start, stop, get, refreshWeather, refreshFx };
+  function stop() { running = false; locationGeneration++; for (const t of timers) clearInterval(t); timers.clear(); for (const c of children) c.kill(); children.clear(); for (const s of sockets) s.destroy(); sockets.clear(); }
+  return { start, stop, get, refreshWeather, refreshFx, refreshLocation };
 }
-module.exports = { createStats, RATES, parseNvidia, parseMacmon, parseNetstat, netDelta, cpuName };
+module.exports = { createStats, RATES, parseNvidia, parseMacmon, parseNetstat, netDelta, cpuName, parseLocation, resolveLocation, parseReverseLocation, reverseLocation, resolveWeatherLocation };

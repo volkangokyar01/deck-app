@@ -236,10 +236,10 @@ async function macBrightness(set) {
 
 /* ===================== public API ===================== */
 let winSys = { vol: null, mute: false, mic: -1 }, winBright = { v: null, at: 0 };
-async function hostState({ target = 'auto', media = true, sys = true } = {}) {
+async function hostState({ target = 'auto', launch = 'none', media = true, sys = true } = {}) {
   const out = {};
   if (IS_WIN) {
-    if (media) out.media = shape(pick((await winMedia(target)) || [], target));
+    if (media) out.media = shapeForTarget(pick((await winMedia(target)) || [], target), target, launch);
     if (sys) {
       const v = await ps('vol', {}, 3000);
       if (v.ok && v.r) winSys = { vol: v.r.vol, mute: !!v.r.mute, mic: v.r.mic ?? -1 };
@@ -251,7 +251,7 @@ async function hostState({ target = 'auto', media = true, sys = true } = {}) {
     }
   } else if (IS_MAC) {
     const cands = await macPoll(media, sys);
-    if (media) out.media = shape(pick(cands, target));
+    if (media) out.media = shapeForTarget(pick(cands, target), target, launch);
     if (sys) {
       if (!macBright.broken && Date.now() - macBright.at > 5000) await macBrightness();
       else if (macBright.broken && Date.now() - macBright.at > 60000) { macBright.broken = false; await macBrightness(); }
@@ -261,22 +261,71 @@ async function hostState({ target = 'auto', media = true, sys = true } = {}) {
   return out;
 }
 
-async function mediaControl(action, target = 'auto') {
-  if (!['play_pause', 'next', 'prev'].includes(action)) return { ok: false, error: 'bad action' };
-  if (IS_WIN) {
-    const c = pick((await winMedia(target)) || [], target);
-    if (!c) return { ok: false, error: 'Çalan uygulama yok' };
-    const r = await ps('mctl', { app: c.app, action });
-    return r.ok && r.r ? { ok: true, player: c.player } : { ok: false, error: r.error || 'Uygulama komutu kabul etmedi' };
+function launchTarget(target, launch) {
+  return NAMES[target] ? target : NAMES[launch] ? launch : '';
+}
+function shapeForTarget(c, target, launch) {
+  const out = shape(c);
+  // Existing firmware forwards actions only for ctl:app, even with no running player.
+  if (!c && launchTarget(target, launch)) out.ctl = 'app';
+  return out;
+}
+function createMediaController({ platform, poll, running, run, ps, sleep = ms => new Promise(r => setTimeout(r, ms)), now = Date.now }) {
+  let opening = null;
+  async function openAndPlay(player, launchPlayer) {
+    if (!launchPlayer) return { ok: false, error: 'Oynatıcı açılamadı' };
+    const opened = await launchPlayer(player);
+    if (!opened?.ok) return opened || { ok: false, error: 'Oynatıcı açılamadı' };
+    if (platform === 'darwin' && player === 'ytmusic') return { ok: true, player };
+    const until = now() + 8000;
+    for (let i = 0; i < 16 && now() < until; i++) {
+      if (platform === 'darwin') {
+        if ((await running()).has(MAC_APPS[player])) {
+          const r = await run('osascript', ['-e', `tell application "${MAC_APPS[player]}" to play`], 4000);
+          return r.code === 0 ? { ok: true, player } : { ok: false, error: r.stderr.trim() || 'Oynatma başarısız' };
+        }
+      } else {
+        const c = pick((await poll(player)) || [], player);
+        if (c) {
+          const r = await ps('mctl', { app: c.app, action: 'play' });
+          return r.ok && r.r ? { ok: true, player } : { ok: false, error: r.error || 'Oynatma başarısız' };
+        }
+      }
+      await sleep(500);
+    }
+    return player === 'ytmusic' ? { ok: true, player } : { ok: false, error: 'Oynatıcı hazır değil' };
   }
-  if (IS_MAC) {
-    const c = pick(await macPoll(true, false), target);
+  return async function control(action, target = 'auto', { launch = 'none', launchPlayer } = {}) {
+    if (!['play_pause', 'next', 'prev'].includes(action)) return { ok: false, error: 'Geçersiz komut' };
+    if (opening) return opening;
+    let c = pick((await poll(target)) || [], target);
+    if (!c && platform === 'darwin') {
+      // AppleScript metadata may still be warming up; a running native app is a candidate.
+      const apps = await running();
+      const player = Object.keys(MAC_APPS).find(p => (target === 'auto' || target === p) && apps.has(MAC_APPS[p]));
+      if (player) c = { player, ctl: 'app' };
+    }
+    if (opening) return opening;
+    const player = launchTarget(target, launch);
+    if (!c && action === 'play_pause' && player) {
+      if (!opening) opening = openAndPlay(player, launchPlayer).finally(() => { opening = null; });
+      return opening;
+    }
+    if (platform === 'win32') {
+      if (!c) return { ok: false, error: 'Çalan uygulama yok' };
+      const r = await ps('mctl', { app: c.app, action });
+      return r.ok && r.r ? { ok: true, player: c.player } : { ok: false, error: r.error || 'Uygulama komutu kabul etmedi' };
+    }
     if (!c || c.ctl !== 'app') return { ok: false, error: 'keys' };
     const verb = { play_pause: 'playpause', next: 'next track', prev: 'previous track' }[action];
     const r = await run('osascript', ['-e', `tell application "${MAC_APPS[c.player]}" to ${verb}`], 4000);
-    return r.code === 0 ? { ok: true, player: c.player } : { ok: false, error: r.stderr.trim() || 'osascript' };
-  }
-  return { ok: false, error: 'unsupported' };
+    return r.code === 0 ? { ok: true, player: c.player } : { ok: false, error: r.stderr.trim() || 'Oynatma başarısız' };
+  };
+}
+const control = createMediaController({ platform: process.platform, poll: IS_WIN ? winMedia : () => macPoll(true, false), running: macRunning, run, ps });
+async function mediaControl(action, target = 'auto', options = {}) {
+  if (!IS_WIN && !IS_MAC) return { ok: false, error: 'Bu sistem desteklenmiyor' };
+  return control(action, target, options);
 }
 
 async function sysSet(o = {}) {
@@ -299,4 +348,4 @@ async function sysSet(o = {}) {
 }
 
 function stop() { hostHelper.stop(); artHelper.stop(); }
-module.exports = { hostState, mediaArt: art.get, mediaControl, sysSet, stop, devText };
+module.exports = { hostState, mediaArt: art.get, mediaControl, sysSet, stop, devText, launchTarget, shapeForTarget, createMediaController };

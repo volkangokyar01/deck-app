@@ -140,7 +140,9 @@ bool volPending = false, brightPending = false;
 
 static void mediaAction(const char* act, uint16_t key) {
   mediaFlashAct = act; mediaFlashAt = millis(); dirty = true;
-  if (mediaLive() && media.appCtl) {           // the desktop app talks to Spotify / Music / the browser directly
+  bool launchPlay = !strcmp(act, "play_pause") && companionOn() && companionMediaLaunch &&
+                    (!mediaLive() || !media.player.length()) && (mediaTarget != "auto" || S.mediaLaunch != "none");
+  if ((mediaLive() && media.appCtl) || launchPlay) {           // the desktop app talks to Spotify / Music / the browser directly
     evtMedia(act);
     if (!strcmp(act, "play_pause")) media.playing = !media.playing;
     return;
@@ -182,6 +184,15 @@ static void toggleMute() {
   dirty = true;
 }
 
+static String musicPlayerForApp(const App& a) {
+  String text = a.name + " " + a.launch.value + " " + a.launch.path + " " + a.launch.mac;
+  text.replace("Ü", "ü"); text.replace("İ", "i"); text.toLowerCase();
+  if (text.indexOf("spotify") >= 0) return "spotify";
+  if (text.indexOf("youtube music") >= 0 || text.indexOf("music.youtube.com") >= 0) return "ytmusic";
+  if (text.indexOf("apple music") >= 0 || text.indexOf("music.app") >= 0 || text.indexOf("müzik") >= 0 || text.indexOf("muzik") >= 0 || text.indexOf("itunes") >= 0) return "music";
+  return "";
+}
+
 static void doLaunch(App* a) {
   if (!a) return;
   const Launch& L = a->launch;
@@ -198,6 +209,14 @@ static void doLaunch(App* a) {
   else ok = runLaunch(a->launch, a->name);
   launchP = -1;
   if (!ok) toast("Bilgisayara bağlı değil");
+  else if (S.mediaOn) {
+    String player = musicPlayerForApp(*a);
+    if (player.length()) {
+      mediaTarget = player;                    // session pin, never change S.mediaPlayer / saved config
+      media.stamp = 0; evtMedia("select");
+      for (int i = 0; i < (int)items.size(); i++) if (items[i].kind == K_MEDIA) { selectIndex(i); break; }
+    }
+  }
   dirty = true;
 }
 

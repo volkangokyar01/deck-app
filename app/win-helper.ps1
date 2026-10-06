@@ -167,6 +167,7 @@ function Invoke-Media([string]$app, [string]$action) {
     if ($s.SourceAppUserModelId -ne $app) { continue }
     $op = switch ($action) {
       'play_pause' { $s.TryTogglePlayPauseAsync() }
+      'play' { $s.TryPlayAsync() }
       'next' { $s.TrySkipNextAsync() }
       'prev' { $s.TrySkipPreviousAsync() }
       default { throw "unknown action $action" }

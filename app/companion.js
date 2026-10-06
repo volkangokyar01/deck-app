@@ -5,8 +5,14 @@
   const HOST = OS === 'darwin' ? 'mac' : 'win';
   const MIN_FW = '1.2.0';
   document.title = 'Volkan Deck';
-  METHODS[0][1] = 'Dosya, adres veya komut'; METHODS[0][2] = 'Program yolu, kısayol, steam:// gibi adres ya da chrome gibi bir komut; arka planda doğrudan başlatılır.';
-  METHODS[1][1] = 'Uygulama adı'; METHODS[1][2] = 'Adıyla Başlat menüsü kaydından (Mac\'te Uygulamalar\'dan) bulunup doğrudan başlatılır; arama açılmaz.';
+  if (OS === 'darwin') {
+    const example = document.querySelector('#view-proto .panel:nth-child(2) pre');
+    if (example) example.textContent = '{"method":"search","value":"Spotify"}\n  → Cmd+Space · bekle · yaz · Enter\n\n{"method":"key","mods":["win"],"key":"SPACE"}\n  → Cmd+Space';
+  }
+  if (OS === 'darwin') {
+    METHODS[0][1] = 'Uygulama adıyla aç'; METHODS[0][2] = 'Cihaz Spotlight ile uygulamanın adını arar.';
+    METHODS[1][1] = 'Spotlight ile ara'; METHODS[1][2] = "Cihaz Spotlight'a adı yazar ve Enter'a basar.";
+  }
   let connecting = false, busy = false, direct = false;
 
   /* ---- app updates: main process owns networking, verification and installation ---- */
@@ -81,7 +87,7 @@
       serialNote('Uygulamaları doğrudan açmak için kartta firmware v' + MIN_FW + ' gerekiyor (kartta v' + (deviceInfo.fw || '?') + ' var). Cihaz ayarları → Firmware yükle ile güncelle; o zamana kadar cihaz eski klavye yöntemiyle açar.');
       fwNeeded = true; renderStatus(); renderEditor();
     } else {
-      try { await send({ cmd: 'companion', os: HOST, ack: true }, 2500, true); direct = true; } catch (e) {}
+      try { await send({ cmd: 'companion', os: HOST, mediaLaunch: true, ack: true }, 2500, true); direct = true; } catch (e) {}
     }
     pushStatus();
     await pollStats(true);
@@ -95,7 +101,7 @@
   setInterval(() => {
     // the page may have connected on its own (already-allowed port): run the direct-mode handshake once per connection
     if (port && deviceInfo && checkedPort !== port && !connecting && !busy) { checkedPort = port; afterConnect(); }
-    if (writer && deviceInfo && direct && !busy) sendRaw({ cmd: 'companion', os: HOST });
+    if (writer && deviceInfo && direct && !busy) sendRaw({ cmd: 'companion', os: HOST, mediaLaunch: true });
     if (!port) direct = false;
     pushStatus();
   }, 2000);
@@ -110,7 +116,7 @@
   window.onDeckLaunch = async m => {
     log('rx', '← aç: ' + (m.name || m.app));
     const a = cfg.apps.find(x => x.id === m.app);       // local settings fill in what the deck doesn't know yet
-    if (a) { m.path = m.path || (a.targets && a.targets.win) || ''; m.mac = m.mac || (a.targets && a.targets.mac) || ''; m.bg = !!a.bg; }
+    if (a) Object.assign(m, { name: a.name, method: a.launch.method, value: a.launch.value, path: a.targets?.win || a.launch.path || '', mac: a.targets?.mac || a.launch.mac || '', bg: !!a.bg });
     const r = await deck.launch(m);
     if (r && r.ok) log('', '  açıldı (' + r.how + ')');
     else {
@@ -170,6 +176,61 @@
     }).catch(() => {});
   }
 
+  /* ---- automatic weather location, including while the deck is disconnected ---- */
+  let locationPolling = false, geoAttempted = false, geoAt = 0, geoOK = false;
+  const geoKey = KEY + '.location-attempt';
+  async function requestLocation(retry = false) {
+    if (!cfg.home?.weather?.auto || locationPolling) return;
+    locationPolling = true;
+    weatherLocationStatus = 'Konum aranıyor…';
+    const status = document.getElementById('wxLocationStatus'); if (status) status.textContent = weatherLocationStatus;
+    try {
+      await deck.stats({ weather: cfg.home.weather, geolocation: { pending: true } });
+      let geo = null, previous = '';
+      try { previous = localStorage.getItem(geoKey) || ''; } catch (_) {}
+      let allowed = retry || !previous;
+      if (!allowed && previous === 'granted') {
+        try { allowed = (await navigator.permissions.query({ name: 'geolocation' })).state === 'granted'; } catch (_) {}
+      }
+      if (allowed && navigator.geolocation && await deck.locationAvailable()) {
+        try { localStorage.setItem(geoKey, 'attempted'); } catch (_) {}
+        geo = await new Promise(resolve => {
+          const timer = setTimeout(() => resolve(null), 15000);
+          navigator.geolocation.getCurrentPosition(p => { clearTimeout(timer); resolve({ lat: p.coords.latitude, lon: p.coords.longitude }); }, () => { clearTimeout(timer); resolve(null); }, { timeout: 15000, maximumAge: 3600000, enableHighAccuracy: false });
+        });
+        if (geo) { try { localStorage.setItem(geoKey, 'granted'); } catch (_) {} }
+      }
+      geoAttempted = true; geoAt = Date.now(); geoOK = !!geo;
+      await deck.stats({ weather: cfg.home.weather, geolocation: geo });
+    } catch (_) {
+      geoAttempted = true; geoAt = Date.now(); geoOK = false;
+      await deck.stats({ weather: cfg.home.weather, geolocation: null }).catch(() => {});
+    } finally { locationPolling = false; }
+    pollLocation();
+  }
+  window.retryWeatherLocation = () => requestLocation(true);
+  async function pollLocation() {
+    if (locationPolling || !cfg.home?.weather?.auto || ['downloading', 'installing'].includes(updateState?.phase)) return;
+    if (!geoAttempted || (geoOK && Date.now() - geoAt >= 3600000)) { requestLocation(); return; }
+    locationPolling = true;
+    try {
+      const snapshot = await deck.stats({ weather: cfg.home.weather });
+      if (!cfg.home?.weather?.auto) return;
+      const loc = snapshot.location;
+      weatherLocationStatus = loc?.error || (loc?.pending ? 'Konum aranıyor…' : '');
+      weatherLocationSource = loc?.source || '';
+      if (loc?.city) {
+        const w = cfg.home.weather;
+        if (w.city !== loc.city || w.lat !== loc.lat || w.lon !== loc.lon) { Object.assign(w, { city: loc.city, lat: loc.lat, lon: loc.lon }); save(); drawScreen(); renderJson(); }
+      }
+      const selected = document.getElementById('wxSelected'), status = document.getElementById('wxLocationStatus');
+      if (selected) selected.textContent = weatherLocationLabel();
+      if (status) status.textContent = weatherLocationStatus;
+    } catch (_) { weatherLocationStatus = 'Konum bulunamadı'; const status = document.getElementById('wxLocationStatus'); if (status) status.textContent = weatherLocationStatus; }
+    finally { locationPolling = false; }
+  }
+  pollLocation(); setInterval(pollLocation, 5000);
+
   /* ---- cached widget groups (firmware 1.4.0+), full snapshot after reconnect ---- */
   const statsRates = { cpu: 1000, gpu: 1000, net: 1000, time: 60000, weather: 900000, fx: 1800000 };
   let statsPolling = false, statsPort = null, statsWriter = null;
@@ -212,7 +273,7 @@
     polling = true;
     const serialWriter = writer, generation = artGeneration;
     try {
-      const st = await deck.hostState({ target: mediaTarget, media: on.media, sys: on.sys });
+      const st = await deck.hostState({ target: mediaTarget, launch: cfg.pages.media.launch, media: on.media, sys: on.sys });
       if (writer !== serialWriter || generation !== artGeneration) return;
       if (st && st.media) {
         await sendRaw({ cmd: 'media', ...st.media }); Object.assign(hostDemo.media, st.media); hostDemo.at = performance.now();
@@ -231,9 +292,9 @@
   }
   setInterval(pollHost, 2000);
   window.onDeckMedia = async m => {
-    if (m.player) mediaTarget = m.player;
+    if (m.player) { mediaTarget = m.player; pageState.player = m.player; }
     if (m.action === 'select') { log('rx', '← oynatıcı: ' + mediaTarget); setTimeout(pollHost, 50); return; }
-    const r = await deck.mediaControl(m.action, mediaTarget);
+    const r = await deck.mediaControl(m.action, mediaTarget, { launch: cfg.pages.media.launch });
     if (!r || !r.ok) log('er', '  medya: ' + (r && r.error || 'hata'));
     setTimeout(pollHost, 300);
   };
@@ -254,38 +315,52 @@
     if (!url) return;
     try { const r = await blobToIcon(await (await fetch(url)).blob()); a.iconData = r.data; a.color = r.color; } catch (e) {}
   }
+  function syncFallbackFields(a) {
+    const fields = document.getElementById('fallbackFields');
+    fields?.replaceChildren(methodFields(a, () => { save(); drawScreen(); renderList(); renderCtlMap(); }));
+    document.querySelectorAll('#launchAdvanced [data-method]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.method === a.launch.method)));
+    const sum = document.getElementById('sumTxt'); if (sum) sum.textContent = launchSummary(a.launch);
+  }
   function addTargetBox() {
     if (edit.kind !== 'app') return;
-    const a = appById(edit.id); if (!a || a.launch.method === 'key') return;
-    const sum = document.getElementById('sumTxt'); const anchor = sum && sum.closest('.summary'); if (!anchor) return;
-    a.targets = a.targets || { win: '', mac: '' };
-    const eb = anchor.querySelector('.eyebrow'); if (eb) eb.textContent = 'Uygulama kapalıyken cihaz gönderir';
-    if (!cfg.device.kbFallback) anchor.style.display = 'none';   // no keystroke fallback: nothing is ever typed
-    document.querySelectorAll('#edBody .hint').forEach(h => {
-      if (/Win\+R kutusuna/.test(h.textContent)) h.textContent = 'Örnekler: steam://rungameid/730 (CS2), discord://, spotify:, ms-settings:, explorer, calc, chrome veya "C:\\Program Files\\…\\uygulama.exe" -argüman. Komut arka planda doğrudan çalıştırılır.';
-      if (/Başlat'a yazınca/.test(h.textContent)) h.textContent = 'Adı Başlat menüsündeki (Mac\'te Uygulamalar klasöründeki) adıyla yaz; tam eşleşme yoksa adı içeren ilk uygulama açılır. Arama penceresi açılmaz.';
-    });
-    const box = el('div', { class: 'srcbox', id: 'directBox' }, el('span', { class: 'eyebrow' }, 'Masaüstü uygulamasıyla doğrudan aç'));
-    const row = (k, label, ph) => {
-      const inp = el('input', { type: 'text', class: 'mono', value: a.targets[k] || '', placeholder: ph, style: 'flex:1;min-width:0', oninput: e => { a.targets[k] = e.target.value.trim(); save(); } });
-      const mine = (k === 'win' && OS === 'win32') || (k === 'mac' && OS === 'darwin');
-      const pick = mine ? el('button', { class: 'btn sm', onclick: async () => {
-        const r = await deck.pickApps(false); if (!r || !r[0]) return;
-        a.targets[k] = r[0].path; if (!a.iconData) await iconFromDataUrl(a, r[0].icon); changed(); toast('Doğrudan açılacak: ' + r[0].name);
-      } }, 'Seç…') : null;
-      const test = mine ? el('button', { class: 'btn sm ghost', onclick: async () => {
-        const r = await deck.launch({ app: a.id, name: a.name, method: a.launch.method, value: a.launch.value, path: a.targets.win, mac: a.targets.mac, bg: !!a.bg });
-        toast(r.ok ? a.name + ' açıldı' : 'Açılamadı: ' + r.error);
-      } }, 'Dene') : null;
-      return el('label', { class: 'field' }, el('span', {}, label), el('div', { class: 'row', style: 'flex-wrap:nowrap' }, inp, pick, test));
-    };
-    box.append(
-      row('win', 'Windows: program (.exe), kısayol (.lnk / .url) veya adres', 'C:\\Program Files\\…\\uygulama.exe'),
-      row('mac', 'macOS: uygulama', '/Applications/Spotify.app'),
-      el('label', { class: 'row', style: 'cursor:pointer;flex-wrap:nowrap;align-items:flex-start;gap:8px' }, el('input', { type: 'checkbox', id: 'appBg', checked: !!a.bg, onchange: e => { a.bg = e.target.checked; save(); } }), 'Arka planda aç (odağı alma: Windows\'ta simge durumunda, macOS\'ta arkada açılır)'),
-      el('p', { class: 'hint' }, 'Uygulama sistem çağrısıyla doğrudan başlatılır; Çalıştır kutusu, Başlat araması ya da Spotlight hiç açılmaz. Boş bırakırsan yukarıdaki komut ya da ad kullanılır: Windows\'ta Başlat menüsü kaydından (arama penceresi açılmadan), macOS\'ta uygulama adından bulunur.')
-    );
-    anchor.after(box);
+    const a = appById(edit.id), advanced = document.getElementById('launchAdvanced'); if (!a || !advanced) return;
+    const special = a.launch.method === 'key' || (a.launch.method === 'taskbar' && !a.targets?.[OS === 'darwin' ? 'mac' : 'win'] && !a.launch.path && !a.launch.mac);
+    if (special) {
+      const note = el('p', { class: 'hint' }, 'Bu uygulama kısayol tuşuyla açılıyor'); advanced.before(note);
+      if (a.launch.method === 'key') return;
+    }
+    a.targets ||= { win: a.launch.path || '', mac: a.launch.mac || '' };
+    const k = OS === 'darwin' ? 'mac' : 'win';
+    const initial = a.targets[k] || (OS === 'darwin' ? a.launch.method === 'run' && /^[a-z][a-z0-9+.-]+:/i.test(a.launch.value || '') ? a.launch.value : a.name : typeof a.launch.value === 'string' ? a.launch.value : '');
+    const box = el('div', { class: 'srcbox', id: 'directBox' });
+    const inp = el('input', { type: 'text', id: 'appTarget', 'aria-label': 'Ne açılsın', class: 'mono', value: initial, placeholder: OS === 'darwin' ? '/Applications/Spotify.app' : 'Program yolu veya adres', style: 'flex:1;min-width:120px', oninput: e => {
+      const target = e.target.value.trim(); a.targets[k] = target; if (OS === 'win32') delete a.src;
+      // A new typed path no longer belongs to the old shortcut's working directory.
+      autoFallback(a, OS, target, null); save();
+      syncFallbackFields(a);
+    }, onchange: async () => {
+      const target = a.targets[k]; if (OS !== 'win32' || !/\.(lnk|url)$/i.test(target)) return;
+      try { const info = await deck.appInfo(target); if (a.targets[k] !== target) return; if (info.src) a.src = info.src; autoFallback(a, OS, target, info.src || null); save(); syncFallbackFields(a); }
+      catch (_) {}
+    } });
+    const pick = el('button', { class: 'btn sm', onclick: async () => {
+      pick.disabled = true;
+      try {
+        const list = await deck.pickApps(false), it = list?.[0]; if (!it) return;
+        a.targets[k] = it.path; if (OS === 'win32') { if (it.src) a.src = it.src; else delete a.src; }
+        autoFallback(a, OS, it.path, it.src || null);
+        if (!a.iconData) await iconFromDataUrl(a, it.icon); changed(); toast('Seçildi: ' + it.name);
+      } catch (e) { toast('Seçilemedi: ' + e.message); } finally { pick.disabled = false; }
+    } }, 'Seç…');
+    const test = el('button', { class: 'btn sm ghost', onclick: async () => {
+      test.disabled = true;
+      try { const r = await deck.launch({ app: a.id, name: a.name, method: a.launch.method, value: a.launch.value, path: a.targets.win, mac: a.targets.mac, bg: !!a.bg }); toast(r?.ok ? a.name + ' açıldı' : 'Açılamadı: ' + (r?.error || 'Bilinmeyen hata')); }
+      catch (e) { toast('Denenemedi: ' + e.message); } finally { test.disabled = false; }
+    } }, 'Dene');
+    box.append(el('div', { class: 'field' }, el('span', {}, 'Ne açılsın'), el('div', { class: 'row' }, inp, pick, test)),
+      el('p', { class: 'hint' }, OS === 'darwin' ? '.app seç veya uygulama adı / adres yaz.' : '.exe, .lnk, .url yolu veya adres yaz. Boşsa uygulama adı kullanılır.'),
+      el('label', { class: 'row', style: 'cursor:pointer;align-items:flex-start' }, el('input', { type: 'checkbox', id: 'appBg', checked: !!a.bg, onchange: e => { a.bg = e.target.checked; save(); } }), 'Arka planda aç'));
+    advanced.before(box);
   }
 
   /* ---- macOS: pick .app bundles with the native dialog, or drop them on the list ---- */
@@ -312,7 +387,7 @@
     const _import = importFiles;
     importFiles = async function (files) {
       const arr = [...files], apps = [], rest = [];
-      for (const f of arr) { const p = deck.pathForFile(f); if (/\.app\/?$/i.test(p)) apps.push(p.replace(/\/$/, '')); else rest.push(f); }
+      for (const f of arr) { const p = deck.pathForFile(f); if (/\.app\/?$/i.test(p)) apps.push(p.replace(/\/$/, '')); else if (OS === 'darwin' && /\.(exe|lnk|url)$/i.test(f.name)) toast('macOS için .app seç'); else rest.push(f); }
       if (apps.length) await addMacApps(await Promise.all(apps.map(p => deck.appInfo(p))));
       if (rest.length) return _import(rest);
     };
@@ -320,7 +395,7 @@
     if (hint) hint.textContent = 'Uygulamalar klasöründen bir veya birkaç uygulama seç ya da Finder\'dan buraya sürükle. İkon ve ad kendiliğinden gelir.';
   }
 
-  // the deck's fallback style follows this computer
-  if (cfg.device && cfg.device.host !== HOST) { cfg.device.host = HOST; save(); }
-  deck.version().then(v => { const t = document.querySelector('.brand small, #brandSub'); if (t) t.textContent = 'Masaüstü v' + v; }).catch(() => {});
+  // Host style is applied only to the outgoing device config; the saved config stays stable.
+  renderTplMenu(); renderEditor();
+  deck.version().then(v => { const t = document.querySelector('.brand .sub'); if (t) t.textContent = 'Masaüstü v' + v; }).catch(() => {});
 })();

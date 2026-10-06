@@ -56,6 +56,7 @@ struct Settings {
   bool mediaOn = true, mediaStay = true, sysOn = true;
   bool widgetsOn = true;                                           // widgets page: 1–4 cards
   uint8_t wcards[4] = { W_CPU, W_GPU, W_CLOCK, W_WEATHER }, wcount = 4;
+  String mediaLaunch = "none";   // desktop-only launch choice; old configs retain HID behaviour
   String mediaPlayer = "auto";   // auto | spotify | music | ytmusic
 };
 
@@ -200,6 +201,8 @@ static void applyConfig(JsonObjectConst c) {
   N.mediaOn = pg["media"]["enabled"] | true; N.sysOn = pg["system"]["enabled"] | true;
   N.mediaPlayer = (const char*)(pg["media"]["player"] | "auto");
   N.mediaStay = pg["media"]["stay"] | true;
+  N.mediaLaunch = (const char*)(pg["media"]["launch"] | "none");
+  if (N.mediaLaunch != "spotify" && N.mediaLaunch != "music" && N.mediaLaunch != "ytmusic") N.mediaLaunch = "none";
 
   freeAppPix();
   S = N;

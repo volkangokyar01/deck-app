@@ -3,6 +3,7 @@
 // forwards home-screen statistics and hosts the settings UI.
 const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog, nativeImage, session, Notification, nativeTheme, net } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const fs = require('fs');
 const cp = require('child_process');
 const media = require('./media');
@@ -14,6 +15,12 @@ const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
 const ESP_VID = 0x303a;
 
+// Use Chromium's OS provider, never its Google network provider (no API key).
+// services/device/public/cpp/device_features.cc: LocationProviderManagerMode.
+if (IS_MAC || IS_WIN) {
+  const features = app.commandLine.getSwitchValue('enable-features');
+  app.commandLine.appendSwitch('enable-features', [features, 'LocationProviderManager:LocationProviderManagerMode/PlatformOnly'].filter(Boolean).join(','));
+}
 app.setName('Volkan Deck');
 const sensorInstaller = createSensorInstaller({ fetch: (...args) => net.fetch(...args), cacheDir: path.join(app.getPath('userData'), 'stats-cache') });
 const stats = createStats({ fetch: (...args) => net.fetch(...args), cacheDir: path.join(app.getPath('userData'), 'stats-cache'), sensorFile: sensorInstaller.sensorFile });
@@ -155,7 +162,10 @@ function setupSerial() {
     const p = portList.find(isEsp);
     callback(p ? p.portId : '');
   });
-  ses.setPermissionCheckHandler((wc, perm) => ['serial', 'notifications', 'clipboard-sanitized-write', 'clipboard-read'].includes(perm));
+  const ownPage = (wc, url) => wc === win?.webContents && url === pathToFileURL(path.join(__dirname, 'index.html')).href;
+  const allowed = ['serial', 'notifications', 'clipboard-sanitized-write', 'clipboard-read'];
+  ses.setPermissionCheckHandler((wc, perm, origin, details) => perm === 'geolocation' ? ownPage(wc, details?.requestingUrl || wc?.getURL()) : allowed.includes(perm));
+  ses.setPermissionRequestHandler((wc, perm, callback, details) => callback(perm === 'geolocation' ? ownPage(wc, details?.requestingUrl || wc?.getURL()) : allowed.includes(perm)));
   ses.setDevicePermissionHandler(d => d.deviceType === 'serial');
   // ask the page to (re)connect every few seconds; userGesture=true satisfies requestPort()
   setInterval(() => {
@@ -308,7 +318,30 @@ async function appInfo(p) {
   let icon = null;
   if (IS_MAC) icon = await macAppIcon(p);
   else { try { icon = (await app.getFileIcon(p, { size: 'large' })).toDataURL(); } catch (e) {} }
-  return { path: p, name: path.basename(p).replace(/\.(app|exe|lnk|url)$/i, ''), icon };
+  const name = path.basename(p).replace(/\.(app|exe|lnk|url)$/i, '');
+  let src = null;
+  if (IS_WIN) {
+    try {
+      if (/\.lnk$/i.test(p)) { const l = shell.readShortcutLink(p); src = { file: path.basename(p), target: l.target, args: l.args || '', workdir: l.cwd || '', searchName: name }; }
+      else if (/\.url$/i.test(p)) { const text = fs.readFileSync(p, 'utf8'); const url = text.match(/^URL=(.+)$/mi)?.[1]?.trim(); if (url) src = { file: path.basename(p), url, searchName: name }; }
+    } catch (_) {}
+  }
+  return { path: p, name, icon, src };
+}
+
+async function launchMediaPlayer(player) {
+  if (player === 'ytmusic') { await shell.openExternal('https://music.youtube.com'); return ok('adres'); }
+  if (IS_MAC) return openMac(['-a', player === 'spotify' ? 'Spotify' : 'Music']);
+  if (IS_WIN && player === 'spotify') {
+    const hit = await findStartApp('Spotify');
+    if (hit) return detached('explorer.exe', ['shell:AppsFolder\\' + hit.AppID]);
+    await shell.openExternal('spotify:'); return ok('adres');
+  }
+  if (IS_WIN && player === 'music') {
+    const hit = await findStartApp('Apple Music');
+    return hit ? detached('explorer.exe', ['shell:AppsFolder\\' + hit.AppID]) : fail('Apple Music kurulu değil');
+  }
+  return fail('Oynatıcı açılamadı');
 }
 
 /* ---------------- IPC ---------------- */
@@ -316,6 +349,14 @@ ipcMain.handle('launch', (ev, e) => launch(e));
 ipcMain.handle('pick-apps', (ev, multi) => pickApps(!!multi));
 ipcMain.handle('app-info', (ev, p) => appInfo(String(p || '')));
 ipcMain.handle('stats-get', (ev, o) => stats.get(o));
+// Old macOS bundles lack CoreLocation usage strings: do not ask there, use IP quietly.
+ipcMain.handle('location-available', () => {
+  if (!IS_MAC) return true;
+  try {
+    const plist = fs.readFileSync(path.join(path.dirname(process.execPath), '..', 'Info.plist'), 'utf8');
+    return /NSLocation(?:WhenInUse)?UsageDescription/.test(plist);
+  } catch (_) { return false; }
+});
 ipcMain.handle('sensor-status', () => sensorInstaller.status());
 ipcMain.handle('sensor-install', () => sensorInstaller.install());
 ipcMain.handle('sensor-uninstall', () => sensorInstaller.uninstall());
@@ -331,7 +372,7 @@ ipcMain.handle('update-repo', () => shell.openExternal(REPO_URL));
 const mediaPaused = () => updater.getState().phase === 'installing';
 ipcMain.handle('host-state', (ev, o) => mediaPaused() ? {} : media.hostState(o || {}).catch(e => ({ error: e.message })));
 ipcMain.handle('media-art', (ev, key) => mediaPaused() ? null : media.mediaArt(String(key || '')));
-ipcMain.handle('media-ctl', (ev, action, target) => mediaPaused() ? { ok: false, error: 'Güncelleme kuruluyor.' } : media.mediaControl(String(action || ''), String(target || 'auto')).catch(e => ({ ok: false, error: e.message })));
+ipcMain.handle('media-ctl', (ev, action, target, options) => mediaPaused() ? { ok: false, error: 'Güncelleme kuruluyor.' } : media.mediaControl(String(action || ''), String(target || 'auto'), { launch: options?.launch, launchPlayer: launchMediaPlayer }).catch(e => ({ ok: false, error: e.message })));
 ipcMain.handle('sys-set', (ev, o) => mediaPaused() ? {} : media.sysSet(o || {}).catch(e => ({ error: e.message })));
 app.on('will-quit', () => { updater.stop(); media.stop(); stats.stop(); });
 
