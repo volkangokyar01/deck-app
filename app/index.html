@@ -342,7 +342,7 @@ details.adv:not([open]) > summary{border-bottom:0}
       <div class="foot">
         <button class="btn sm primary" id="btnBrowse">Bilgisayardan seç…</button>
         <button class="btn sm" id="toggleTpl" aria-expanded="false">Hazır listeden</button>
-        <input type="file" id="pickFiles" multiple accept=".exe,.lnk,.url,.ico,.png" hidden>
+        <input type="file" id="pickFiles" multiple accept=".exe,.lnk,.url,.bat,.cmd,.ps1,.vbs,.ico,.png" hidden>
         <p class="hint">.exe, kısayol (.lnk) veya Steam oyun kısayolu (.url) seç ya da buraya sürükle. İkon ve açma yöntemi otomatik gelir.</p>
       </div>
       <div class="tpl-menu" id="tplMenu" hidden></div>
@@ -1950,10 +1950,11 @@ async function importFiles(files){
   const byBase=new Map(); files.forEach(f=>byBase.set(f.name.toLowerCase(),f));
   const used=new Set(), added=[]; const skipped=[];
   const lnkAndUrl=files.filter(f=>/\.(lnk|url)$/i.test(f.name)), exes=files.filter(f=>/\.exe$/i.test(f.name)), imgs=files.filter(f=>/\.(ico|png)$/i.test(f.name));
+  const scripts=files.filter(f=>/\.(bat|cmd|ps1|vbs)$/i.test(f.name));
   const mk=async(o)=>{
     if(cfg.apps.length>=MAX_APPS){ skipped.push(o.name+" (en fazla "+MAX_APPS+")"); return; }
     if(cfg.apps.some(a=>a.launch.value&&a.launch.value===o.launch.value&&a.launch.method===o.launch.method)){ skipped.push(o.name+" (zaten var)"); return; }
-    const a={id:uid(), name:o.name.slice(0,24), icon:guessIcon(o.name), color:"#64748B", inWheel:true, launch:o.launch, src:o.src};
+    const a={id:uid(), name:o.name.slice(0,24), icon:o.icon||guessIcon(o.name), color:o.color||"#64748B", inWheel:true, launch:o.launch, src:o.src};
     if(o.file&&window.deck){ try{ const p=window.deck.pathForFile(o.file); if(p){ a.targets={win:p,mac:""}; autoFallback(a,"win32",p); } }catch(e){} }
     if(o.iconBlob){ try{ const r=await blobToIcon(o.iconBlob); a.iconData=r.data; a.color=r.color; }catch(e){} }
     cfg.apps.push(a); added.push(a);
@@ -1984,6 +1985,11 @@ async function importFiles(files){
       name=name.replace(/\s*\(.*?\)\s*$/,"").trim()||stripExt(f.name);
       await mk({file:f, name, launch:{method:"search",value:name}, src:{file:f.name,searchName:name}, iconBlob:bestIconIco(pe)});
     }catch(e){ skipped.push(f.name+" ("+e.message+")"); }
+  }
+  // Windows scripts (.bat / .cmd / .ps1 / .vbs): the desktop app runs them; without it the deck has no path to use
+  for(const f of scripts){
+    if(!window.deck){ skipped.push(f.name+" (komut dosyası için masaüstü uygulaması gerekir)"); continue; }
+    await mk({file:f, name:stripExt(f.name), launch:{method:"run",value:f.name}, icon:"terminal", color:"#334155"});
   }
   for(const f of imgs) if(!used.has(f)) skipped.push(f.name+" (eşleşen kısayol yok; ikonu uygulama ayarından ekle)");
   save();
@@ -2941,7 +2947,7 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
       catch (e) { toast('Denenemedi: ' + e.message); } finally { test.disabled = false; }
     } }, 'Dene');
     box.append(el('div', { class: 'field' }, el('span', {}, 'Ne açılsın'), el('div', { class: 'row' }, inp, pick, test)),
-      el('p', { class: 'hint' }, OS === 'darwin' ? '.app seç veya uygulama adı / adres yaz.' : '.exe, .lnk, .url yolu veya adres yaz. Boşsa uygulama adı kullanılır.'),
+      el('p', { class: 'hint' }, OS === 'darwin' ? '.app ya da komut dosyası (.command, .sh, .py, .scpt) seç veya uygulama adı / adres yaz.' : '.exe, .lnk, .url ya da komut dosyası (.bat, .cmd, .ps1, .vbs) yolu veya adres yaz. Boşsa uygulama adı kullanılır.'),
       el('label', { class: 'sw' }, el('span', {}, 'Arka planda aç', el('small', {}, 'Şu an önde olan pencere önde kalır.')), el('input', { type: 'checkbox', id: 'appBg', checked: !!a.bg, onchange: e => { a.bg = e.target.checked; save(); } })));
     slot.append(box);
   }
@@ -2954,7 +2960,7 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
         if (!it || !it.path) continue;
         if (cfg.apps.length >= MAX_APPS) { toast('En fazla ' + MAX_APPS + ' uygulama'); break; }
         if (cfg.apps.some(x => x.targets && x.targets.mac === it.path)) { dup++; continue; }
-        const a = { id: uid(), name: it.name.slice(0, 24), icon: guessIcon(it.name), color: '#64748B', inWheel: true, launch: { method: 'search', value: it.name }, targets: { win: '', mac: it.path } };
+        const a = { id: uid(), name: it.name.slice(0, 24), icon: it.script ? 'terminal' : guessIcon(it.name), color: it.script ? '#334155' : '#64748B', inWheel: true, launch: { method: 'search', value: it.name }, targets: { win: '', mac: it.path } };
         await iconFromDataUrl(a, it.icon);
         cfg.apps.push(a); last = a;
       }
@@ -2970,12 +2976,12 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
     const _import = importFiles;
     importFiles = async function (files) {
       const arr = [...files], apps = [], rest = [];
-      for (const f of arr) { const p = deck.pathForFile(f); if (/\.app\/?$/i.test(p)) apps.push(p.replace(/\/$/, '')); else if (OS === 'darwin' && /\.(exe|lnk|url)$/i.test(f.name)) toast('macOS için .app seç'); else rest.push(f); }
+      for (const f of arr) { const p = deck.pathForFile(f); if (/\.app\/?$/i.test(p) || /\.(command|sh|zsh|bash|py|scpt|applescript)$/i.test(p)) apps.push(p.replace(/\/$/, '')); else if (OS === 'darwin' && /\.(exe|lnk|url)$/i.test(f.name)) toast('macOS için .app seç'); else rest.push(f); }
       if (apps.length) await addMacApps(await Promise.all(apps.map(p => deck.appInfo(p))));
       if (rest.length) return _import(rest);
     };
     const hint = b && b.closest('div') && [...document.querySelectorAll('.hint, p')].find(x => /\.exe, kısayol/.test(x.textContent));
-    if (hint) hint.textContent = 'Uygulamalar klasöründen bir veya birkaç uygulama seç ya da Finder\'dan buraya sürükle. İkon ve ad kendiliğinden gelir.';
+    if (hint) hint.textContent = 'Uygulamalar klasöründen uygulama ya da komut dosyası (.command, .sh, .py, .scpt…) seç veya Finder\'dan buraya sürükle. İkon ve ad kendiliğinden gelir.';
   }
 
   // Host style is applied only to the outgoing device config; the saved config stays stable.

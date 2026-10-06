@@ -504,7 +504,7 @@
       catch (e) { toast('Denenemedi: ' + e.message); } finally { test.disabled = false; }
     } }, 'Dene');
     box.append(el('div', { class: 'field' }, el('span', {}, 'Ne açılsın'), el('div', { class: 'row' }, inp, pick, test)),
-      el('p', { class: 'hint' }, OS === 'darwin' ? '.app seç veya uygulama adı / adres yaz.' : '.exe, .lnk, .url yolu veya adres yaz. Boşsa uygulama adı kullanılır.'),
+      el('p', { class: 'hint' }, OS === 'darwin' ? '.app ya da komut dosyası (.command, .sh, .py, .scpt) seç veya uygulama adı / adres yaz.' : '.exe, .lnk, .url ya da komut dosyası (.bat, .cmd, .ps1, .vbs) yolu veya adres yaz. Boşsa uygulama adı kullanılır.'),
       el('label', { class: 'sw' }, el('span', {}, 'Arka planda aç', el('small', {}, 'Şu an önde olan pencere önde kalır.')), el('input', { type: 'checkbox', id: 'appBg', checked: !!a.bg, onchange: e => { a.bg = e.target.checked; save(); } })));
     slot.append(box);
   }
@@ -517,7 +517,7 @@
         if (!it || !it.path) continue;
         if (cfg.apps.length >= MAX_APPS) { toast('En fazla ' + MAX_APPS + ' uygulama'); break; }
         if (cfg.apps.some(x => x.targets && x.targets.mac === it.path)) { dup++; continue; }
-        const a = { id: uid(), name: it.name.slice(0, 24), icon: guessIcon(it.name), color: '#64748B', inWheel: true, launch: { method: 'search', value: it.name }, targets: { win: '', mac: it.path } };
+        const a = { id: uid(), name: it.name.slice(0, 24), icon: it.script ? 'terminal' : guessIcon(it.name), color: it.script ? '#334155' : '#64748B', inWheel: true, launch: { method: 'search', value: it.name }, targets: { win: '', mac: it.path } };
         await iconFromDataUrl(a, it.icon);
         cfg.apps.push(a); last = a;
       }
@@ -533,12 +533,12 @@
     const _import = importFiles;
     importFiles = async function (files) {
       const arr = [...files], apps = [], rest = [];
-      for (const f of arr) { const p = deck.pathForFile(f); if (/\.app\/?$/i.test(p)) apps.push(p.replace(/\/$/, '')); else if (OS === 'darwin' && /\.(exe|lnk|url)$/i.test(f.name)) toast('macOS için .app seç'); else rest.push(f); }
+      for (const f of arr) { const p = deck.pathForFile(f); if (/\.app\/?$/i.test(p) || /\.(command|sh|zsh|bash|py|scpt|applescript)$/i.test(p)) apps.push(p.replace(/\/$/, '')); else if (OS === 'darwin' && /\.(exe|lnk|url)$/i.test(f.name)) toast('macOS için .app seç'); else rest.push(f); }
       if (apps.length) await addMacApps(await Promise.all(apps.map(p => deck.appInfo(p))));
       if (rest.length) return _import(rest);
     };
     const hint = b && b.closest('div') && [...document.querySelectorAll('.hint, p')].find(x => /\.exe, kısayol/.test(x.textContent));
-    if (hint) hint.textContent = 'Uygulamalar klasöründen bir veya birkaç uygulama seç ya da Finder\'dan buraya sürükle. İkon ve ad kendiliğinden gelir.';
+    if (hint) hint.textContent = 'Uygulamalar klasöründen uygulama ya da komut dosyası (.command, .sh, .py, .scpt…) seç veya Finder\'dan buraya sürükle. İkon ve ad kendiliğinden gelir.';
   }
 
   // Host style is applied only to the outgoing device config; the saved config stays stable.

@@ -235,6 +235,10 @@ async function launchWin(e) {
     if (isUrl(p)) { if (bg) return winStart(p, { bg }); await shell.openExternal(p, { activate: true }); return ok('adres'); }
     if (fs.existsSync(p)) {
       if (/\.exe$/i.test(p)) return bg ? winStart(p, { dir: path.dirname(p), bg }) : detached(p, [], { cwd: path.dirname(p) });
+      // scripts run (not opened in an editor); the console window shows unless "Arka planda aç"
+      if (/\.ps1$/i.test(p)) return detached('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', ...(bg ? ['-WindowStyle', 'Hidden'] : []), '-File', p], { cwd: path.dirname(p), windowsHide: bg });
+      if (/\.(bat|cmd)$/i.test(p)) return winStart(p, { dir: path.dirname(p), bg });
+      if (/\.vbs$/i.test(p)) return detached('wscript.exe', [p], { cwd: path.dirname(p) });
       if (bg) return winStart(p, { dir: path.dirname(p), bg });   // .lnk / .url / documents
       const err = await shell.openPath(p);
       return err ? fail(err) : ok('dosya');
@@ -274,7 +278,16 @@ async function launchMac(e) {
   const m = String(e.mac || '').trim();
   if (m) {
     if (isUrl(m)) return openMac([...g, m]);
-    if (m.startsWith('/')) return fs.existsSync(m) ? openMac([...g, m]) : fail(m + ' bulunamadı');
+    if (m.startsWith('/')) {
+      if (!fs.existsSync(m)) return fail(m + ' bulunamadı');
+      // scripts run in the background (no Terminal window); .command files open in Terminal like Finder does
+      const dir = path.dirname(m);
+      if (/\.(sh|bash)$/i.test(m)) return detached('/bin/bash', [m], { cwd: dir });
+      if (/\.zsh$/i.test(m)) return detached('/bin/zsh', [m], { cwd: dir });
+      if (/\.py$/i.test(m)) return detached('/usr/bin/python3', [m], { cwd: dir });
+      if (/\.(scpt|applescript)$/i.test(m)) return detached('/usr/bin/osascript', [m], { cwd: dir });
+      return openMac([...g, m]);
+    }
     return openMac([...g, '-a', m]);
   }
   const v = String(e.value || '').trim();
@@ -293,12 +306,14 @@ async function launch(e) {
 }
 
 /* ---------------- app picker (native dialog, real paths + icons) ---------------- */
+const WIN_SCRIPTS = ['bat', 'cmd', 'ps1', 'vbs'], MAC_SCRIPTS = ['command', 'sh', 'zsh', 'bash', 'py', 'scpt', 'applescript'];
+const isScript = p => new RegExp('\\.(' + (IS_MAC ? MAC_SCRIPTS : WIN_SCRIPTS).join('|') + ')$', 'i').test(p);
 async function pickApps(multi) {
   const r = await dialog.showOpenDialog(win, {
     title: 'Uygulama seç',
     defaultPath: IS_MAC ? '/Applications' : undefined,
     properties: ['openFile', ...(multi ? ['multiSelections'] : [])],
-    filters: IS_MAC ? [{ name: 'Uygulamalar', extensions: ['app'] }] : [{ name: 'Programlar ve kısayollar', extensions: ['exe', 'lnk', 'url'] }]
+    filters: IS_MAC ? [{ name: 'Uygulamalar ve komut dosyaları', extensions: ['app', ...MAC_SCRIPTS] }] : [{ name: 'Programlar, kısayollar ve komut dosyaları', extensions: ['exe', 'lnk', 'url', ...WIN_SCRIPTS] }]
   });
   if (r.canceled) return [];
   const out = [];
@@ -330,9 +345,10 @@ async function macAppIcon(appPath) {
 }
 async function appInfo(p) {
   let icon = null;
-  if (IS_MAC) icon = await macAppIcon(p);
-  else { try { icon = (await app.getFileIcon(p, { size: 'large' })).toDataURL(); } catch (e) {} }
-  const name = path.basename(p).replace(/\.(app|exe|lnk|url)$/i, '');
+  const script = isScript(p);
+  if (IS_MAC) icon = script ? null : await macAppIcon(p);
+  else if (!script) { try { icon = (await app.getFileIcon(p, { size: 'large' })).toDataURL(); } catch (e) {} }   // a script's icon is the editor's: use the line icon
+  const name = path.basename(p).replace(/\.(app|exe|lnk|url|bat|cmd|ps1|vbs|command|sh|zsh|bash|py|scpt|applescript)$/i, '');
   let src = null;
   if (IS_WIN) {
     try {
@@ -340,7 +356,7 @@ async function appInfo(p) {
       else if (/\.url$/i.test(p)) { const text = fs.readFileSync(p, 'utf8'); const url = text.match(/^URL=(.+)$/mi)?.[1]?.trim(); if (url) src = { file: path.basename(p), url, searchName: name }; }
     } catch (_) {}
   }
-  return { path: p, name, icon, src };
+  return { path: p, name, icon, src, script };
 }
 
 /* ---------------- Outlook: new-mail note on the deck (firmware 1.8.0) ---------------- */
