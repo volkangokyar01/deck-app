@@ -56,7 +56,7 @@ const char* linkName();
 // Bluetooth sending runs on its own task: the main loop (screen, knob) never waits for the radio,
 // and the NimBLE host task is never blocked by us, so its buffers keep draining.
 // One receive buffer per Bluetooth connection (lines from two computers must never mix)
-struct BleLink { volatile uint16_t conn = BLE_HS_CONN_HANDLE_NONE; volatile uint16_t mtu = 23; char* buf = nullptr; volatile size_t len = 0; };
+struct BleLink { volatile uint16_t conn = BLE_HS_CONN_HANDLE_NONE; volatile uint16_t mtu = 23; char* buf = nullptr; size_t have = 0; volatile size_t len = 0; };
 static const int BLE_LINKS = 3;
 static BleLink bleLinks[BLE_LINKS];
 static BleLink* bleLinkOf(uint16_t conn) {
@@ -107,7 +107,8 @@ static void evtSelect() {
 static void evtStatus() {
   if (!hostListening()) return;
   JsonDocument d; d["evt"] = "status"; d["fw"] = FW_VERSION; d["battery"] = batPct; d["charging"] = charging; d["link"] = linkName();
-  d["rx"] = rxBytes; d["lines"] = rxLines; d["psram"] = (uint32_t)(ESP.getPsramSize() / 1024); sendJson(d);
+  d["rx"] = rxBytes; d["lines"] = rxLines; d["psram"] = (uint32_t)(ESP.getPsramSize() / 1024);
+  d["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); d["block"] = (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024); sendJson(d);
 }
 static void evtLaunch(App* a) {
   JsonDocument d; d["evt"] = "launch"; d["app"] = a->id; d["name"] = a->name;
@@ -156,6 +157,7 @@ static void handleLine(char* buf, size_t len) {
     r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleMtuOf(replyConn);
     r["anim"] = anim.frames; r["animLight"] = animLight.frames;   // frames stored per theme (0: none)
     r["reset"] = bootReset; if (bootCrash.length()) r["crash"] = bootCrash;
+    r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); r["block"] = (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024);
     sendJson(r);
   }
   else if (!strcmp(cmd, "get_config")) {
@@ -168,11 +170,15 @@ static void handleLine(char* buf, size_t len) {
     JsonObject c = doc["config"];
     if (c.isNull() || !c["apps"].is<JsonArray>()) { replyErr(id, "bad_config"); return; }
     c.remove("sensors");                           // old settings pages may still send it; nothing reads it any more
+    crumbSet("set_config", "save");
     size_t n = saveConfig(c);
     if (!n) { replyErr(id, "fs"); return; }
     String oldName = S.name;
+    crumbSet("set_config", "apply");
     applyConfig(c);
+    crumbSet("set_config", "prune");
     pruneIcons();
+    crumbSet("set_config", "reply");
     if (S.name != oldName) pendingName = S.name;
     configChangedFlag = true;
     JsonDocument r; r["id"] = id; r["ok"] = true; r["bytes"] = n; sendJson(r);
@@ -216,10 +222,12 @@ static void handleLine(char* buf, size_t len) {
     size_t off = doc["off"] | 0; const char* data = doc["data"] | "";
     if (!animUp) { replyErr(id, "no_begin"); return; }
     if (off != animGot) { replyErr(id, "bad_offset"); return; }
-    static uint8_t chunk[8192];
-    size_t n = b64decode(data, chunk, sizeof(chunk));
-    if (!n || animGot + n > animBytes) { replyErr(id, "bad_data"); return; }
-    if (animUp.write(chunk, n) != n) { animUp.close(); replyErr(id, "fs_full"); return; }
+    uint8_t* chunk = (uint8_t*)bigAlloc(8192);       // only while uploading: no permanent 8 KB buffer
+    if (!chunk) { replyErr(id, "mem"); return; }
+    size_t n = b64decode(data, chunk, 8192);
+    if (!n || animGot + n > animBytes) { free(chunk); replyErr(id, "bad_data"); return; }
+    bool wrote = animUp.write(chunk, n) == n; free(chunk);
+    if (!wrote) { animUp.close(); replyErr(id, "fs_full"); return; }
     animGot += n;
     replyOk(id);
   }
@@ -265,11 +273,13 @@ static void handleLine(char* buf, size_t len) {
   else if (!strcmp(cmd, "media_art")) {
     const char* key = doc["key"] | "";
     if (!*key) { media.hasArt = false; mediaDirty = true; replyOk(id); return; }
-    static uint8_t tmp[8192];
-    if ((doc["w"] | 0) != 64 || (doc["h"] | 0) != 64 || b64decode(doc["data"] | "", tmp, sizeof(tmp)) != sizeof(tmp)) { replyErr(id, "bad_art"); return; }
-    if (!media.art) media.art = (uint16_t*)bigAlloc(sizeof(tmp));
+    const size_t ART = 64 * 64 * 2;               // decoded straight into the cover buffer (no second 8 KB copy)
+    if ((doc["w"] | 0) != 64 || (doc["h"] | 0) != 64) { replyErr(id, "bad_art"); return; }
+    if (!media.art) media.art = (uint16_t*)bigAlloc(ART);
     if (!media.art) { replyErr(id, "bad_art"); return; }
-    memcpy(media.art, tmp, sizeof(tmp)); media.artKey = key; media.hasArt = true; mediaDirty = true; replyOk(id);
+    media.hasArt = false;
+    if (b64decode(doc["data"] | "", (uint8_t*)media.art, ART) != ART) { mediaDirty = true; replyErr(id, "bad_art"); return; }
+    media.artKey = key; media.hasArt = true; mediaDirty = true; replyOk(id);
   }
   else if (!strcmp(cmd, "sys")) {                // volume / brightness, pushed by the desktop app
     uint32_t now = millis();
@@ -306,10 +316,41 @@ static QueueHandle_t lineQ = nullptr;
 
 // Reads USB serial on its own task so drawing the screen never stalls input.
 
+// Line buffers grow only while a long line (config, icon, cover) arrives and shrink back afterwards:
+// without PSRAM a permanent 24 KB per buffer left too little heap for "Cihaza yaz".
+static const size_t LINEBUF_SMALL = 1024;
+static size_t lineCap() { return psramFound() ? LINEBUF_MAX : 24 * 1024; }
+static bool lineGrow(char*& buf, size_t& have, size_t need) {
+  if (need <= have) return true;
+  size_t cap = lineCap(); if (need > cap) return false;
+  size_t n = min(cap, max(need, have * 2));
+  char* p = (char*)(psramFound() ? ps_realloc(buf, n) : realloc(buf, n));
+  if (!p) return false;
+  buf = p; have = n; return true;
+}
+// Hand a finished line to the queue without copying it (no second buffer of the same size).
+static bool lineTake(char*& buf, size_t& have, size_t len, uint8_t src, uint16_t conn, TickType_t wait) {
+  LineItem it; it.n = len; it.src = src; it.conn = conn;
+  buf[len] = 0;
+  if (have > LINEBUF_SMALL) {
+    size_t oldHave = have;
+    it.p = buf; buf = nullptr; have = 0;
+    if (!lineGrow(buf, have, LINEBUF_SMALL)) { buf = it.p; have = oldHave; return false; }   // keep the old one
+  } else {
+    it.p = (char*)bigAlloc(len + 1); if (!it.p) return false;
+    memcpy(it.p, buf, len + 1);
+  }
+  if (xQueueSend(lineQ, &it, wait) != pdTRUE) { free(it.p); return false; }
+  return true;
+}
+static void lineShrink(char*& buf, size_t& have) {
+  if (have <= LINEBUF_SMALL * 4) return;
+  char* p = (char*)realloc(buf, LINEBUF_SMALL); if (p) { buf = p; have = LINEBUF_SMALL; }
+}
+
 static void serialTask(void*) {
-  size_t cap = psramFound() ? LINEBUF_MAX : 24 * 1024;
-  char* buf = (char*)bigAlloc(cap);
-  while (!buf) { vTaskDelay(100); buf = (char*)bigAlloc(cap = 16 * 1024); } // also fits a 64x64 media_art line
+  size_t have = 0; char* buf = nullptr;
+  while (!lineGrow(buf, have, LINEBUF_SMALL)) vTaskDelay(100);
   size_t len = 0;
   for (;;) {
     int n = Serial.available();
@@ -318,39 +359,34 @@ static void serialTask(void*) {
       int c = Serial.read(); if (c < 0) break;
       rxBytes++;
       if (c == '\n') {
-        if (len) {
-          rxLines++;
-          LineItem it; it.p = (char*)bigAlloc(len + 1); it.n = len; it.src = SRC_USB; it.conn = BLE_HS_CONN_HANDLE_NONE;
-          if (it.p) { memcpy(it.p, buf, len); it.p[len] = 0; xQueueSend(lineQ, &it, portMAX_DELAY); }
-        }
-        len = 0;
-      } else if (c != '\r' && len < cap - 1) buf[len++] = (char)c;
+        if (len) { rxLines++; lineTake(buf, have, len, SRC_USB, BLE_HS_CONN_HANDLE_NONE, portMAX_DELAY); }
+        len = 0; lineShrink(buf, have);
+      } else if (c != '\r' && lineGrow(buf, have, len + 2)) buf[len++] = (char)c;
       usbPartial = len != 0;
     }
   }
 }
 
 // Bluetooth data channel: called on the NimBLE host task with each written chunk
-static size_t bleCap = 0;
 static void bleRx(uint16_t conn, uint16_t mtu, const uint8_t* p, size_t n) {
   BleLink* L = bleLinkOf(conn);
   if (!L) { L = bleLinkOf(BLE_HS_CONN_HANDLE_NONE); if (!L) return; L->len = 0; L->conn = conn; }
   L->mtu = mtu;
-  if (!bleCap) bleCap = psramFound() ? LINEBUF_MAX : 24 * 1024;
-  if (!L->buf) { L->buf = (char*)bigAlloc(bleCap); if (!L->buf) return; }
   for (size_t i = 0; i < n; i++) {
     char c = (char)p[i]; rxBytes++;
     if (c == '\n') {
       if (L->len) {
         rxLines++;
-        LineItem it; it.p = (char*)bigAlloc(L->len + 1); it.n = L->len; it.src = SRC_BLE; it.conn = conn;
-        if (it.p) { memcpy(it.p, L->buf, L->len); it.p[L->len] = 0; if (xQueueSend(lineQ, &it, 0) != pdTRUE) free(it.p); }   // never block the BLE host task
+        lineTake(L->buf, L->have, L->len, SRC_BLE, conn, 0);   // never block the BLE host task
       }
-      L->len = 0;
-    } else if (c != '\r' && L->len < bleCap - 1) L->buf[L->len++] = c;
+      L->len = 0; lineShrink(L->buf, L->have);
+    } else if (c != '\r' && lineGrow(L->buf, L->have, L->len + 2)) L->buf[L->len++] = c;
   }
 }
-static void bleDrop(uint16_t conn) { BleLink* L = bleLinkOf(conn); if (L) { L->len = 0; L->conn = BLE_HS_CONN_HANDLE_NONE; } }   // keeps the buffer for reuse
+static void bleDrop(uint16_t conn) {
+  BleLink* L = bleLinkOf(conn);
+  if (L) { L->len = 0; free(L->buf); L->buf = nullptr; L->have = 0; L->conn = BLE_HS_CONN_HANDLE_NONE; }
+}
 static bool bleRxPartial() { for (auto& L : bleLinks) if (L.len) return true; return false; }
 
 static void protoBegin() {

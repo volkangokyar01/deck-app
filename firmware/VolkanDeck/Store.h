@@ -144,6 +144,9 @@ static void loadAppIcons() {
 }
 
 static void applyConfig(JsonObjectConst c) {
+  // Without PSRAM the heap is tight: give the icon pixels (3.2 KB per app) back before building the
+  // new settings, and move instead of copy. A failed vector allocation aborts the whole firmware.
+  freeAppPix();
   Settings N;
   JsonObjectConst d = c["device"];
   N.name = (const char*)(d["name"] | "Volkan Deck");
@@ -212,8 +215,7 @@ static void applyConfig(JsonObjectConst c) {
   N.mediaLaunch = (const char*)(pg["media"]["launch"] | "none");
   if (N.mediaLaunch != "spotify" && N.mediaLaunch != "music" && N.mediaLaunch != "ytmusic") N.mediaLaunch = "none";
 
-  freeAppPix();
-  S = N;
+  S = std::move(N);
   loadAppIcons();
 }
 

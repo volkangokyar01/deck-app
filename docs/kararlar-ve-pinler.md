@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.8.1)
+## Firmware (v1.8.2)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -176,3 +176,9 @@ Aynı sürümde:
 - Bluetooth'ta her bağlantının kendi alma tamponu var; yanıt komutun geldiği bağlantıya, olaylar masaüstü uygulamasının bağlantısına (son `companion`) gider. Önceden iki bilgisayar (ör. Mac Bluetooth'ta, Windows yazarken) aynı tampona yazınca satırlar karışabiliyordu.
 - Kırıntı: RTC_NOINIT'te son komut / aşama (`cmd:<ad>`, `apply`, `input`, `render`). Panik / watchdog / brownout sonrası `hello` yanıtında `crash` ("panic @ cmd:set_config" gibi) ve her zaman `reset`; uygulama günlüğe yazar ve bildirir.
 - Uygulama her zaman önce USB'yi dener; `getPorts()` boşsa ana sürecin seçicisiz `requestPort` yanıtıyla kabloyu algılar. Bluetooth yalnız kablo yokken.
+
+## 2026-10-06 — Bellek: "Cihaza yaz" panik veriyordu (firmware 1.8.2)
+
+1.8.1'in kırıntısı Windows'ta `crash: "panic @ cmd:set_config"` gösterdi; aynı kayıtta `psram: 0`. Kartta PSRAM başlamıyor (qio_opi yapılandırması, `CONFIG_SPIRAM_IGNORE_NOTFOUND`), her şey ~320 KB iç RAM'de: 108 KB ekran sprite'ı, NimBLE, uygulama ikonları (uygulama başına 3,2 KB), kalıcı 24 KB seri tampon, 1.6.0'dan beri Bluetooth bağlantısı başına 24 KB tampon, 16 KB sabit dizi. `set_config` sırasında yeni `Settings` kurulurken eski ikonlar hâlâ bellekteydi ve `S = N` kopyası ikinci bir vektör ayırıyordu; vektör ayırması başarısız olunca firmware abort ediyordu.
+
+Değişiklikler: `applyConfig` ikonları en başta bırakır ve `S = std::move(N)` kullanır; seri ve Bluetooth satır tamponları 1 KB'tan başlayıp yalnız uzun satırda büyür, satır bitince küçülür ve kuyruğa kopyalanmadan devredilir; Bluetooth bağlantısı kopunca tamponu serbest kalır; `anim_data` için 8 KB yalnız yükleme sırasında ayrılır, kapak doğrudan kapak tamponuna çözülür. Global RAM 90,8 KB → 74,4 KB. `status` ve `hello` artık `heap` / `block` (KB) bildirir; `set_config` kırıntısı aşama gösterir (save / apply / prune / reply). PSRAM'in neden başlamadığı donanımda ayrıca incelenmeli.
