@@ -7,7 +7,7 @@ Bu dosya, `main`'e gönderilen her değişikliğin nasıl hazırlanacağını ta
 | Tür | Değişen yerler | Kullanıcıya güncelleme düşer mi? |
 |---|---|---|
 | **uygulama** | `app/` (ör. `main.js`, `stats.js`, `media.js`, `companion.js`) | Evet |
-| **ayar sayfası** | `web/body.html`, `web/head.css.html` → `build.py` ile `app/index.html` | Evet |
+| **ayar sayfası** | `web/body.html`, `web/head.css.html`, `web/fonts/`, `web/vendor/` → `build.py` ile `app/index.html` | Evet |
 | **firmware** | `firmware/VolkanDeck/`, `firmware/bin/` → `embed_firmware.py` + `build.py` ile `app/index.html` | Evet (gömüldüğü için) |
 | **kurulum** | `installer/` | Electron sürümü (`V=`) değiştiyse "kurulum betiğini yeniden çalıştır" uyarısı; değişmediyse hayır |
 | **belge** | `*.md`, `docs/` | Hayır |

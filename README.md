@@ -6,7 +6,7 @@ LilyGO T-Display-S3 tabanlı, kendin yap (DIY) bir stream deck. Döndürgeç ve 
 |---|---|
 | `firmware/VolkanDeck/` | ESP32-S3 firmware kaynağı (Arduino), **v1.6.3** |
 | `firmware/bin/` | Derlenmiş firmware (`flash_args` adresleriyle) |
-| `web/` | Ayar sayfası kaynağı (`head.css.html` + `body.html`) ve derlenmiş `StreamDeck-Ayar.html` |
+| `web/` | Ayar sayfası kaynağı (`head.css.html` + `body.html`), yazı tipleri (`fonts/`), firmware yükleyicisi (`vendor/esptool-js/`) ve derlenmiş `StreamDeck-Ayar.html` |
 | `app/` | Masaüstü uygulaması (Electron 44.5.1, Windows + macOS); `media.js` + `win-helper.ps1` medya, ses ve parlaklık |
 | `installer/` | `Windows-Kur.bat`, `Mac-Kur.command` ve kurulum notu |
 | `case/v4/` | Kasa v4 (+ arka kapak v5): parametrik kaynak, STL dosyaları, Bambu Studio 3MF projesi |
@@ -60,6 +60,7 @@ python3 tools/build.py            # → web/StreamDeck-Ayar.html ve app/index.ht
 ```
 
 - `app/index.html` dosyası üretilir, elle düzenlenmez. Sayfanın kendisi `web/body.html` dosyasından gelir.
+- Sayfa internetsiz çalışır: `build.py` yazı tiplerini (`web/fonts/fonts.css` + woff2, SIL OFL) ve firmware yükleyicisini (`web/vendor/esptool-js/bundle.js`, esptool-js 0.7.0, Apache-2.0) sayfanın içine gömer. Bu dosyalar değişirse `build.py` yeniden çalıştırılır.
 - Masaüstüne özel eklemeler `app/companion.js` dosyasında. Derleme bu kodu sayfanın IIFE'sinin içine yerleştirir.
 - Uygulamanın ana süreci `app/main.js` dosyası. Seri port seçimi, uygulama başlatma, tepsi/menü çubuğu burada; ana sayfa verileri `app/stats.js` içinde.
 

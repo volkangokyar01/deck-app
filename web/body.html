@@ -49,6 +49,7 @@ nav.tabs .tab-dev{margin-left:auto;font-size:12.5px}
 .subtabs button{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:12.5px;color:var(--muted)}
 .subtabs button[aria-selected="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 .devhead{display:grid;gap:10px;margin-bottom:14px}
+#view-proto{grid-template-columns:repeat(auto-fit,minmax(min(100%,540px),1fr))}
 /* Device settings: cards in two balanced columns, firmware / app update on the side */
 .devlayout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;align-items:start}
 @media (max-width:1100px){.devlayout{grid-template-columns:minmax(0,1fr)}}
@@ -317,64 +318,100 @@ details.adv:not([open]) > summary{border-bottom:0}
   </div>
 
   <div class="sub" id="sub-proto" hidden>
-  <div id="view-proto">
-  <div class="cols">
+  <div id="view-proto" class="cols">
     <div class="panel">
-      <div class="panel-h"><h2>USB seri komutları</h2><span class="eyebrow mono">115200 baud · satır başına 1 JSON</span></div>
+      <div class="panel-h"><h2>Komutlar</h2><span class="eyebrow mono">USB 115200 baud veya Bluetooth · satır başına 1 JSON</span></div>
       <div class="panel-b">
 <pre>→ {"id":1,"cmd":"hello"}
-← {"id":1,"ok":true,"fw":"1.5.2","name":"Volkan Deck",
-   "battery":84,"charging":false,"link":"usb"}
+← {"id":1,"ok":true,"fw":"<span class="fwv">1.6.3</span>","name":"Volkan Deck",
+   "battery":84,"charging":false,"link":"usb","psram":8192,
+   "via":"usb"}                     // Bluetooth'ta "via":"ble","mtu":247
 
 → {"id":2,"cmd":"get_config"}
 ← {"id":2,"ok":true,"config":{…}}
 
 → {"id":3,"cmd":"set_config","config":{…}}
-← {"id":3,"ok":true,"bytes":1834}
+← {"id":3,"ok":true,"bytes":1834}   // hata: "bad_config", "fs"
 
-→ {"id":4,"cmd":"launch","launch":{…}}   // test
-← {"id":4,"ok":true}
+→ {"id":4,"cmd":"icon_set","app":"a3f9k","w":40,"h":40,
+   "data":"&lt;base64 RGB565, 3200 bayt&gt;"}
 
-← {"evt":"input","control":"cw"}          // cw ccw press a b
-← {"evt":"select","app":"cs2"}            // döndürgeçle seçilen
-← {"evt":"status","battery":83,"charging":false,"link":"ble"}
+→ {"id":5,"cmd":"companion","os":"win","mediaLaunch":true,"ack":true}
+← {"id":5,"ok":true,"fw":"<span class="fwv">1.6.3</span>"}   // yanıt yalnız "ack" varsa
 
-→ {"cmd":"stats","cpu":{"name":"Core Ultra 5 245KF","temp":54.2,
+→ {"id":6,"cmd":"launch","launch":{…}}   // test: klavyeyle açar
+← {"id":6,"ok":true}                     // bağlantı yoksa "no_host"
+
+→ {"id":7,"cmd":"anim_begin","w":128,"h":128,"frames":24,
+   "fps":15,"bytes":786432,"delays":[80,80,…]}
+→ {"id":8,"cmd":"anim_data","off":0,"data":"&lt;base64, ≤6144 bayt&gt;"}
+→ {"id":9,"cmd":"anim_end","bytes":786432}
+← {"id":9,"ok":true,"mode":"ram"}       // ya da "flash"
+
+→ {"id":10,"cmd":"dfu"}       // yalnız USB: yükleme moduna geçer
+→ {"id":11,"cmd":"restart"}</pre>
+        <p class="hint">Yanıtlar komutun geldiği yoldan (USB ya da Bluetooth) döner; bilinmeyen komuta <span class="mono">"unknown_cmd"</span>. Masaüstü uygulaması <span class="mono">companion</span>'ı yaklaşık 2 sn'de bir gönderir; cihaz son 6 sn içinde alırsa uygulamayı “bağlı” sayar.</p>
+        <p class="hint">Animasyon: RGB565, küçük-endian, kareler art arda; <span class="mono">delays</span> isteğe bağlı kare süreleri (ms). Cihaz <span class="mono">/anim.bin</span> olarak saklar. İkonlar <span class="mono">set_config</span>'ten sonra gelir (40×40, #1E232C zemine oturtulmuş); ikonlu uygulamada <span class="mono">"img":true</span>.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h2>Bilgisayardan gelen veri</h2><span class="eyebrow">Yanıt beklenmez</span></div>
+      <div class="panel-b">
+<pre>→ {"cmd":"stats","cpu":{"name":"Core Ultra 5 245KF","temp":54.2,
    "load":18,"power":42.5,"clock":4.8},"gpu":{…,"fan":42,"vram":5.2,
    "vramTotal":12},"net":{"down":12.4,"up":1.1,"ping":18},
    "weather":{"city":"İstanbul","temp":17.5,"code":3,"hi":19,"lo":12,
    "rain":40},"fx":{"usd":41.27,"eur":48.03,"usdChg":0.21,"eurChg":-0.05},
-   "time":{"epoch":1791205000,"tz":10800}}   // yanıt yok, v1.4.0+
+   "time":{"epoch":1791205000,"tz":10800}}
 
-→ {"id":7,"cmd":"anim_begin","w":128,"h":128,"frames":24,
-   "fps":15,"bytes":786432}
-→ {"id":8,"cmd":"anim_data","off":0,"data":"&lt;base64, ≤6144 bayt&gt;"}
-→ {"id":…,"cmd":"anim_end","bytes":786432}
+→ {"cmd":"media","player":"spotify","name":"Spotify","title":"…",
+   "artist":"…","playing":true,"pos":72.4,"dur":214,
+   "ctl":"app","artKey":"…"}           // ctl: "app" ya da "keys"
 
-→ {"id":…,"cmd":"icon_set","app":"a3f9k","w":40,"h":40,
-   "data":"&lt;base64 RGB565, 3200 bayt&gt;"}</pre>
-        <p class="hint">Animasyon: RGB565, küçük-endian, kareler art arda; cihaz <span class="mono">/anim.bin</span> olarak saklar. Uygulama ikonları <span class="mono">set_config</span>'ten sonra <span class="mono">icon_set</span> ile ayrı gelir (40×40, #1E232C zemine oturtulmuş); ikonlu uygulamada <span class="mono">"img":true</span> olur.</p>
+→ {"cmd":"media_art","key":"…","w":64,"h":64,
+   "data":"&lt;base64 RGB565, 8192 bayt&gt;"}   // "key":"" kapağı siler
+
+→ {"cmd":"sys","vol":45,"mute":false,"bright":70,"micMute":false}</pre>
+        <p class="hint"><span class="mono">stats</span>: her grup isteğe bağlı, her alan <span class="mono">null</span> olabilir. Hız Mbit/s, ping ms, hava kodu WMO, kur TL, değişim önceki güne göre %. Cihaz cpu/gpu/net için 5 sn, hava ve kur için 2 saat eski veriyi “-” gösterir. Ana sayfa kartları <span class="mono">home.cards</span>: cpu, gpu, clock, weather, fx, net.</p>
+        <p class="hint">İki bilgisayar aynı anda bağlıysa ekran verisini USB'deki bilgisayar besler; Bluetooth'tan gelen <span class="mono">stats</span> / <span class="mono">media</span> / <span class="mono">sys</span> yok sayılır.</p>
       </div>
     </div>
     <div class="panel">
-      <div class="panel-h"><h2>Açma yöntemleri</h2></div>
+      <div class="panel-h"><h2>Olaylar</h2><span class="eyebrow">Cihaz → bilgisayar</span></div>
       <div class="panel-b">
-<pre>{"method":"run","value":"steam://rungameid/730"}
-  → Win+R · bekle · yaz · Enter
-
-{"method":"search","value":"OBS Studio"}
-  → Win · bekle · yaz · bekle · Enter
-
-{"method":"taskbar","value":3}
-  → Win+3 (görev çubuğundaki 3. sabit uygulama)
-
-{"method":"key","mods":["ctrl","shift"],"key":"ESC"}
-  → kısayol</pre>
-        <p class="hint">Ana sayfa kartları (<span class="mono">home.cards</span>: cpu, gpu, clock, weather, fx, net) verisini masaüstü uygulaması <span class="mono">stats</span> ile gönderir; her grup isteğe bağlı, her alan <span class="mono">null</span> olabilir. Hız: Mbit/s, ping: ms, hava kodu: WMO, kur: TL, değişim: önceki güne göre %. Cihaz cpu/gpu/net için 5 sn, hava ve kur için 2 saat eski veriyi “-” gösterir. Ana sayfa listedeki kimliği <span class="mono">"home"</span>'dur.</p>
-        <p class="hint">Bekleme süresi <span class="mono">device.launchDelay</span> (ms). <span class="mono">device.layout</span> <span class="mono">"tr_q"</span> ise firmware yazılan metni Türkçe Q düzenine göre çevirir. İkon kimlikleri: <span class="mono" id="iconIds"></span>.</p>
+<pre>← {"evt":"input","control":"cw"}        // cw ccw press a b
+← {"evt":"select","app":"home"}         // home widgets media system
+                                        // ya da uygulama kimliği
+← {"evt":"launch","app":"a3f9k","name":"Discord","method":"run",
+   "value":"discord://","path":"C:\\…\\Discord.lnk",
+   "mac":"/Applications/Discord.app"}
+← {"evt":"media","action":"play_pause","player":"auto"}
+                                        // play_pause next prev select
+← {"evt":"sys","vol":46}                // vol bright: 0–100
+                                        // mute micMute: true / false
+← {"evt":"status","fw":"<span class="fwv">1.6.3</span>","battery":83,"charging":false,
+   "link":"ble","rx":1834,"lines":12,"psram":8192}</pre>
+        <p class="hint">Olaylar masaüstü uygulamasının bağlı olduğu yola gider (önce USB).</p>
       </div>
     </div>
-  </div>
+    <div class="panel">
+      <div class="panel-h"><h2>Uygulama açma</h2></div>
+      <div class="panel-b">
+        <p class="hint">Masaüstü uygulaması bağlıyken cihaz tuşa basılınca <span class="mono">launch</span> olayı gönderir; uygulamayı bilgisayar kendi sistem çağrısıyla açar (<span class="mono">path</span> Windows, <span class="mono">mac</span> macOS hedefi). Klavye yöntemleri yalnız yedek yoldur: masaüstü uygulaması kapalıyken ve <span class="mono">device.kbFallback</span> açıksa ya da <span class="mono">launch</span> komutuyla denenirken kullanılır. <span class="mono">key</span> yöntemi her zaman kısayol olarak gönderilir.</p>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Yöntem</th><th>Klavyeyle açarken</th></tr></thead>
+          <tbody>
+            <tr data-os="win"><td class="mono">run</td><td>Win+R · bekle · <span class="mono">value</span> yaz · Enter</td></tr>
+            <tr data-os="win"><td class="mono">search</td><td>Win · bekle · <span class="mono">value</span> yaz · bekle · Enter</td></tr>
+            <tr data-os="win"><td class="mono">taskbar</td><td>Win+1…9 (görev çubuğundaki sabit uygulama)</td></tr>
+            <tr data-os="mac"><td class="mono">run / taskbar</td><td>Cmd+Space · bekle · uygulama adını yaz · Enter</td></tr>
+            <tr data-os="mac"><td class="mono">search</td><td>Cmd+Space · bekle · <span class="mono">value</span> yaz · Enter</td></tr>
+            <tr><td class="mono">key</td><td>Kısayol: <span class="mono">"mods":["ctrl","shift"],"key":"ESC"</span> (macOS'ta <span class="mono">win</span> = Cmd)</td></tr>
+          </tbody>
+        </table></div>
+        <p class="hint">Bekleme <span class="mono">device.launchDelay</span> (ms). <span class="mono">device.layout</span> <span class="mono">"tr_q"</span> ise yazılan metin Türkçe Q düzenine göre çevrilir. İkon kimlikleri: <span class="mono" id="iconIds"></span>.</p>
+      </div>
+    </div>
   </div>
   </div>
 </section>
@@ -1724,12 +1761,19 @@ $("#pickFiles").onchange=e=>{ importFiles(e.target.files); e.target.value=""; };
 
 /* ---------- Firmware flasher (esptool-js) ---------- */
 let fwNeeded=false, esptoolP=null;
-const ESPTOOL_URL="https://cdn.jsdelivr.net/npm/esptool-js@0.7.0/bundle.js";
-function loadEsptool(){ if(!esptoolP) esptoolP=import(ESPTOOL_URL); return esptoolP; }
+// esptool-js 0.7.0 (Apache-2.0) is embedded by tools/build.py from web/vendor/esptool-js; the CDN is only a fallback.
+const ESPTOOL_B64=/*@ESPTOOL@*/null, ESPTOOL_URL="https://cdn.jsdelivr.net/npm/esptool-js@0.7.0/bundle.js";
+function loadEsptool(){
+  if(!esptoolP) esptoolP=(ESPTOOL_B64?import("data:text/javascript;base64,"+ESPTOOL_B64):Promise.reject(new Error("gömülü yükleyici yok")))
+    .catch(()=>import(ESPTOOL_URL))
+    .catch(e=>{ esptoolP=null; throw new Error("Yükleyici açılamadı ("+(e.message||e)+")"); });
+  return esptoolP;
+}
 function fwLog(m){ const L=$("#fwLog"); L.hidden=false; L.textContent+=m; L.scrollTop=L.scrollHeight; }
 function fwState(m,cls=""){ const s=$("#fwState"); s.textContent=m; s.className="fwstate "+cls; }
 function b64bytes(b){ const s=atob(b), u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u; }
 $("#fwVer").textContent = "Paketteki sürüm v"+FIRMWARE.version;
+document.querySelectorAll(".fwv").forEach(e=>e.textContent=FIRMWARE.version);   // protocol examples follow the bundled firmware
 /* After flashing: leave download mode for good and restart into the new firmware.
    - The "dfu" command reboots via a forced-download flag that survives resets; clear it first,
      otherwise every reset lands in the bootloader again.
@@ -1796,7 +1840,7 @@ $("#btnFlash").onclick=async()=>{
   flashTo(fport);
 };
 $("#btnFlash2").onclick=async()=>{ try{ const p=await navigator.serial.requestPort({filters:[{usbVendorId:ESP_VID}]}); flashTo(p); }catch(e){ if(e.name!=="NotFoundError") fwState("Port seçilemedi: "+e.message,"err"); } };
-if (location.protocol==="file:" && "serial" in navigator) loadEsptool().catch(()=>{});
+if (!ESPTOOL_B64 && location.protocol==="file:" && "serial" in navigator) loadEsptool().catch(()=>{});
 // Reconnect by itself to a board that was already allowed (on load and when it is plugged in)
 if ("serial" in navigator){
   const tryAuto=()=>{ if(!port) connect(true).catch(()=>{}); };

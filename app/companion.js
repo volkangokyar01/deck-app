@@ -5,10 +5,8 @@
   const HOST = OS === 'darwin' ? 'mac' : 'win';
   const MIN_FW = '1.2.0';
   document.title = 'Volkan Deck';
-  if (OS === 'darwin') {
-    const example = document.querySelector('#view-proto .panel:nth-child(2) pre');
-    if (example) example.textContent = '{"method":"search","value":"Spotify"}\n  → Cmd+Space · bekle · yaz · Enter\n\n{"method":"key","mods":["win"],"key":"SPACE"}\n  → Cmd+Space';
-  }
+  // protocol page: keyboard fallbacks of this computer only
+  document.querySelectorAll('#view-proto [data-os]').forEach(e => { e.hidden = e.dataset.os !== HOST; });
   if (OS === 'darwin') {
     METHODS[0][1] = 'Uygulama adıyla aç'; METHODS[0][2] = 'Cihaz Spotlight ile uygulamanın adını arar.';
     METHODS[1][1] = 'Spotlight ile ara'; METHODS[1][2] = "Cihaz Spotlight'a adı yazar ve Enter'a basar.";
