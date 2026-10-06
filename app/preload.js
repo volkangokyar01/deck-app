@@ -27,5 +27,9 @@ contextBridge.exposeInMainWorld('deck', {
   mediaArt: (key, waitMs) => ipcRenderer.invoke('media-art', key, waitMs),
   mediaControl: (action, target, options) => ipcRenderer.invoke('media-ctl', action, target, options),
   sysSet: o => ipcRenderer.invoke('sys-set', o),
+  mailSettings: patch => ipcRenderer.invoke('mail-settings', patch),
+  openOutlook: () => ipcRenderer.invoke('mail-open'),
+  onMail: fn => { const listener = (ev, m) => fn(m); ipcRenderer.on('mail', listener); return () => ipcRenderer.removeListener('mail', listener); },
+  onMailState: fn => { const listener = (ev, s) => fn(s); ipcRenderer.on('mail-state', listener); return () => ipcRenderer.removeListener('mail-state', listener); },
   pathForFile: f => { try { return webUtils.getPathForFile(f) || ''; } catch (e) { return ''; } }
 });

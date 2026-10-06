@@ -325,6 +325,26 @@ static void applySideEffects() {
   dirty = true;
 }
 
+/* ---------- new mail note (1.8.0) ---------- */
+// The note wakes the screen without counting as a user touch (idle timers keep running behind it).
+static void mailWake() {
+  ecoSuspend();
+  if (!screenOff && dimmed) { dimmed = false; setBright(S.brightness); }
+  dirty = true;
+}
+static void mailClose() { mailNote.until = 0; dirty = true; }
+// While the note is on screen it takes the knob, its press and A / B: press, A or B opens Outlook on the
+// computer, turning or a long press closes it. Power and restart keys stay with handleInput().
+static void mailInput() {
+  int steps; noInterrupts(); steps = encSteps; encSteps = 0; interrupts();
+  int e = bEnc.poll(700), a = bA.poll(0), b = bB.poll(0);
+  if (e == 1 || a == 1 || b == 1) {
+    ecoExit(); mailClose();
+    if (companionOn()) { evtMail("open"); toast("Outlook açılıyor"); }
+    else toast("Masaüstü uygulaması kapalı");
+  } else if (steps || e == 2) { ecoExit(); mailClose(); }
+}
+
 /* ---------- setup / loop ---------- */
 void setup() {
   if (offMarker == OFF_MAGIC && esp_reset_reason() != ESP_RST_POWERON && esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_EXT0) offSleep();
@@ -368,6 +388,8 @@ void loop() {
   protoPoll();
   if (configChangedFlag) { configChangedFlag = false; applySideEffects(); }
   if (companionNew) { companionNew = false; toast("Masaüstü uygulaması bağlı"); dirty = true; evtMedia("select"); }
+  if (mailNew) { mailNew = false; mailWake(); }
+  if (mailActive() && !screenOff) mailInput();
   handleInput();
 
   uint32_t now = millis();
@@ -400,16 +422,19 @@ void loop() {
   int dimLevel = onCable ? S.dimLevelUsb : S.dimLevel;
   ecoAnimFps = min(S.animFps, onCable ? S.ecoFpsUsb : S.ecoFps);
   int ecoLimit = onCable ? S.ecoAfterUsb : S.ecoAfter;
-  bool ecoBlocked = protoTransferBusy() || adjust || (toastUntil && now <= toastUntil);
-  if (ecoActive && (ecoLimit <= 0 || adjust || (toastUntil && now <= toastUntil))) ecoSuspend();
+  bool ecoBlocked = protoTransferBusy() || adjust || (toastUntil && now <= toastUntil) || mailActive();
+  if (ecoActive && (ecoLimit <= 0 || adjust || (toastUntil && now <= toastUntil) || mailActive())) ecoSuspend();
   if (!ecoActive && !ecoBlocked && ecoLimit > 0 && idle >= (uint32_t)ecoLimit) ecoEnter();
   if (dimmed && dimLimit <= 0) { dimmed = false; setBright(S.brightness); }          // switched to a source with dimming off
-  if (!screenOff && !dimmed && dimLimit > 0 && idle >= (uint32_t)dimLimit) { dimmed = true; }
+  if (!screenOff && !dimmed && dimLimit > 0 && idle >= (uint32_t)dimLimit && !mailActive()) { dimmed = true; }
   if (!screenOff && dimmed) setBright(max(5, S.brightness * dimLevel / 100));
-  if (sleepLimit > 0 && idle >= (uint32_t)sleepLimit) goSleep();
+  if (sleepLimit > 0 && idle >= (uint32_t)sleepLimit && !mailActive()) goSleep();
 
   onHome = !items.empty() && items[sel].home;
-  bool animate = onHome && !screenOff && S.animKind != A_NONE;
+  bool mailOn = mailActive();
+  static bool mailWas = false;
+  if (mailOn != mailWas) { mailWas = mailOn; dirty = true; }   // note shown or gone: redraw the whole screen
+  bool animate = onHome && !screenOff && S.animKind != A_NONE && !mailOn;
   static int64_t clockMinute = -1;
   int64_t minute = st.timeAt ? (st.epoch + st.tz + (int64_t)((now - st.timeAt) / 1000)) / 60 : -1;
   bool clockChanged = minute != clockMinute; clockMinute = minute;
@@ -419,7 +444,7 @@ void loop() {
   bool toastExpired = toastUntil && now > toastUntil;
   if (toastExpired) { toastUntil = 0; dirty = true; }
   if (!screenOff) {
-    if (dirty || (!ecoActive && ((animate && now - tFrame >= 40) || (onPage && now - tFrame >= 250) || ((onHome || onWidgets) && now - tFrame >= 1000)))) {
+    if (dirty || (!ecoActive && ((animate && now - tFrame >= 40) || (onPage && now - tFrame >= 250) || ((onHome || onWidgets) && now - tFrame >= 1000) || (mailOn && now - tFrame >= 250)))) {
       tFrame = now; dirty = false; render(linkName());
     } else if (ecoActive) {
       if (animate && ecoAnimFps > 0 && now - tFrame >= (uint32_t)(1000 / ecoAnimFps)) { tFrame = now; renderEcoAnim(now); }

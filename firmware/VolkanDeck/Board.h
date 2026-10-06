@@ -1,6 +1,6 @@
 #pragma once
 // LilyGO T-Display-S3 + KY-040 + 2 buttons
-#define FW_VERSION "1.7.1"
+#define FW_VERSION "1.8.0"
 
 // Disable CPU scaling alone if a board needs it; idle redraw saving stays enabled.
 #ifndef VOLKAN_ECO_CPU

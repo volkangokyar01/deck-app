@@ -563,9 +563,13 @@ details.adv:not([open]) > summary{border-bottom:0}
 → {"cmd":"media_art","key":"…","w":64,"h":64,
    "data":"&lt;base64 RGB565, 8192 bayt&gt;"}   // "key":"" kapağı siler
 
-→ {"cmd":"sys","vol":45,"mute":false,"bright":70,"micMute":false}</pre>
+→ {"cmd":"sys","vol":45,"mute":false,"bright":70,"micMute":false}
+
+→ {"cmd":"mail","subject":"…","unread":5,"new":1,"ms":10000}
+                                        // 1.8.0: yeni posta bildirimi; "ms":0 kaldırır</pre>
         <p class="hint"><span class="mono">stats</span>: her grup isteğe bağlı, her alan <span class="mono">null</span> olabilir. Hız Mbit/s, ping ms, hava kodu WMO, kur TL, değişim önceki güne göre %. Cihaz cpu/gpu/net için 5 sn, hava ve kur için 2 saat eski veriyi “-” gösterir. Ana sayfa kartları <span class="mono">home.cards</span>: cpu, gpu, clock, weather, fx, net.</p>
-        <p class="hint">İki bilgisayar aynı anda bağlıysa ekran verisini USB'deki bilgisayar besler; Bluetooth'tan gelen <span class="mono">stats</span> / <span class="mono">media</span> / <span class="mono">sys</span> yok sayılır.</p>
+        <p class="hint"><span class="mono">mail</span>: bildirim tüm ekranı kaplar ve <span class="mono">ms</span> kadar (en çok 120000) kalır; <span class="mono">subject</span> boşsa okunmamış sayısı görünür. Bildirim açıkken A, B ve basma <span class="mono">mail</span> olayını gönderir, çevirmek kapatır.</p>
+        <p class="hint">İki bilgisayar aynı anda bağlıysa ekran verisini USB'deki bilgisayar besler; Bluetooth'tan gelen <span class="mono">stats</span> / <span class="mono">media</span> / <span class="mono">sys</span> / <span class="mono">mail</span> yok sayılır.</p>
       </div>
     </div>
     <div class="panel">
@@ -581,6 +585,7 @@ details.adv:not([open]) > summary{border-bottom:0}
                                         // play_pause next prev select
 ← {"evt":"sys","vol":46}                // vol bright: 0–100
                                         // mute micMute: true / false
+← {"evt":"mail","action":"open"}        // bildirimdeyken A, B ya da basma
 ← {"evt":"status","fw":"<span class="fwv">1.6.3</span>","battery":83,"charging":false,
    "link":"ble","rx":1834,"lines":12,"psram":8192}</pre>
         <p class="hint">Olaylar masaüstü uygulamasının bağlı olduğu yola gider (önce USB).</p>
@@ -2246,6 +2251,7 @@ function onLine(line){
   if(m.evt==="launch"){ if(window.onDeckLaunch) window.onDeckLaunch(m); return; }
   if(m.evt==="media"){ if(window.onDeckMedia) window.onDeckMedia(m); return; }
   if(m.evt==="sys"){ if(window.onDeckSys) window.onDeckSys(m); return; }
+  if(m.evt==="mail"){ window.onDeckMail?.(m); return; }
   if(m.evt==="input") flash(m.control);
   if(m.evt==="select"){ window.onDeckSelect?.(m.app); const id=({home:"__home",widgets:"__widgets",media:"__media",system:"__system"})[m.app]||m.app; const i=wheel().findIndex(a=>a.id===id); if(i>=0){ sel=i; pageState.adjust=0; drawScreen(); renderCtlMap(); } }
   if(m.evt==="status"){ lastStatus=m; if(!deviceInfo) return; deviceInfo={...deviceInfo,...m}; renderStatus(); drawScreen(); }

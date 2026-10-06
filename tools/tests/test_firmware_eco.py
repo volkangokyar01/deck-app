@@ -120,6 +120,7 @@ struct Settings {int dimLevelUsb=17,dimLevel=17,ecoFpsUsb=4,ecoFps=4;
 bool usbMounted=false,charging=false,dimmed=false,screenOff=false,ecoActive=false;
 int ecoAnimFps=4,adjust=0,bright=0,frames=0; unsigned toastUntil=0,now=20000,tFrame=0,idle=20;
 bool protoTransferBusy(){return false;} void ecoSuspend(){ecoActive=false;}
+bool mail=false; bool mailActive(){return mail;}
 void ecoEnter(){ecoActive=true;} void setBright(int v){bright=v;}
 void renderEcoAnim(unsigned){frames++;}
 void parse(){
@@ -142,6 +143,9 @@ int main(){
  S.animFps=2;update();assert(ecoAnimFps==2); // cap respects the normal rate
  S.brightness=10;update();assert(bright==5);
  charging=false;S.dimAfter=0;S.ecoAfter=0;update();assert(!dimmed&&bright==10&&!ecoActive);
+ S.dimAfter=10;S.ecoAfter=10;mail=true;update();assert(!dimmed&&!ecoActive); // a mail note holds dimming and eco
+ mail=false;update();assert(dimmed&&ecoActive);                              // idle timers kept running behind it
+ mail=true;update();assert(!ecoActive);                                      // a new note leaves eco at once
 }
 '''
         with tempfile.TemporaryDirectory() as work:

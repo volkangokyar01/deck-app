@@ -346,3 +346,12 @@ struct MediaState {
 } media;
 struct SysState { int vol = -1, bright = -1; bool mute = false; int mic = -1; uint32_t stamp = 0; } sysSt;   // mic: -1 unknown, 0 on, 1 muted
 String mediaTarget = "auto";
+
+/* ---------- new mail note, pushed by the desktop app ({"cmd":"mail"}, firmware 1.8.0) ---------- */
+struct MailNote {
+  String subject, l1, l2;               // l1 / l2: subject wrapped to two lines on first draw
+  int unread = -1, fresh = 1;           // unread: -1 unknown
+  uint32_t at = 0, ms = 0, until = 0;   // until: 0 = no note
+  bool wrapped = false;
+} mailNote;
+static bool mailActive() { return mailNote.until && (int32_t)(millis() - mailNote.until) < 0; }

@@ -4,6 +4,7 @@
   const OS = deck.platform;                 // 'win32' | 'darwin'
   const HOST = OS === 'darwin' ? 'mac' : 'win';
   const MIN_FW = '1.2.0';
+  const MAIL_FW = '1.8.0';
   document.title = 'Volkan Deck';
   // protocol page: keyboard fallbacks of this computer only
   document.querySelectorAll('#view-proto [data-os]').forEach(e => { e.hidden = e.dataset.os !== HOST; });
@@ -127,7 +128,7 @@
   }, 2000);
   function pushStatus() {
     const on = !!(port && deviceInfo);
-    deck.status({ connected: on, direct: on && direct, text: on ? (deviceInfo.name || 'Volkan Deck') + (deviceInfo.fw ? ' · v' + deviceInfo.fw : '') + (port.isBle ? ' · Bluetooth' : '') : 'Bağlı değil' });
+    deck.status({ connected: on, direct: on && direct, mail: on && !!deviceInfo.fw && verGE(deviceInfo.fw, MAIL_FW), text: on ? (deviceInfo.name || 'Volkan Deck') + (deviceInfo.fw ? ' · v' + deviceInfo.fw : '') + (port.isBle ? ' · Bluetooth' : '') : 'Bağlı değil' });
     const ct = document.getElementById('connText');
     if (on && ct) ct.textContent = (deviceInfo.name || 'Cihaz') + (deviceInfo.fw ? ' · v' + deviceInfo.fw : '') + (port.isBle ? ' · Bluetooth' : '') + (direct ? ' · doğrudan açma' : '');
   }
@@ -194,6 +195,66 @@
       sensorInstalled = s.installed; renderSensorButtons();
       if (s.installed) sensorNote.textContent = s.live ? 'Sensör görevi çalışıyor.' : 'Sensör kurulmuş; değer bekleniyor. Gerekirse kurulumu yenile.';
     }).catch(() => {});
+  }
+
+  /* ---- Outlook: new mail → a note on the deck (firmware 1.8.0); the main process watches Outlook ---- */
+  {
+    let mail = { settings: { enabled: true, seconds: 10, subject: true }, state: {} };
+    const mailReady = () => !busy && !!writer && !!deviceInfo && direct && !!deviceInfo.fw && verGE(deviceInfo.fw, MAIL_FW);
+    const noteFor = (subject, unread, fresh) => ({ cmd: 'mail', subject, ...(unread != null ? { unread } : {}), new: fresh || 1, ms: mail.settings.seconds * 1000 });
+    deck.onMail(m => {
+      if (!mailReady()) return;
+      log('rx', '✉ Outlook: yeni posta' + (m.subject ? ' · ' + m.subject : ''));
+      sendRaw(noteFor(m.subject, m.unread, m.fresh));
+    });
+    window.onDeckMail = async m => {
+      if (m.action !== 'open') return;
+      log('rx', '← Outlook aç');
+      try {
+        const r = await deck.openOutlook();
+        if (!r || !r.ok) { const msg = 'Outlook açılamadı: ' + (r && r.error || 'bilinmeyen hata'); log('er', '  ' + msg); toast(msg); deck.notify('Volkan Deck', msg); }
+      } catch (e) { log('er', '  Outlook açılamadı: ' + e.message); }
+    };
+    const status = el('span', { class: 'fwstate', role: 'status', 'aria-live': 'polite' });
+    const on = el('input', { type: 'checkbox', onchange: e => setMail({ enabled: e.target.checked }) });
+    const subject = el('input', { type: 'checkbox', onchange: e => setMail({ subject: e.target.checked }) });
+    const seconds = el('select', { onchange: e => setMail({ seconds: Number(e.target.value) }) });
+    for (const n of [5, 10, 15, 30, 60]) seconds.append(el('option', { value: n }, n + ' saniye'));
+    const test = el('button', { class: 'btn', onclick: () => {
+      if (!mailReady()) { toast(deviceInfo?.fw && !verGE(deviceInfo.fw, MAIL_FW) ? 'Bildirim için kartta firmware v' + MAIL_FW + ' gerekiyor' : 'Cihaz bağlı değil'); return; }
+      sendRaw(noteFor(OS === 'win32' && mail.settings.subject ? 'Deneme: Volkan Deck bildirimi' : '', mail.state.unread, 1));
+      toast('Deneme bildirimi gönderildi');
+    } }, 'Deneme bildirimi');
+    const box = el('div', { class: 'panel', id: 'mailPanel' },
+      el('div', { class: 'panel-h' }, el('h2', {}, 'Outlook bildirimi'), status),
+      el('div', { class: 'panel-b' },
+        el('label', { class: 'sw' }, el('span', {}, 'Yeni postada cihazda bildirim', el('small', {}, 'A, B ya da döndürgece basınca Outlook bilgisayarda açılır; çevirince kapanır.')), on),
+        OS === 'win32' ? el('label', { class: 'sw' }, el('span', {}, 'Konuyu göster', el('small', {}, 'Postanın konu satırı bildirimde görünür.')), subject) : null,
+        el('label', { class: 'field' }, el('span', {}, 'Ekranda kalma süresi'), seconds),
+        el('div', { class: 'row' }, test),
+        el('p', { class: 'hint' }, OS === 'darwin'
+          ? "Yeni posta, Outlook'un Dock simgesindeki okunmamış sayısından anlaşılır; Outlook ayarlarında Dock simgesi rozeti açık olmalı. macOS'te konu okunamaz: yeni Outlook başka uygulamalara posta bilgisi vermiyor."
+          : 'Klasik Outlook açıkken çalışır. Yeni Outlook başka uygulamalara posta bilgisi vermiyor.')));
+    updateBox.after(box);
+    const renderMail = () => {
+      const s = mail.settings, st = mail.state || {};
+      on.checked = s.enabled; subject.checked = s.subject; subject.disabled = !s.enabled; seconds.value = String(s.seconds); seconds.disabled = !s.enabled;
+      status.textContent = !s.enabled ? 'Kapalı'
+        : !(port && deviceInfo) ? 'Cihaz bağlı değil'
+        : !deviceInfo.fw || !verGE(deviceInfo.fw, MAIL_FW) ? 'Kartta firmware v' + MAIL_FW + ' gerekiyor'
+        : !st.active ? 'Bekleniyor'
+        : st.error && st.running ? "Outlook'a ulaşılamadı"
+        : !st.running ? (OS === 'win32' && st.newOutlook ? 'Yeni Outlook açık; klasik Outlook gerekli' : 'Outlook açık değil')
+        : 'İzleniyor' + (st.unread != null ? ' · ' + st.unread + ' okunmamış' : '');
+      status.title = st.error || '';
+    };
+    const setMail = async patch => {
+      try { mail = await deck.mailSettings(patch); } catch (e) { toast('Ayar kaydedilemedi: ' + e.message); }
+      renderMail();
+    };
+    deck.onMailState(st => { mail.state = st; renderMail(); });
+    deck.mailSettings().then(r => { mail = r; renderMail(); }).catch(() => {});
+    setInterval(renderMail, 2000);                // connection and firmware changes
   }
 
   /* ---- automatic weather location, including while the deck is disconnected ---- */

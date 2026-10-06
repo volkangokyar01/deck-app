@@ -525,7 +525,7 @@ static void renderEcoAnim(uint32_t now) {
   drawAnim(2, 2, 128, 128, now); pushRegion(2, 2, 128, 128);
 }
 static void renderEcoClock() {
-  if (items.empty()) return;
+  if (items.empty() || mailActive()) return;
   if (items[sel].home) {
     for (int i = 0; i < 2; i++) if (S.cards[i] == W_CLOCK) { int y = i ? 93 : 15; drawClockCard(132, y, 186, 76); pushRegion(132, y, 186, 76); }
   } else if (items[sel].kind == K_WIDGETS) {
@@ -710,6 +710,53 @@ static void drawSystem() {
   micRow(131, 37);
 }
 
+/* ---------- new mail note (1.8.0): full screen, A / B / press opens Outlook on the computer ---------- */
+const uint16_t OUTLOOK_COL = C(0x0F6CBD);
+// two lines at most, broken between words; a word wider than a line is cut, the rest ends with …
+static void wrap2(const String& s, int max, UFont& f, String& a, String& b) {
+  a = s; b = "";
+  if (textW(s, f) <= max) return;
+  int cut = -1;
+  for (int i = 1; i < (int)s.length(); i++) {
+    if (s[i] != ' ') continue;
+    if (textW(s.substring(0, i), f) > max) break;
+    cut = i;
+  }
+  if (cut > 0) { a = s.substring(0, cut); b = s.substring(cut + 1); }
+  else {
+    cut = s.length();
+    while (cut > 1 && textW(s.substring(0, cut), f) > max) { cut--; while (cut > 1 && ((uint8_t)s[cut] & 0xC0) == 0x80) cut--; }
+    a = s.substring(0, cut); b = s.substring(cut);
+  }
+  a.trim(); b.trim(); b = fit(b, max, f);
+}
+static void gMail(int cx, int cy, uint16_t c, uint16_t bg) {   // envelope, about 24 x 17
+  spr.fillRoundRect(cx - 12, cy - 8, 24, 17, 3, c);
+  spr.drawWideLine(cx - 10, cy - 6, cx, cy + 2, 1.3f, bg);
+  spr.drawWideLine(cx + 10, cy - 6, cx, cy + 2, 1.3f, bg);
+}
+static void drawMail() {
+  uint16_t acc = lightTheme ? OUTLOOK_COL : C(0x479EF5);
+  spr.fillRoundRect(2, 2, 316, 166, 10, SC_PANEL);
+  spr.fillSmoothCircle(34, 36, 24, OUTLOOK_COL);
+  gMail(34, 36, WHITE, OUTLOOK_COL);
+  text("Yeni posta", 70, 26, FB18, SC_TEXT);
+  String sub = "Outlook";
+  if (mailNote.unread >= 0) sub += "  ·  " + String(mailNote.unread) + " okunmamış";
+  text(fit(sub, 240, FSB12), 70, 48, FSB12, SC_SUB);
+  if (mailNote.subject.length()) {
+    if (!mailNote.wrapped) { wrap2(mailNote.subject, 292, FB18, mailNote.l1, mailNote.l2); mailNote.wrapped = true; }
+    text(mailNote.l1, 14, mailNote.l2.length() ? 84 : 96, FB18, SC_TEXT);
+    if (mailNote.l2.length()) text(mailNote.l2, 14, 108, FB18, SC_TEXT);
+  } else text(mailNote.fresh > 1 ? String(mailNote.fresh) + " yeni posta geldi" : String("Gelen kutusuna posta geldi"), 14, 96, FSB12, SC_SUB);
+  text("A · B · bas: Outlook'u aç", 14, 138, FSB11, SC_SUB);
+  text("çevir: kapat", 306, 138, FSB11, SC_DIM, textdatum_t::middle_right);
+  // time left on screen
+  uint32_t left = mailActive() ? mailNote.until - millis() : 0;
+  spr.fillRoundRect(14, 154, 292, 4, 2, SC_LINE);
+  spr.fillRoundRect(14, 154, max(4, (int)(292.0f * min(1.0f, (float)left / (float)(mailNote.ms ? mailNote.ms : 1)))), 4, 2, acc);
+}
+
 static void drawToast() {
   if (millis() > toastUntil) return;
   int w = min(316, textW(toastMsg, FSB11) + 24);
@@ -718,6 +765,11 @@ static void drawToast() {
 }
 
 static void render(const char* link) {
+  if (mailActive()) {                      // the note covers every page; the next normal render redraws them whole
+    spr.fillSprite(SC_BG); drawMail(); drawToast(); spr.pushSprite(0, 0);
+    homeFrameShown = false;
+    return;
+  }
   spr.fillSprite(SC_BG);
   if (items.empty()) {
     drawStatus(SC_DIM, link);

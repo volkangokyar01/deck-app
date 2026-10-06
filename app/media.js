@@ -59,12 +59,12 @@ function shape(c) {
 }
 
 /* ===================== Windows ===================== */
-function helperClient() {
+function helperClient(script = 'win-helper.ps1') {
   let helper = null, helperBuf = '', helperQ = [], helperReady = null, helperId = 0;
   function startHelper() {
     if (helper) return helperReady;
     helperBuf = ''; helperQ = [];
-    helper = cp.spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-helper.ps1')],
+    helper = cp.spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, script)],
                       { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     let readyRes; helperReady = new Promise(r => { readyRes = r; });
     const t = setTimeout(() => readyRes(false), 20000);
@@ -381,4 +381,4 @@ async function sysSet(o = {}) {
 }
 
 function stop() { hostHelper.stop(); artHelper.stop(); }
-module.exports = { hostState, mediaArt: art.get, mediaArtWait: art.wait, createMacSource, parseMacLines, asPlayer, mediaControl, sysSet, stop, devText, launchTarget, shapeForTarget, createMediaController };
+module.exports = { helperClient, hostState, mediaArt: art.get, mediaArtWait: art.wait, createMacSource, parseMacLines, asPlayer, mediaControl, sysSet, stop, devText, launchTarget, shapeForTarget, createMediaController };

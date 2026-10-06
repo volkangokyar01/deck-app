@@ -12,6 +12,7 @@ const { createStats } = require('./stats');
 const { createSensorInstaller } = require('./sensor-install');
 const { createUpdater, REPO_URL } = require('./updater');
 const { createTrayUpdate, openLocationSettings } = require('./main-actions');
+const { createMailWatcher } = require('./mail');
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -342,6 +343,29 @@ async function appInfo(p) {
   return { path: p, name, icon, src };
 }
 
+/* ---------------- Outlook: new-mail note on the deck (firmware 1.8.0) ---------------- */
+const mailWatcher = createMailWatcher({
+  platform: process.platform, run, helper: IS_WIN ? media.helperClient('win-mail.ps1') : null,
+  onMail: m => { if (win && !win.isDestroyed()) win.webContents.send('mail', m); },
+  onState: s => { if (win && !win.isDestroyed()) win.webContents.send('mail-state', s); }
+});
+function mailSettings(patch) {
+  const st = readState();
+  if (patch && typeof patch === 'object') { st.mail = { ...mailWatcher.settings(), ...patch }; writeState(st); }
+  return { settings: mailWatcher.configure(st.mail), state: mailWatcher.state() };
+}
+// Classic Outlook first (the notes come from it on Windows): /recycle brings back its open window.
+async function openOutlook() {
+  if (IS_MAC) return openMac(['-a', 'Microsoft Outlook']);
+  if (!IS_WIN) return fail('Bu sistem desteklenmiyor');
+  for (const hive of ['HKLM', 'HKCU']) {
+    const r = await run('reg.exe', ['query', hive + '\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\OUTLOOK.EXE', '/ve'], 4000);
+    if (r.code === 0) return winStart('outlook.exe', { args: '/recycle' });
+  }
+  const hit = await findStartApp('Outlook');          // new Outlook only
+  return hit ? detached('explorer.exe', ['shell:AppsFolder\\' + hit.AppID]) : fail('Outlook bulunamadı');
+}
+
 async function launchMediaPlayer(player) {
   if (player === 'ytmusic') { await shell.openExternal('https://music.youtube.com'); return ok('adres'); }
   if (IS_MAC) return openMac(['-a', player === 'spotify' ? 'Spotify' : 'Music']);
@@ -375,7 +399,9 @@ ipcMain.handle('sensor-status', () => sensorInstaller.status());
 ipcMain.handle('sensor-install', () => sensorInstaller.install());
 ipcMain.handle('sensor-uninstall', () => sensorInstaller.uninstall());
 ipcMain.handle('notify', (ev, t, b) => { if (Notification.isSupported()) new Notification({ title: t, body: b }).show(); });
-ipcMain.on('status', (ev, s) => { const changed = JSON.stringify(s) !== JSON.stringify(status); status = s; if (changed) { refreshTray(); applyStatusVisual(); } });
+ipcMain.on('status', (ev, s) => { const changed = JSON.stringify(s) !== JSON.stringify(status); status = s; mailWatcher.setLinked(!!(s.connected && s.direct && s.mail)); if (changed) { refreshTray(); applyStatusVisual(); } });
+ipcMain.handle('mail-settings', (ev, patch) => mailSettings(patch));
+ipcMain.handle('mail-open', async () => { try { return await openOutlook(); } catch (e) { return fail(e.message); } });
 ipcMain.handle('version', () => app.getVersion());
 ipcMain.handle('update-state', () => updater.getState());
 ipcMain.handle('update-check', () => updater.check({ manual: true }));
@@ -392,7 +418,7 @@ ipcMain.handle('host-state', async (ev, o) => {
 ipcMain.handle('media-art', (ev, key, waitMs) => mediaPaused() ? null : media.mediaArtWait(String(key || ''), Math.max(0, Math.min(5000, Number(waitMs) || 0))));
 ipcMain.handle('media-ctl', (ev, action, target, options) => mediaPaused() ? { ok: false, error: 'Güncelleme kuruluyor.' } : media.mediaControl(String(action || ''), String(target || 'auto'), { launch: options?.launch, launchPlayer: launchMediaPlayer }).catch(e => ({ ok: false, error: e.message })));
 ipcMain.handle('sys-set', (ev, o) => mediaPaused() ? {} : media.sysSet(o || {}).catch(e => ({ error: e.message })));
-app.on('will-quit', () => { updater.stop(); media.stop(); stats.stop(); });
+app.on('will-quit', () => { updater.stop(); media.stop(); stats.stop(); mailWatcher.stop(); });
 
 /* ---------------- lifecycle ---------------- */
 app.on('second-instance', () => { if (win) showWindow(); });
@@ -400,6 +426,7 @@ app.on('activate', () => { if (win) showWindow(); });
 app.on('before-quit', () => { quitting = true; });
 app.whenReady().then(() => {
   sensorInstaller.init().catch(() => {});
+  mailSettings();
   stats.start();
   updater.start();
   setupSerial();

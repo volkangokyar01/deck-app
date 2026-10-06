@@ -13,6 +13,7 @@ static void* bigAlloc(size_t n) { void* p = psramFound() ? ps_malloc(n) : nullpt
 String pendingName;
 uint32_t companionAt = 0; bool companionNew = false, companionMediaLaunch = false;
 bool mediaDirty = false; uint32_t sysLocalAt = 0;
+bool mailNew = false;
 
 // Two transports carry the same JSON lines: USB serial and the Bluetooth data channel (Hid.h).
 // Replies go back where the command came from; events go to the desktop app's link (USB first).
@@ -81,6 +82,10 @@ static void evtLaunch(App* a) {
 static void evtMedia(const char* action) {      // play_pause | next | prev | select
   JsonDocument d; d["evt"] = "media"; d["action"] = action; d["player"] = mediaTarget; sendJson(d);
 }
+static void evtMail(const char* action) {      // open: the user wants the mail app in front
+  if (!hostListening()) return;
+  JsonDocument d; d["evt"] = "mail"; d["action"] = action; sendJson(d);
+}
 static void evtSys(const char* key, int value) {  // vol | bright (0..100), mute / micMute (0/1)
   JsonDocument d; d["evt"] = "sys";
   if (!strcmp(key, "mute") || !strcmp(key, "micMute")) d[key] = value != 0; else d[key] = value;
@@ -102,7 +107,7 @@ static void handleLine(char* buf, size_t len) {
   if (!strcmp(cmd, "set_config") || !strcmp(cmd, "icon_set") || !strncmp(cmd, "anim_", 5) || !strcmp(cmd, "dfu")) { ecoSuspend(); transferAt = millis() | 1; }
   // Two computers at once (one on USB, one on Bluetooth): the USB one feeds the screen
   if (replySrc == SRC_BLE && usbCompanion() &&
-      (!strcmp(cmd, "stats") || !strcmp(cmd, "media") || !strcmp(cmd, "media_art") || !strcmp(cmd, "sys"))) {
+      (!strcmp(cmd, "stats") || !strcmp(cmd, "media") || !strcmp(cmd, "media_art") || !strcmp(cmd, "sys") || !strcmp(cmd, "mail"))) {
     if (!id.isNull()) replyOk(id);
     return;
   }
@@ -236,6 +241,17 @@ static void handleLine(char* buf, size_t len) {
       JsonVariantConst mm = doc["micMute"]; sysSt.mic = mm.isNull() ? -1 : (mm.as<bool>() ? 1 : 0);
     }
     sysSt.stamp = now | 1; mediaDirty = true;
+  }
+  else if (!strcmp(cmd, "mail")) {               // new mail note, pushed by the desktop app; "ms":0 removes it
+    uint32_t ms = constrain(doc["ms"] | 10000, 0, 120000);
+    if (!ms) mailNote.until = 0;
+    else {
+      mailNote.subject = (const char*)(doc["subject"] | "");
+      mailNote.unread = doc["unread"] | -1; mailNote.fresh = max(1, doc["new"] | 1);
+      mailNote.wrapped = false; mailNote.at = millis(); mailNote.ms = ms; mailNote.until = (mailNote.at + ms) | 1;
+      mailNew = true;
+    }
+    if (!id.isNull()) replyOk(id);
   }
   else if (!strcmp(cmd, "dfu")) {
     if (replySrc == SRC_BLE) { replyErr(id, "usb_only"); return; }
