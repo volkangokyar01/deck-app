@@ -105,5 +105,56 @@ class BuildInfoTests(unittest.TestCase):
         self.assertIn('desktop app additions', (self.root / 'app/index.html').read_text())
 
 
+class OfflineEmbedTests(unittest.TestCase):
+    """Fonts and the firmware flasher go inside the built pages; nothing is fetched at run time."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='deck-embed-test-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        root_patch = patch.object(build, 'ROOT', str(self.root))
+        root_patch.start()
+        self.addCleanup(root_patch.stop)
+
+    def write(self, name, content):
+        file = self.root / name
+        file.parent.mkdir(parents=True, exist_ok=True)
+        (file.write_bytes if isinstance(content, bytes) else file.write_text)(content)
+
+    def test_fonts_become_data_uris_and_marker_disappears(self):
+        self.write('web/fonts/a.woff2', b'wOF2font')
+        self.write('web/fonts/fonts.css', '/* c */\n@font-face{font-family:"X";src:url(a.woff2) format("woff2")}\n')
+        out = build.inline_fonts('<title>t</title>\n<!--@FONTS@ not\nshown -->\n<style>b{}</style>')
+        self.assertIn('url(data:font/woff2;base64,d09GMmZvbnQ=) format("woff2")', out)
+        self.assertNotIn('@FONTS@', out)
+        self.assertNotIn('fonts.googleapis', out)
+        self.assertTrue(out.index('@font-face') < out.index('b{}'))
+
+    def test_fonts_reject_paths_and_tolerate_missing_folder(self):
+        self.assertEqual(build.inline_fonts('a<!--@FONTS@-->\nb'), 'ab')
+        self.write('web/fonts/fonts.css', '@font-face{src:url(../secret.woff2)}')
+        with self.assertRaises(ValueError):
+            build.inline_fonts('<!--@FONTS@-->')
+
+    def test_esptool_is_embedded_once(self):
+        body = 'const ESPTOOL_B64=/*@ESPTOOL@*/null;'
+        self.assertEqual(build.embed_esptool(body), body)
+        self.write('web/vendor/esptool-js/bundle.js', 'export{}')
+        self.assertEqual(build.embed_esptool(body), 'const ESPTOOL_B64="ZXhwb3J0e30=";')
+
+    def test_repository_pages_need_no_network(self):
+        repo = Path(__file__).parents[2]
+        head = (repo / 'web/head.css.html').read_text(encoding='utf-8')
+        body = (repo / 'web/body.html').read_text(encoding='utf-8')
+        self.assertIn('<!--@FONTS@', head)
+        self.assertNotIn('fonts.googleapis', head)
+        self.assertEqual(body.count(build.ESPTOOL_MARK), 1)
+        for name in ['web/fonts/fonts.css', 'web/vendor/esptool-js/bundle.js', 'web/vendor/esptool-js/LICENSE']:
+            self.assertTrue((repo / name).is_file(), name)
+        built = (repo / 'app/index.html').read_text(encoding='utf-8')
+        self.assertNotIn('fonts.googleapis', built)
+        self.assertIn('url(data:font/woff2;base64,', built)
+        self.assertNotIn(build.ESPTOOL_MARK, built)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -5,10 +5,8 @@
   const HOST = OS === 'darwin' ? 'mac' : 'win';
   const MIN_FW = '1.2.0';
   document.title = 'Volkan Deck';
-  if (OS === 'darwin') {
-    const example = document.querySelector('#view-proto .panel:nth-child(2) pre');
-    if (example) example.textContent = '{"method":"search","value":"Spotify"}\n  → Cmd+Space · bekle · yaz · Enter\n\n{"method":"key","mods":["win"],"key":"SPACE"}\n  → Cmd+Space';
-  }
+  // protocol page: keyboard fallbacks of this computer only
+  document.querySelectorAll('#view-proto [data-os]').forEach(e => { e.hidden = e.dataset.os !== HOST; });
   if (OS === 'darwin') {
     METHODS[0][1] = 'Uygulama adıyla aç'; METHODS[0][2] = 'Cihaz Spotlight ile uygulamanın adını arar.';
     METHODS[1][1] = 'Spotlight ile ara'; METHODS[1][2] = "Cihaz Spotlight'a adı yazar ve Enter'a basar.";
@@ -31,12 +29,12 @@
     try { renderUpdate(await deck.applyUpdate()); } catch (err) { toast('Güncelleme yüklenemedi: ' + err.message); }
   } }, 'Güncelle ve yeniden başlat');
   const updateRepo = el('button', { class: 'btn', hidden: true, onclick: () => deck.openUpdateRepo() }, 'GitHub sayfasını aç');
-  const updateBox = el('div', { class: 'panel', id: 'appUpdate', style: 'margin-bottom:16px;scroll-margin-top:16px' },
+  const updateBox = el('div', { class: 'panel', id: 'appUpdate', style: 'scroll-margin-top:16px' },
     el('div', { class: 'panel-h' }, el('h2', {}, 'Uygulama güncellemesi'), updateStatus),
     el('div', { class: 'panel-b' }, updateNotice, updateDetail, updateMessage,
-      el('label', { class: 'row', style: 'cursor:pointer' }, updateChannel, 'Sadece yayınlanan sürümler (Releases)'),
+      el('label', { class: 'sw' }, el('span', {}, 'Sadece yayınlanan sürümler', el('small', {}, 'Kapalıysa her yeni değişiklik gelir (main).')), updateChannel),
       el('div', { class: 'row' }, updateCheck, updateApply, updateRepo)));
-  document.getElementById('view-device').prepend(updateBox);
+  document.getElementById('devSystem').prepend(updateBox);
   function openUpdates() {
     document.querySelector('nav.tabs button[data-view="device"]')?.click();
     updateBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -185,7 +183,7 @@
     }
     const sensorButton = el('button', { class: 'btn', onclick: () => askSensorConsent(false) }, 'CPU sıcaklığı için sürücüyü kur');
     const sensorRemove = el('button', { class: 'btn', hidden: true, onclick: () => askSensorConsent(true) }, 'Sensör sürücüsünü kaldır');
-    const sensorBox = el('div', { class: 'panel', style: 'margin-bottom:16px' },
+    const sensorBox = el('div', { class: 'panel', id: 'sensorPanel' },
       el('div', { class: 'panel-h' }, el('h2', {}, 'CPU sıcaklığı')),
       el('div', { class: 'panel-b' }, sensorNote, el('div', { class: 'row' }, sensorButton, sensorRemove), sensorConsent,
         el('p', { class: 'hint' }, 'PawnIO sürücüsü ve yalnız sensör okuyan bir oturum açılış görevi kurulur. Kurmazsan CPU yükü çalışır; sıcaklık “—” görünür.')));
@@ -400,10 +398,10 @@
   }
   function addTargetBox() {
     if (edit.kind !== 'app') return;
-    const a = appById(edit.id), advanced = document.getElementById('launchAdvanced'); if (!a || !advanced) return;
+    const a = appById(edit.id), slot = document.getElementById('targetSlot'); if (!a || !slot) return;
     const special = a.launch.method === 'key' || (a.launch.method === 'taskbar' && !a.targets?.[OS === 'darwin' ? 'mac' : 'win'] && !a.launch.path && !a.launch.mac);
     if (special) {
-      const note = el('p', { class: 'hint' }, 'Bu uygulama kısayol tuşuyla açılıyor'); advanced.before(note);
+      const note = el('p', { class: 'hint' }, 'Bu uygulama kısayol tuşuyla açılıyor; ayarı aşağıdaki Gelişmiş bölümünde.'); slot.append(note);
       if (a.launch.method === 'key') return;
     }
     a.targets ||= { win: a.launch.path || '', mac: a.launch.mac || '' };
@@ -436,8 +434,8 @@
     } }, 'Dene');
     box.append(el('div', { class: 'field' }, el('span', {}, 'Ne açılsın'), el('div', { class: 'row' }, inp, pick, test)),
       el('p', { class: 'hint' }, OS === 'darwin' ? '.app seç veya uygulama adı / adres yaz.' : '.exe, .lnk, .url yolu veya adres yaz. Boşsa uygulama adı kullanılır.'),
-      el('label', { class: 'row', style: 'cursor:pointer;align-items:flex-start' }, el('input', { type: 'checkbox', id: 'appBg', checked: !!a.bg, onchange: e => { a.bg = e.target.checked; save(); } }), 'Arka planda aç'));
-    advanced.before(box);
+      el('label', { class: 'sw' }, el('span', {}, 'Arka planda aç', el('small', {}, 'Şu an önde olan pencere önde kalır.')), el('input', { type: 'checkbox', id: 'appBg', checked: !!a.bg, onchange: e => { a.bg = e.target.checked; save(); } })));
+    slot.append(box);
   }
 
   /* ---- macOS: pick .app bundles with the native dialog, or drop them on the list ---- */

@@ -26,15 +26,17 @@ function page(platform) {
     appById: id => ctx.cfg.apps.find(a => a.id === id), COLORS: ['#64748B'], ICONS: { star: '' },
     svgIcon: () => new Element('svg'), svgPath: () => new Element('svg'), NAME_MAX: 14, MAX_APPS: 16,
     PLAYERS: [['spotify', 'Spotify']], port: null, confirmDelete: false, animFrames: [],
-    launchSummary: l => l.value || l.method, geoSeq: 0, setTimeout, clearTimeout });
+    launchSummary: l => l.value || l.method, geoSeq: 0, setTimeout, clearTimeout,
+    deviceInfo: null, FIRMWARE: { version: '1.6.3' }, verGE: (a, b) => a >= b });
   function load(from, until, file = source) { vm.runInContext(file.slice(file.indexOf(from), file.indexOf(until, file.indexOf(from))), ctx); }
   load('const METHODS =', 'const KEYS =');
   load('const KEYS =', 'const MAX_APPS =');
   load('const $ =', 'const svgIcon =');
   load('/* Templates', 'let cfg =');
+  load('const HOME =', 'const editFor =');
   ctx.cfg = ctx.defaultConfig(); ctx.edit = { kind: 'app', id: ctx.cfg.apps[0].id };
   load('let captureOff=', '// city search for');
-  load('function renderDeviceForm()', '\nfunction renderStatus()');
+  load('const CARD_ICONS=', '\nfunction renderStatus()');
   load('function runCmd(', '\nfunction guessIcon('); // declarations before importFiles are pure
   load('function autoFallback(', '\nasync function importFiles(');
   ctx.OS = platform; ctx.iconFromDataUrl = async () => {};
@@ -129,7 +131,8 @@ test('eco controls render and round-trip through device projection and semantic 
   const { ctx, ids } = page('darwin');
   ctx.renderDeviceForm();
   const form = ids.get('devForm');
-  assert.ok(form.textContent.includes('Boşta tasarruf (kabloda)')); assert.ok(form.textContent.includes('Boşta tasarruf (pilde)'));
+  assert.ok(form.textContent.includes('Boşta tasarruf')); assert.ok(form.textContent.includes('Kabloda')); assert.ok(form.textContent.includes('Pilde'));
+  assert.equal(ids.get('ecoAfterUsb').attributes['aria-label'], 'Boşta tasarruf (kabloda)'); assert.equal(ids.get('ecoAfter').attributes['aria-label'], 'Boşta tasarruf (pilde)');
   assert.ok(form.textContent.includes('Ekran açık kalır'));
   for (const key of ['ecoAfterUsb', 'ecoAfter']) {
     const control = ids.get(key); assert.equal(control.children.length, 6);
@@ -181,7 +184,7 @@ for (const platform of ['darwin', 'win32', null]) test(`dim level and eco speed 
   ];
   for (const kind of ['home', 'media', 'widgets', 'system']) {
     ctx.edit = { kind }; ctx.renderEditor(); ctx.renderDeviceForm();
-    for (const [key, , label] of controls) assert.ok(ids.get(key) && ids.get('devForm').textContent.includes(label));
+    for (const [key, , label] of controls) assert.equal(ids.get(key).attributes['aria-label'], label);
   }
   assert.deepEqual(ids.get('dimLevelUsb').children.map(c => c.attributes.value), [75, 50, 30, 20, 10, 5, 17]);
   assert.ok(ids.get('dimLevelUsb').children.some(c => c.textContent === '%17' && c.attributes.selected !== undefined));
@@ -190,11 +193,10 @@ for (const platform of ['darwin', 'win32', null]) test(`dim level and eco speed 
   for (const [key, timer, , value] of controls) {
     assert.equal(!!ids.get(key).disabled, false);
     ids.get(key).events.change({ target: { value: String(value) } });
-    const isEco = timer.startsWith('eco');
-    ids.get(isEco ? timer : 'r_' + timer).events[isEco ? 'change' : 'input']({ target: { value: '0' } });
+    ids.get(timer).events.change({ target: { value: '0' } });
     assert.equal(ids.get(key).disabled, true);
     ctx.renderDeviceForm(); assert.equal(!!ids.get(key).disabled, true);
-    ids.get(isEco ? timer : 'r_' + timer).events[isEco ? 'change' : 'input']({ target: { value: '30' } });
+    ids.get(timer).events.change({ target: { value: '30' } });
     assert.equal(ids.get(key).disabled, false);
   }
   const from = source.indexOf('function forDevice(');
@@ -233,4 +235,50 @@ for (const platform of ['darwin', 'win32', null]) test(`remembered location is s
       assert.equal(ids.get('wxLocationSettings').attributes.hidden, undefined);
     } else assert.ok(!body.textContent.includes('Son bilinen konum'));
   }
+});
+
+for (const platform of ['darwin', 'win32', null]) test(`return to home is one setting, summarised on every page editor (${platform || 'browser'})`, () => {
+  const { ctx, ids, body } = page(platform), H = ctx.cfg.home;
+  ctx.renderDeviceForm();
+  const form = ids.get('devForm');
+  assert.ok(form.textContent.includes('Ana ekrana dönüş')); assert.ok(form.textContent.includes('Her zaman bekler'));
+  assert.deepEqual(ids.get('homeReturn').children.map(c => c.attributes.value), [0, 15, 30, 60, 120, 180, 300, 600]);
+  ids.get('homeReturn').events.change({ target: { value: '600' } }); assert.equal(H.returnAfter, 600);
+  H.returnAfter = 45; ctx.renderDeviceForm();
+  assert.ok(ids.get('homeReturn').children.some(c => c.attributes.value === 45 && c.attributes.selected !== undefined && c.textContent === '45 sn'));
+  ids.get('mediaStay').events.change({ target: { checked: false } }); assert.equal(ctx.cfg.pages.media.stay, false);
+  H.returnAfter = 120;
+  assert.equal(ctx.returnText('media'), 'Dokunulmazsa 2 dk sonra ana ekrana döner.');
+  assert.equal(ctx.returnText('widgets'), 'Bu ekrandayken cihaz ana ekrana dönmez.');
+  ctx.cfg.pages.media.stay = true;
+  assert.equal(ctx.returnText('media'), 'Bu ekrandayken cihaz ana ekrana dönmez.');
+  assert.equal(ctx.returnText('home'), 'Dokunulmazsa 2 dk sonra buraya döner; Kartlar ve Medya ekranında bekler.');
+  H.returnAfter = 0; assert.equal(ctx.returnText('system'), 'Ana ekrana otomatik dönüş kapalı.');
+  for (const kind of ['home', 'widgets', 'media', 'system']) { ctx.edit = { kind }; ctx.renderEditor(); assert.ok(body.textContent.includes('Ana ekrana dönüş…'), kind); }
+  assert.equal(ids.has('mediaStay') && ids.get('mediaStay').parent?.parent?.parent?.parent === body, false, 'media editor no longer owns the stay switch');
+  H.enabled = false; ctx.renderDeviceForm();
+  assert.ok(ids.get('devForm').textContent.includes('Ana sayfayı aç'));
+});
+
+test('app editor: target slot sits right under the name; deleting the home press app clears it', () => {
+  const { ctx, ids, body, render } = page('win32');
+  render();
+  const kids = body.children, slot = ids.get('targetSlot');
+  assert.equal(kids.indexOf(slot), 1); assert.ok(slot.textContent.includes('Ne açılsın'));
+  assert.ok(kids.indexOf(ids.get('launchAdvanced')) > kids.indexOf(slot));
+  const a = ctx.cfg.apps[0]; ctx.cfg.home.pressApp = a.id; ctx.confirmDelete = true; render();
+  const all = e => [e, ...(e?.children || []).flatMap(all)];
+  all(body).find(e => e?.tag === 'button' && e.textContent === 'Sil' && String(e.className).includes('danger')).events.click();
+  assert.equal(ctx.cfg.home.pressApp, null); assert.ok(!ctx.cfg.apps.includes(a));
+});
+
+test('dragging an app moves it before or after the target', () => {
+  const start = source.indexOf('function moveApp(');
+  const ctx = vm.createContext({ cfg: { apps: ['a', 'b', 'c', 'd'].map(id => ({ id })) }, save() {}, selectApp() {} });
+  vm.runInContext(source.slice(start, source.indexOf('\nfunction renderTplMenu(', start)), ctx);
+  const order = () => ctx.cfg.apps.map(a => a.id).join('');
+  ctx.moveApp('a', 'c', true); assert.equal(order(), 'bcad');
+  ctx.moveApp('d', 'b', false); assert.equal(order(), 'dbca');
+  ctx.moveApp('b', 'b', false); assert.equal(order(), 'dbca');
+  ctx.moveApp('x', 'b', false); assert.equal(order(), 'dbca');
 });
