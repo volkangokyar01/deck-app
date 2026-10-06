@@ -4,6 +4,7 @@
 #include "USBHIDConsumerControl.h"
 #include <NimBLEDevice.h>
 #include <NimBLEHIDDevice.h>
+#include <Preferences.h>
 
 USBHIDKeyboard usbKb;
 USBHIDConsumerControl usbCc;
@@ -109,6 +110,9 @@ static void bleBegin(const String& name) {
   svc->start();
   NimBLEDevice::setMTU(517);
   bleServer->start();
+  // New firmware may add GATT services: tell bonded computers to drop their cached service list
+  // (sent now to connected ones, on reconnect to the others). Once per firmware version.
+  { Preferences pr; if (pr.begin("vdble", false)) { if (pr.getString("fw", "") != FW_VERSION) { bleServer->sendServiceChangedIndication(); pr.putString("fw", FW_VERSION); } pr.end(); } }
   bleAdvData(name);
   NimBLEDevice::getAdvertising()->start();
   bleStarted = true;

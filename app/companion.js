@@ -83,15 +83,23 @@
     connecting = true;
     try {
       if (port) await disconnect();
-      await connect(true);
-      if (!port && 'bluetooth' in navigator && cfg.device.connection !== 'usb' && Date.now() - bleTriedAt > 12000) {
+      // Bluetooth first when it is due: requestDevice needs the fresh user activation this call carries
+      const bleDue = !(await usbDeck()) && cfg.device.connection !== 'usb' && Date.now() - bleTriedAt > 12000;
+      if (bleDue) {
+        if (!('bluetooth' in navigator)) { if (bleReady !== false) log('er', '  Bluetooth: bu pencerede Web Bluetooth yok'); bleReady = false; }
         if (bleReady === null) {
           bleReady = await deck.bleReady().catch(() => false);
-          if (!bleReady) log('', '  Bluetooth kapalı: Mac-Kur.command bir kez yeniden çalıştırılmalı (Bluetooth izni).');
+          if (!bleReady) log('er', '  Bluetooth kapalı: Mac-Kur.command bir kez yeniden çalıştırılmalı (Bluetooth izni).');
         }
-        if (bleReady) { bleTriedAt = Date.now(); await connect(true, true); }
+        if (bleReady) {
+          bleTriedAt = Date.now();
+          const avail = await navigator.bluetooth.getAvailability?.().catch(() => true);
+          if (avail === false) log('er', '  Bluetooth: bilgisayarın Bluetooth\'u kapalı ya da uygulamanın izni yok');
+          else await connect(true, true);
+        }
       }
-    } catch (e) {} finally { connecting = false; }
+      if (!port) await connect(true);
+    } catch (e) { log('er', '  Bağlantı: ' + (e && e.message || e)); } finally { connecting = false; }
     if (port && deviceInfo) await afterConnect();
   };
   async function afterConnect() {

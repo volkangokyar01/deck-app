@@ -4,6 +4,7 @@ Her push'tan önce en üste bir satır eklenir. Kurallar `GUNCELLEME.md` → 5. 
 
 | Tarih / saat (TSİ) | İmza | Tür | Güncelleme | Özet |
 |---|---|---|---|---|
+| 2026-10-06 10:58 | volkangokyar01 | uygulama / ayar sayfası / firmware | Evet | Firmware 1.6.2: Mac'te uygulama Bluetooth'tan bağlanamıyordu. Eşleşmiş bilgisayara servis değişti bildirimi, Bluetooth denemesi USB'den önce, hata nedenleri Cihaz ayarları günlüğünde. Derlendi, gömüldü, 79 Node testi geçti; donanımda denenmedi |
 | 2026-10-06 10:35 | volkangokyar01 | firmware | Evet | Firmware 1.6.1: Bluetooth'ta menüler yavaşlıyor, kartlar ve ses/parlaklık verisi gelmiyordu; gönderim ayrı göreve alındı, alma tarafı artık beklemiyor. Derlendi, gömüldü, 79 Node testi geçti; donanımda denenmedi |
 | 2026-10-06 10:03 | volkangokyar01 | uygulama / ayar sayfası / firmware | Evet | Firmware 1.6.0: Bluetooth veri kanalı; masaüstü uygulaması kablo yokken cihaza Bluetooth ile bağlanır (stats, medya, uygulama açma, ayar kaydı). Firmware derlendi ve gömüldü; 79 Node testi geçti (yeni BLE port testi), sayfa headless Chrome'da açıldı. Python test_firmware_media bu değişiklikten önce de başarısızdı (strcmp). Donanımda, Mac'te ve Windows'ta denenmedi |
 | 2026-10-06 09:18 | alisencerefeturk | ayar sayfası | Evet | Acil düzeltme: 1.5.3 sonrası sağdaki düzenleme paneli boş kalıyor, cihaza kart/medya/ses verisi gitmiyordu (açılışta renderEditor çöküyordu). Headless Chrome'da açılış ve sayfa geçişleri denendi; regresyon testi eklendi |
