@@ -6,7 +6,7 @@ static const size_t LINEBUF_MAX = 128 * 1024;
 static void ecoSuspend();
 static uint32_t transferAt = 0;
 static volatile bool usbPartial = false;
-static File animUp; static size_t animBytes = 0, animGot = 0; static int animW = 0, animH = 0, animN = 0, animFpsIn = 15;
+static File animUp; static size_t animBytes = 0, animGot = 0; static int animW = 0, animH = 0, animN = 0, animFpsIn = 15; static bool animUpLight = false;
 bool configChangedFlag = false;
 uint32_t rxBytes = 0, rxLines = 0;
 static void* bigAlloc(size_t n) { void* p = psramFound() ? ps_malloc(n) : nullptr; if (!p) p = malloc(n); return p; }      // main applies side effects
@@ -111,6 +111,7 @@ static void handleLine(char* buf, size_t len) {
     JsonDocument r; r["id"] = id; r["ok"] = true; r["fw"] = FW_VERSION; r["name"] = S.name;
     r["battery"] = batPct; r["charging"] = charging; r["link"] = linkName(); r["psram"] = (uint32_t)(ESP.getPsramSize() / 1024);
     r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleHostMtu;
+    r["anim"] = anim.frames; r["animLight"] = animLight.frames;   // frames stored per theme (0: none)
     sendJson(r);
   }
   else if (!strcmp(cmd, "get_config")) {
@@ -151,6 +152,7 @@ static void handleLine(char* buf, size_t len) {
     replyOk(id);
   }
   else if (!strcmp(cmd, "anim_begin")) {            // written straight to flash (/anim.tmp), no big RAM buffer needed
+    animUpLight = !strcmp(doc["slot"] | "dark", "light");   // 1.7.0: separate animation for the light theme
     animW = doc["w"] | 0; animH = doc["h"] | 0; animN = doc["frames"] | 0; animFpsIn = doc["fps"] | 15;
     size_t bytes = doc["bytes"] | 0;
     if (animW != 128 || animH != 128 || animN < 1 || animN > 60 || bytes != (size_t)animW * animH * 2 * animN) { replyErr(id, "bad_size"); return; }
@@ -181,13 +183,20 @@ static void handleLine(char* buf, size_t len) {
     if (!animUp) { replyErr(id, "no_begin"); return; }
     animUp.close();
     if (animGot != animBytes) { LittleFS.remove("/anim.tmp"); replyErr(id, "incomplete"); return; }
-    unloadAnim();
-    LittleFS.remove("/anim.bin");
-    if (!LittleFS.rename("/anim.tmp", "/anim.bin")) { replyErr(id, "fs"); return; }
-    if (!loadAnim()) { replyErr(id, "load"); return; }
-    persistAnimChoice(animFpsIn);
+    Anim& A = animSlot(animUpLight);
+    unloadAnim(A);
+    LittleFS.remove(A.path);
+    if (!LittleFS.rename("/anim.tmp", A.path)) { replyErr(id, "fs"); return; }
+    if (!loadAnim(A)) { replyErr(id, "load"); return; }
+    persistAnimChoice(animUpLight ? 0 : animFpsIn);  // the speed setting belongs to the dark slot
     configChangedFlag = true;
-    JsonDocument r; r["id"] = id; r["ok"] = true; r["mode"] = anim.buf ? "ram" : "flash"; sendJson(r);
+    JsonDocument r; r["id"] = id; r["ok"] = true; r["mode"] = A.buf ? "ram" : "flash"; r["slot"] = animUpLight ? "light" : "dark"; sendJson(r);
+  }
+  else if (!strcmp(cmd, "anim_clear")) {          // remove one slot; the other one is then used for both themes
+    Anim& A = animSlot(!strcmp(doc["slot"] | "light", "light"));
+    unloadAnim(A); LittleFS.remove(A.path);
+    configChangedFlag = true;
+    replyOk(id);
   }
   else if (!strcmp(cmd, "companion")) {           // heartbeat from the desktop app (every ~2 s)
     if (!companionOn()) companionNew = true;
