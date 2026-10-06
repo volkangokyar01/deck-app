@@ -74,7 +74,7 @@ Bir şey çalışmazsa şunları not al ve depoya issue aç ya da haber ver:
 - Ekran kartı
 
 ## Bundan sonra: güncelleme yayınlamak (iki geliştirici için)
-- Uygulama, GitHub'daki `main` dalında bulunan `app/` klasörünü indirir. `main`'e gönderilen her şey diğer kişiye güncelleme olarak gider. Yalnızca bitmiş işi gönder.
+- Uygulama, GitHub'daki `main` dalında bulunan `app/` klasörünü indirir. `app/` altında değişen her şey diğer kişiye güncelleme olarak gider; yalnız belge değişikliği gitmez. Ayrıntılar `GUNCELLEME.md`'de.
 - Ayarlardan **Sadece yayınlanan sürümler (Releases)** seçilirse, yalnızca GitHub'da Release olarak yayınlanan sürümler kurulur.
 - Göndermeden önce `python3 tools/build.py` çalıştır ve üretilen dosyaları commit'le. Firmware değiştiyse README'deki derleme adımlarını ve `python3 tools/embed_firmware.py` adımını da uygula.
 - Uygulama, kendisinden daha eski bir sürümü güncelleme olarak önermez. Yerel sürümde GitHub'da olmayan değişiklikler varsa "Bu bilgisayardaki sürüm GitHub'dakinden yeni" yazar.

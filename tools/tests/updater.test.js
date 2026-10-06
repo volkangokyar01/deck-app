@@ -127,6 +127,19 @@ test('only stamp differs or is missing: current, without a compare request', asy
   }
 });
 
+test('files outside app/ (docs, firmware, installer) are not an update', async t => {
+  const outside = ['README.md', 'AGENTS.md', 'GUNLUK.md', 'docs/notes.md', 'firmware/bin/VolkanDeck.ino.bin', 'installer/Mac-Kur.command']
+    .map((name, i) => ({ path: name, type: 'blob', mode: '100644', sha: String(i).repeat(40) }));
+  const withDocs = { tree: [...tree.tree, { path: 'docs', type: 'tree', mode: '040000', sha: 'd'.repeat(40) }, ...outside] };
+  assert.deepEqual(appFiles(withDocs), files);
+  const f = await fixture(t, { changed: false });
+  tree.tree.push(...outside);
+  t.after(() => tree.tree.splice(-outside.length));
+  const state = await f.updater.check();
+  assert.equal(state.available, false);
+  assert.equal(state.message, 'Güncel');
+});
+
 for (const failure of ['network', 403, 429, 500, 'unknown-status'])
   test(`compare failure ${failure}: no update offered`, async t => {
     const f = await fixture(t, { platform: 'darwin' });
