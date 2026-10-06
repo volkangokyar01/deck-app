@@ -1677,13 +1677,13 @@ function renderDeviceForm(){
   const offS=v=>v?v+" sn":"kapalı", offM=v=>v?v/60+" dk":"kapalı";
   f.append(el("h3",{style:"margin:10px 0 0;font-size:13px"},"Kabloyla bağlıyken (USB / şarj)"));
   f.append(range("dimAfterUsb","Ekranı karart",0,120,5,offS));
-  f.append(idleLevel("dimLevelUsb","dimAfterUsb","Karartınca parlaklık (kabloda)",[50,30,20,10,5],v=>"%"+v));
+  f.append(idleLevel("dimLevelUsb","dimAfterUsb","Karartınca parlaklık (kabloda)",[75,50,30,20,10,5],v=>"%"+v));
   f.append(range("sleepAfterUsb","Otomatik kapan",0,1800,60,offM));
   f.append(eco("ecoAfterUsb","Boşta tasarruf (kabloda)"));
   f.append(idleLevel("ecoFpsUsb","ecoAfterUsb","Tasarrufta animasyon (kabloda)",[8,4,2,1,0],v=>v?v+" kare/sn":"Durdur"));
   f.append(el("h3",{style:"margin:10px 0 0;font-size:13px"},"Pille çalışırken"));
   f.append(range("dimAfter","Ekranı karart",0,120,5,offS));
-  f.append(idleLevel("dimLevel","dimAfter","Karartınca parlaklık (pilde)",[50,30,20,10,5],v=>"%"+v));
+  f.append(idleLevel("dimLevel","dimAfter","Karartınca parlaklık (pilde)",[75,50,30,20,10,5],v=>"%"+v));
   f.append(range("sleepAfter","Otomatik kapan",0,1800,60,offM));
   f.append(eco("ecoAfter","Boşta tasarruf (pilde)"));
   f.append(idleLevel("ecoFps","ecoAfter","Tasarrufta animasyon (pilde)",[8,4,2,1,0],v=>v?v+" kare/sn":"Durdur"));

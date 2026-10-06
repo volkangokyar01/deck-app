@@ -183,7 +183,7 @@ for (const platform of ['darwin', 'win32', null]) test(`dim level and eco speed 
     ctx.edit = { kind }; ctx.renderEditor(); ctx.renderDeviceForm();
     for (const [key, , label] of controls) assert.ok(ids.get(key) && ids.get('devForm').textContent.includes(label));
   }
-  assert.deepEqual(ids.get('dimLevelUsb').children.map(c => c.attributes.value), [50, 30, 20, 10, 5, 17]);
+  assert.deepEqual(ids.get('dimLevelUsb').children.map(c => c.attributes.value), [75, 50, 30, 20, 10, 5, 17]);
   assert.ok(ids.get('dimLevelUsb').children.some(c => c.textContent === '%17' && c.attributes.selected !== undefined));
   assert.deepEqual(ids.get('ecoFps').children.map(c => c.attributes.value), [8, 4, 2, 1, 0]);
   assert.equal(ids.get('ecoFps').children.at(-1).textContent, 'Durdur');
