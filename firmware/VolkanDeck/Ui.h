@@ -11,6 +11,8 @@ uint16_t SC_BG = C(0x000000), SC_PANEL = C(0x0F1012), SC_LINE = C(0x222326), SC_
          SC_ACC = C(0x7D9BFF), ICON_BG = C(0x18191C), SC_GREEN = C(0x3DD68C), SC_SUN = C(0xF2C94C), SC_RAIN = C(0x5AB0FF);
 const uint16_t HOME_COL = C(0x3B6CF6), WHITE = 0xFFFF, INK = C(0x17181B);
 bool lightTheme = false, ecoActive = false;
+int ecoAnimFps = 4;
+bool homeFrameShown = false;   // LCD contains a complete home animation frame
 
 void applyTheme(bool light) {
   lightTheme = light;
@@ -420,7 +422,8 @@ static void drawCard(uint8_t wdg, int x, int y, int w, int h) {
 }
 
 static void drawAnim(int x, int y, int w, int h, uint32_t t) {
-  if (ecoActive) { uint32_t gap = 1000 / min(S.animFps, 4); t -= t % gap; }
+  if (ecoActive && ecoAnimFps == 0 && homeFrameShown) return;
+  if (ecoActive && ecoAnimFps > 0) { uint32_t gap = 1000 / ecoAnimFps; t -= t % gap; }
   uint16_t c = S.animColor;
   spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
   spr.setClipRect(x, y, w, h);
@@ -518,6 +521,7 @@ static void pushRegion(int x, int y, int w, int h) {
   lcd.setClipRect(x, y, w, h); spr.pushSprite(0, 0); lcd.clearClipRect();
 }
 static void renderEcoAnim(uint32_t now) {
+  if (ecoAnimFps <= 0) return;
   drawAnim(2, 2, 128, 128, now); pushRegion(2, 2, 128, 128);
 }
 static void renderEcoClock() {
@@ -725,7 +729,12 @@ static void render(const char* link) {
     switch (it.kind) { case K_HOME: drawHome(); break; case K_MEDIA: drawMedia(); break; case K_SYS: drawSystem(); break; case K_WIDGETS: drawWidgets(); break; default: drawAppView(); }
   }
   drawToast();
-  spr.pushSprite(0, 0);
+  if (ecoActive && ecoAnimFps == 0 && homeFrameShown && !items.empty() && items[sel].home) {
+    // Preserve the complete LCD frame, even when stats/theme/link dirty the rest.
+    pushRegion(0, 0, 320, 2); pushRegion(0, 2, 2, 128);
+    pushRegion(130, 2, 190, 128); pushRegion(0, 130, 320, 40);
+  } else spr.pushSprite(0, 0);
+  homeFrameShown = !items.empty() && items[sel].home;
 }
 
 static void uiBegin() {

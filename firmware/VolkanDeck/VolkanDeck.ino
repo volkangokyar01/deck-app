@@ -397,12 +397,15 @@ void loop() {
   // dimming / auto power-off: separate settings on cable (USB host or charger) and on battery, 0 = off
   bool onCable = usbMounted || charging;
   int dimLimit = onCable ? S.dimAfterUsb : S.dimAfter, sleepLimit = onCable ? S.sleepAfterUsb : S.sleepAfter;
+  int dimLevel = onCable ? S.dimLevelUsb : S.dimLevel;
+  ecoAnimFps = min(S.animFps, onCable ? S.ecoFpsUsb : S.ecoFps);
   int ecoLimit = onCable ? S.ecoAfterUsb : S.ecoAfter;
   bool ecoBlocked = protoTransferBusy() || adjust || (toastUntil && now <= toastUntil);
   if (ecoActive && (ecoLimit <= 0 || adjust || (toastUntil && now <= toastUntil))) ecoSuspend();
   if (!ecoActive && !ecoBlocked && ecoLimit > 0 && idle >= (uint32_t)ecoLimit) ecoEnter();
   if (dimmed && dimLimit <= 0) { dimmed = false; setBright(S.brightness); }          // switched to a source with dimming off
-  if (!screenOff && !dimmed && dimLimit > 0 && idle >= (uint32_t)dimLimit) { dimmed = true; setBright(max(5, S.brightness / 6)); }
+  if (!screenOff && !dimmed && dimLimit > 0 && idle >= (uint32_t)dimLimit) { dimmed = true; }
+  if (!screenOff && dimmed) setBright(max(5, S.brightness * dimLevel / 100));
   if (sleepLimit > 0 && idle >= (uint32_t)sleepLimit) goSleep();
 
   onHome = !items.empty() && items[sel].home;
@@ -419,7 +422,7 @@ void loop() {
     if (dirty || (!ecoActive && ((animate && now - tFrame >= 40) || (onPage && now - tFrame >= 250) || ((onHome || onWidgets) && now - tFrame >= 1000)))) {
       tFrame = now; dirty = false; render(linkName());
     } else if (ecoActive) {
-      if (animate && now - tFrame >= (uint32_t)(1000 / min(S.animFps, 4))) { tFrame = now; renderEcoAnim(now); }
+      if (animate && ecoAnimFps > 0 && now - tFrame >= (uint32_t)(1000 / ecoAnimFps)) { tFrame = now; renderEcoAnim(now); }
       if (clockChanged) renderEcoClock();
     }
   }

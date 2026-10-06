@@ -26,7 +26,7 @@ class FirmwareEcoTest(unittest.TestCase):
         self.assertNotIn('ecoExit()', proto)
         self.assertIn('protoTransferBusy() || adjust || (toastUntil && now <= toastUntil)', loop)
         self.assertIn('!ecoActive && ((animate', loop)
-        self.assertIn('1000 / min(S.animFps, 4)', loop)
+        self.assertIn('ecoAnimFps > 0 && now - tFrame >= (uint32_t)(1000 / ecoAnimFps)', loop)
         self.assertIn('if (clockChanged) renderEcoClock()', loop)
         self.assertIn('delay(2)', loop)
         self.assertIn('ecoSuspend(); transferAt = millis() | 1;', proto)
@@ -87,3 +87,81 @@ int main(){
             self.assertEqual(r.returncode, 0, r.stderr)
             r = subprocess.run([str(binary)], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
+
+
+    def test_dim_and_fps_defaults_clamps_and_power_sources(self):
+        store = (ROOT / 'firmware/VolkanDeck/Store.h').read_text()
+        ino = (ROOT / 'firmware/VolkanDeck/VolkanDeck.ino').read_text()
+        keys = [('dimLevelUsb', 17, 5, 90), ('dimLevel', 17, 5, 90),
+                ('ecoFpsUsb', 4, 0, 8), ('ecoFps', 4, 0, 8)]
+        assignments = []
+        for key, default, low, high in keys:
+            self.assertIn(f'{key} = {default}', store)
+            self.assertIn(f'"{key}":{default}', store)
+            assignment = f'N.{key} = constrain(d["{key}"] | {default}, {low}, {high});'
+            self.assertIn(assignment, store)
+            assignments.append(assignment)
+        compiler = shutil.which('clang++') or shutil.which('g++')
+        if not compiler:
+            self.skipTest('C++ compiler unavailable')
+        idle = ino[ino.index('  bool onCable ='):ino.index('  if (sleepLimit > 0')]
+        periodic = ino[ino.index('      if (animate && ecoAnimFps'):ino.index('      if (clockChanged)')]
+        harness = r'''#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <map>
+#include <string>
+using std::min; using std::max;
+int constrain(int n,int lo,int hi){return max(lo,min(n,hi));}
+struct Value {bool exists; int n; int operator|(int def){return exists?n:def;}};
+struct Device {std::map<std::string,int> values; Value operator[](std::string k){return {values.count(k)!=0,values[k]};}} d;
+struct Settings {int dimLevelUsb=17,dimLevel=17,ecoFpsUsb=4,ecoFps=4;
+ int brightness=80,dimAfterUsb=10,dimAfter=10,sleepAfterUsb=0,sleepAfter=0,ecoAfterUsb=10,ecoAfter=10,animFps=15;} S,N;
+bool usbMounted=false,charging=false,dimmed=false,screenOff=false,ecoActive=false;
+int ecoAnimFps=4,adjust=0,bright=0,frames=0; unsigned toastUntil=0,now=20000,tFrame=0,idle=20;
+bool protoTransferBusy(){return false;} void ecoSuspend(){ecoActive=false;}
+void ecoEnter(){ecoActive=true;} void setBright(int v){bright=v;}
+void renderEcoAnim(unsigned){frames++;}
+void parse(){
+''' + '\n'.join(assignments) + r'''}
+void update(){
+''' + idle + r'''}
+void redraw(bool animate){
+''' + periodic + r'''}
+int main(){
+ parse();assert(N.dimLevelUsb==17&&N.dimLevel==17&&N.ecoFpsUsb==4&&N.ecoFps==4);
+ d.values={{"dimLevelUsb",0},{"dimLevel",200},{"ecoFpsUsb",-1},{"ecoFps",100}};
+ parse();assert(N.dimLevelUsb==5&&N.dimLevel==90&&N.ecoFpsUsb==0&&N.ecoFps==8);
+ d.values={{"dimLevelUsb",30},{"dimLevel",10},{"ecoFpsUsb",8},{"ecoFps",0}};
+ parse();S=N;
+ usbMounted=true;update();assert(dimmed&&bright==24&&ecoActive&&ecoAnimFps==8);
+ redraw(true);assert(frames==1);
+ usbMounted=false;update();assert(dimmed&&bright==8&&ecoAnimFps==0);
+ now+=10000;redraw(true);assert(frames==1); // zero never divides or redraws
+ charging=true;update();assert(bright==24&&ecoAnimFps==8);
+ S.animFps=2;update();assert(ecoAnimFps==2); // cap respects the normal rate
+ S.brightness=10;update();assert(bright==5);
+ charging=false;S.dimAfter=0;S.ecoAfter=0;update();assert(!dimmed&&bright==10&&!ecoActive);
+}
+'''
+        with tempfile.TemporaryDirectory() as work:
+            cpp, binary = Path(work) / 'levels.cpp', Path(work) / 'test'
+            cpp.write_text(harness)
+            result = subprocess.run([compiler, '-std=c++17', str(cpp), '-o', str(binary)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = subprocess.run([str(binary)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_freeze_preserves_complete_lcd_frame_during_dirty_redraws(self):
+        ui = (ROOT / 'firmware/VolkanDeck/Ui.h').read_text()
+        draw = ui[ui.index('static void drawAnim('):ui.index('static void drawHome(')]
+        self.assertLess(draw.index('if (ecoActive && ecoAnimFps == 0 && homeFrameShown) return;'), draw.index('spr.fillRoundRect'))
+        periodic = ui[ui.index('static void renderEcoAnim('):ui.index('static void renderEcoClock(')]
+        self.assertLess(periodic.index('if (ecoAnimFps <= 0) return;'), periodic.index('drawAnim('))
+        render = ui[ui.index('static void render(const char*'):ui.index('static void uiBegin()')]
+        self.assertIn('ecoActive && ecoAnimFps == 0 && homeFrameShown && !items.empty() && items[sel].home', render)
+        for rect in ['0, 0, 320, 2', '0, 2, 2, 128', '130, 2, 190, 128', '0, 130, 320, 40']:
+            self.assertIn(f'pushRegion({rect})', render)
+        self.assertIn('else spr.pushSprite(0, 0)', render)
+        self.assertIn('homeFrameShown = !items.empty() && items[sel].home;', render)
+        self.assertIn('if (ecoActive && ecoAnimFps > 0)', draw)

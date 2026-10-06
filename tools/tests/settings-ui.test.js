@@ -11,7 +11,7 @@ function page(platform) {
     append(...kids) { for (const kid of kids.flat()) if (kid != null) { this.children.push(kid); if (typeof kid === 'object') kid.parent = this; } }
     replaceChildren(...kids) { this.children = []; this.append(...kids); }
     addEventListener(k, fn) { this.events[k] = fn; }
-    setAttribute(k, v) { this.attributes[k] = v; if (k === 'id') ids.set(v, this); if (k.startsWith('data-')) this.dataset[k.slice(5)] = v; if (k === 'open') this.open = true; }
+    setAttribute(k, v) { this.attributes[k] = v; if (k === 'id') ids.set(v, this); if (k.startsWith('data-')) this.dataset[k.slice(5)] = v; if (k === 'open') this.open = true; if (k === 'disabled') this.disabled = true; }
     before(...kids) { const at = this.parent.children.indexOf(this); this.parent.children.splice(at, 0, ...kids); }
     get childNodes() { return this.children; }
     get textContent() { return this.text ?? this.children.map(k => typeof k === 'object' ? k.textContent : k).join(' '); }
@@ -169,4 +169,52 @@ for (const platform of ['darwin', 'win32', null]) test(`location settings recove
     }
     ctx.cfg.home.weather.auto = false; ctx.renderEditor(); assert.equal(!!shown('Konum ayarlarını aç'), false);
   }
+});
+
+for (const platform of ['darwin', 'win32', null]) test(`dim level and eco speed controls are first-render safe and round-trip (${platform || 'browser'})`, () => {
+  const { ctx, ids } = page(platform);
+  const controls = [
+    ['dimLevelUsb', 'dimAfterUsb', 'Karartınca parlaklık (kabloda)', 30, 17, 5, 90],
+    ['dimLevel', 'dimAfter', 'Karartınca parlaklık (pilde)', 10, 17, 5, 90],
+    ['ecoFpsUsb', 'ecoAfterUsb', 'Tasarrufta animasyon (kabloda)', 8, 4, 0, 8],
+    ['ecoFps', 'ecoAfter', 'Tasarrufta animasyon (pilde)', 0, 4, 0, 8]
+  ];
+  for (const kind of ['home', 'media', 'widgets', 'system']) {
+    ctx.edit = { kind }; ctx.renderEditor(); ctx.renderDeviceForm();
+    for (const [key, , label] of controls) assert.ok(ids.get(key) && ids.get('devForm').textContent.includes(label));
+  }
+  assert.deepEqual(ids.get('dimLevelUsb').children.map(c => c.attributes.value), [50, 30, 20, 10, 5, 17]);
+  assert.ok(ids.get('dimLevelUsb').children.some(c => c.textContent === '%17' && c.attributes.selected !== undefined));
+  assert.deepEqual(ids.get('ecoFps').children.map(c => c.attributes.value), [8, 4, 2, 1, 0]);
+  assert.equal(ids.get('ecoFps').children.at(-1).textContent, 'Durdur');
+  for (const [key, timer, , value] of controls) {
+    assert.equal(!!ids.get(key).disabled, false);
+    ids.get(key).events.change({ target: { value: String(value) } });
+    const isEco = timer.startsWith('eco');
+    ids.get(isEco ? timer : 'r_' + timer).events[isEco ? 'change' : 'input']({ target: { value: '0' } });
+    assert.equal(ids.get(key).disabled, true);
+    ctx.renderDeviceForm(); assert.equal(!!ids.get(key).disabled, true);
+    ids.get(isEco ? timer : 'r_' + timer).events[isEco ? 'change' : 'input']({ target: { value: '30' } });
+    assert.equal(ids.get(key).disabled, false);
+  }
+  const from = source.indexOf('function forDevice(');
+  vm.runInContext(source.slice(from, source.indexOf('function diffValue(', from)), ctx);
+  const sent = ctx.forDevice();
+  for (const [key, , label, value] of controls) {
+    assert.equal(sent.device[key], value);
+    assert.ok(ctx.configDiff(ctx.cfg, ctx.defaultConfig()).some(d => d.label === 'Cihaz · ' + label));
+  }
+  assert.equal(ctx.configDiff(ctx.cfg, sent, { platform }).length, 0);
+  const defaults = ctx.defaultConfig(), old = ctx.clone(defaults); for (const [key] of controls) delete old.device[key];
+  assert.equal(ctx.configDiff(old, defaults, { platform }).length, 0);
+  ctx.validate(old);
+  for (const [key, , , , def, lo, hi] of controls) {
+    assert.equal(old.device[key], def);
+    for (const [value, expected] of [[-100, lo], [999, hi]]) {
+      old.device[key] = value; ctx.validate(old); assert.equal(old.device[key], expected);
+      assert.equal(ctx.normalizeConfig({ device: { [key]: value } }).device[key], expected);
+    }
+  }
+  ctx.cfg.device.ecoFpsUsb = 3; ctx.renderDeviceForm();
+  assert.ok(ids.get('ecoFpsUsb').children.some(c => c.attributes.value === 3 && c.attributes.selected !== undefined));
 });
