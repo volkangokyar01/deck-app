@@ -170,3 +170,36 @@ test('no remembered system location uses IP without storing it as a system locat
   assert.equal(stats.get().location.source, 'ip'); assert.ok(calls.some(url => url.includes('ipapi')));
   await assert.rejects(fs.stat(path.join(cacheDir, 'last-system-location.json')), { code: 'ENOENT' });
 });
+
+test('denied system location keeps refreshing weather every 15 minutes from persisted last coordinates', async t => {
+  const fs = require('node:fs/promises'), os = require('node:os'), path = require('node:path');
+  const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-weather-last-test-'));
+  t.after(() => fs.rm(cacheDir, { recursive: true, force: true }));
+  await fs.writeFile(path.join(cacheDir, 'last-system-location.json'), JSON.stringify({ city: 'Adana', lat: 37, lon: 35.32, at: 1 }));
+  const timers = new Map(), weatherCalls = [];
+  t.mock.method(global, 'setInterval', (fn, ms) => { timers.set(ms, fn); return {}; });
+  const stats = createStats({ platform: 'test', cacheDir, fetch: async url => {
+    assert.equal(/ipapi|ipwho|reverse-geocode|nominatim/.test(url), false);
+    if (url.includes('open-meteo')) {
+      const params = new URL(url).searchParams;
+      assert.equal(params.get('latitude'), '37'); assert.equal(params.get('longitude'), '35.32');
+      weatherCalls.push(url);
+      return response({ current: { temperature_2m: 20 + weatherCalls.length }, daily: {} });
+    }
+    return response([]);
+  } });
+  t.after(() => stats.stop());
+  const weather = { auto: true, city: 'İstanbul', lat: 41, lon: 29 };
+  stats.get({ weather, geolocation: null }); stats.start(); await tick(); await tick();
+  assert.equal(stats.get().location.source, 'last');
+  assert.equal(stats.get().weather.city, 'Adana');
+  assert.equal(stats.get().weather.temp, 21);
+  for (let i = 0; i < 3; i++) {
+    timers.get(15 * 60e3)(); await tick();
+    // Renderer IPC polls with old config cannot stop or redirect weather refresh.
+    stats.get({ weather });
+    assert.equal(stats.get().weather.temp, 22 + i);
+    assert.equal(stats.get().location.source, 'last');
+  }
+  assert.equal(weatherCalls.length, 4);
+});

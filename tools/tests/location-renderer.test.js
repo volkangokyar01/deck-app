@@ -88,3 +88,19 @@ test('first location poll safely updates IP fallback without existing DOM', asyn
   await r.ctx.pollLocation();
   assert.equal(r.ctx.weatherLocationSource, 'ip'); assert.equal(r.ctx.cfg.home.weather.city, 'Ankara');
 });
+
+test('hourly system-location retries continue through multiple failures while source is last', async t => {
+  let now = 10000000; t.mock.method(Date, 'now', () => now);
+  const r = renderer({ denied: true, snapshot: { city: 'Adana', lat: 37, lon: 35.32, source: 'last' } });
+  await r.ctx.pollLocation();
+  for (let hour = 1; hour <= 3; hour++) {
+    now += 3600000; await r.ctx.pollLocation();
+    assert.equal(r.calls.filter(o => o.geolocation?.pending).length, hour + 1);
+    assert.equal(r.ctx.cfg.home.weather.city, 'Adana');
+    assert.equal(r.ctx.weatherLocationSource, 'last');
+  }
+  r.state.denied = false; r.state.permission = 'granted';
+  r.state.snapshot = { city: 'Adana', lat: 37, lon: 35.32, source: 'geo' };
+  now += 3600000; await r.ctx.pollLocation();
+  assert.equal(r.asks(), 2); assert.equal(r.ctx.weatherLocationSource, 'geo');
+});

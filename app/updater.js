@@ -4,6 +4,7 @@ const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
 const cp = require('child_process');
+const { createMacSigner } = require('./mac-sign');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 
@@ -17,14 +18,6 @@ const execFile = (cmd, args) => new Promise((resolve, reject) => cp.execFile(cmd
     // -dr writes the designated requirement to stderr on macOS.
     else resolve(cmd === '/usr/bin/codesign' && args.includes('-dr') ? out + '\n' + stderr : out);
   }));
-async function signMac(run, bundle) {
-  try {
-    await run('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', bundle]);
-    // Only the outer bundle gets the stable requirement; helpers keep their own identifiers.
-    await run('/usr/bin/codesign', ['--force', '--sign', '-', '-r=designated => identifier "com.volkan.deck"', bundle]);
-    await run('/usr/bin/codesign', ['--verify', '--deep', '--strict', bundle]);
-  } catch (e) { throw userError('Uygulama imzası doğrulanamadı; kurulum betiğini yeniden çalıştır.', e); }
-}
 function userError(message, cause) {
   const e = new Error(message); e.userMessage = message;
   if (cause) e.detail = cause.detail || cause.message;
@@ -171,6 +164,8 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
   let target = null, applying = false, quitRequested = false, timers = [], cleanup = Promise.resolve();
   let releasesOnly = !!readState().updatesReleasesOnly;
   let state = { phase: 'idle', available: false, localNewer: false, needsInstaller: false, latest: null, message: 'Henüz kontrol edilmedi.', detail: null };
+  let macSigner;
+  const signer = () => macSigner ||= createMacSigner({ userData: app.getPath('userData'), run });
   const receiptPath = () => path.join(app.getPath('userData'), 'update-receipt.json');
   let receipt = null;
   const getState = () => ({ ...state, releasesOnly, packaged, receipt });
@@ -295,7 +290,7 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
     const chosen = target, current = app.getAppPath();
     let temp = null, stage = null, failure = null, restored = false;
     const bundle = platform === 'darwin' ? bundleFor(current) : null;
-    const sign = () => signMac(run, bundle);
+    const sign = () => signer().signApp(bundle);
     applying = true; publish({ phase: 'downloading', message: 'İndiriliyor…', detail: null });
     try {
       await cleanup;
@@ -388,11 +383,11 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
         await removeMatching(path.dirname(current), 'app.new-');
       } finally {
         if (platform === 'darwin' && changed) {
-          await signMac(run, bundleFor(current));
+          await signer().signApp(bundleFor(current));
         }
       }
       await removeMatching(app.getPath('temp'), 'volkan-update-');
-      // The old updater signs this update with a cdhash requirement. Migrate on first launch.
+      // Ad-hoc identities still change with content. Migrate to the local certificate once.
       // apply() awaits cleanup, including an already running migration, before changing files.
       if (platform === 'darwin' && !applying) {
         try {
@@ -400,10 +395,14 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
           const output = await run('/usr/bin/codesign', ['-dr', '-', bundle]);
           const text = typeof output === 'string' ? output : [output?.stdout, output?.stderr].join('\n');
           const requirement = text.match(/^designated\s*=>\s*(.+)$/m)?.[1].trim();
-          if (requirement !== 'identifier "com.volkan.deck"') await signMac(run, bundle);
-        } catch (e) { console.error('macOS imza geçişi tamamlanamadı:', e.detail || e.message); }
+          if (!requirement?.includes('certificate leaf')) {
+            const identity = await signer().ensureIdentity();
+            if (identity) await signer().signApp(bundle, identity);
+            else console.error('macOS yerel imza kimliği oluşturulamadı.');
+          }
+        } catch (e) { console.error('macOS imza geçişi tamamlanamadı.'); }
       }
-    }).catch(e => { publish(errorState(e)); });
+    }).catch(() => { console.error('macOS imza temizliği tamamlanamadı.'); });
     timers = [setTimeout(() => check(), 15e3), setInterval(() => check(), 6 * 60 * 60e3)];
     return getState();
   }

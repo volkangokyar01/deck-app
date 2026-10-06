@@ -229,9 +229,12 @@
     await pollLocation();
   }
   window.retryWeatherLocation = () => requestLocation(true);
+  // back from System Settings with the permission granted: try again right away
+  window.addEventListener?.('focus', () => { if (cfg.home?.weather?.auto && geoAttempted && !geoOK && !locationPolling) requestLocation(true); });
   async function pollLocation() {
     if (locationPolling || !cfg.home?.weather?.auto || ['downloading', 'installing'].includes(updateState?.phase)) return;
-    if (!geoAttempted || Date.now() - geoAt >= 3600000) { await requestLocation(); return; }
+    // after a failure (e.g. permission lost after an update) retry every 5 min instead of hourly
+    if (!geoAttempted || Date.now() - geoAt >= (geoOK ? 3600000 : 300000)) { await requestLocation(); return; }
     weatherLocationFailed = geoAttempted && !geoOK;
     for (const id of ['wxLocationSettings', 'wxLocationHint']) { const e = document.getElementById(id); if (e) e.hidden = !weatherLocationFailed; }
     locationPolling = true;
