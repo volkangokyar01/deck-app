@@ -1113,7 +1113,7 @@ function renderCtlMap(){
 /* ---------- Editor ---------- */
 let captureOff=null;
 function renderEditor(){
-  const previousAdvanced=$("#launchAdvanced"), advancedOpen=previousAdvanced?.dataset.app===edit.id&&previousAdvanced.open;
+  const previousAdvanced=$("#launchAdvanced"), advancedOpen=!!previousAdvanced&&previousAdvanced.dataset.app===edit.id&&previousAdvanced.open;
   const body=$("#edBody"); body.replaceChildren();
   if (captureOff) captureOff();
   if (edit.kind==="slot") return renderSlotEditor(body);

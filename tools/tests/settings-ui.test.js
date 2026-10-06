@@ -42,6 +42,15 @@ function page(platform) {
   return { ctx, ids, body: ids.get('edBody'), render: () => { ctx.renderEditor(); if (platform) ctx.addTargetBox(); } };
 }
 
+for (const platform of ['darwin', 'win32', null]) test(`page editors render on first open, without an app id (${platform || 'browser'})`, () => {
+  // selectPage() sets edit = {kind} with no id, and no advanced section exists yet
+  for (const kind of ['widgets', 'media', 'system', 'home']) {
+    const { ctx, body } = page(platform);
+    ctx.edit = { kind }; ctx.renderEditor();
+    assert.ok(body.children.length, kind);
+  }
+});
+
 for (const platform of ['darwin', 'win32', null]) test(`all editor kinds render; platform controls and advanced defaults (${platform || 'browser'})`, () => {
   const { ctx, ids, body, render } = page(platform);
   for (const kind of ['home', 'widgets', 'media', 'system', 'app']) { ctx.edit.kind = kind; render(); assert.ok(body.children.length); }
