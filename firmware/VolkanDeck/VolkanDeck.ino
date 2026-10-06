@@ -344,7 +344,7 @@ void setup() {
   LittleFS.begin(true);
   loadConfig();
   applyTheme(effectiveLight());
-  loadAnim();
+  loadAnim(anim); loadAnim(animLight);
   buildItems();
   mediaTarget = S.mediaPlayer;
   if (S.homeOn) sel = 0;

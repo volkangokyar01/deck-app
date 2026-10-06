@@ -475,9 +475,9 @@ static void drawAnim(int x, int y, int w, int h, uint32_t t) {
       }
       break; }
     case A_CUSTOM:
-      if (anim.frames) {
-        int f = animIndex(t, S.animFps);
-        const uint16_t* px = animFrame(f);
+      if (Anim& A = themeAnim(lightTheme); A.frames) {
+        int f = animIndex(A, t, &A == &anim ? S.animFps : A.fps);   // the dark slot follows the speed setting
+        const uint16_t* px = animFrame(A, f);
         if (px) spr.pushImage(x, y, 128, 128, (const lgfx::rgb565_t*)px);
       } else text("Animasyon yüklenmedi", mx, my, FM10, SC_DIM, textdatum_t::middle_center);
       break;

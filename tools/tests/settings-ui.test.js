@@ -282,3 +282,42 @@ test('dragging an app moves it before or after the target', () => {
   ctx.moveApp('b', 'b', false); assert.equal(order(), 'dbca');
   ctx.moveApp('x', 'b', false); assert.equal(order(), 'dbca');
 });
+
+test('light-theme animation: own slot, sent only to firmware 1.7.0+, removable, editor tabs and fallback', async () => {
+  const { ctx, ids, body } = page('win32');
+  const sent = [], toasts = [];
+  Object.assign(ctx, { SCREEN_PALETTES: { dark: { panel: '#0F1012' }, light: { panel: '#ECE8E0' } }, screenLight: false,
+    port: {}, deviceInfo: { fw: '1.6.3' }, verGE: (a, b) => a.split('.').map(Number).reduce((r, x, i) => r ?? (x === Number(b.split('.')[i]) ? null : x > Number(b.split('.')[i])), null) ?? true,
+    send: async (m) => { sent.push(m); return { ok: true }; }, idbSet: async () => {}, toast: m => toasts.push(m), btoa: s => Buffer.from(s, 'binary').toString('base64') });
+  const start = source.indexOf('/* ---------- Custom animation');
+  vm.runInContext(source.slice(start, source.indexOf('function musicPlayerForApp(', start)), ctx);
+  vm.runInContext('animFrames=[{img:{data:new Uint8Array(4*128*128),width:128,height:128}}];animFramesL=[{img:{data:new Uint8Array(4*128*128),width:128,height:128}},{img:{data:new Uint8Array(4*128*128),width:128,height:128}}]', ctx);
+  ctx.cfg.home.anim.kind = 'custom';
+  const animMeta = vm.runInContext('animMeta', ctx);
+  const meta = animMeta(true); Object.assign(meta, { frames: 2, fps: 10, delays: [100, 8000], name: 'light.gif' });
+  assert.equal(ctx.cfg.home.anim.light, meta);
+  const btn = { disabled: false }, bar = { style: {} };
+  await ctx.sendAnim(btn, bar, true);
+  assert.equal(sent.length, 0, 'old firmware would overwrite the dark animation');
+  assert.match(toasts.at(-1), /1\.7\.0/);
+  ctx.deviceInfo.fw = '1.7.0'; await ctx.sendAnim(btn, bar, true);
+  assert.equal(sent[0].cmd, 'anim_begin'); assert.equal(sent[0].slot, 'light'); assert.equal(sent[0].frames, 2); assert.deepEqual([...sent[0].delays], [100, 8000]);
+  assert.equal(sent.at(-1).cmd, 'anim_end', toasts.at(-1)); assert.equal(ctx.deviceInfo.animLight, 2);
+  sent.length = 0; await ctx.sendAnim(btn, bar, false);
+  assert.equal(sent[0].slot, undefined); assert.equal(sent[0].frames, 1);
+  // editor: theme tabs; the light tab offers removal and previews the light theme
+  ctx.edit = { kind: 'home' }; ctx.renderEditor();
+  assert.ok(ids.get('animTab_dark') && ids.get('animTab_light')); assert.equal(ids.get('animClearLight'), undefined);
+  ids.get('animTab_light').events.click();
+  assert.equal(vm.runInContext('animTab', ctx), 'light'); assert.ok(ids.get('animClearLight'));
+  assert.ok(body.textContent.includes('Açık tema animasyonunu cihaza yaz'));
+  ctx.edit = { kind: 'media' }; ctx.renderEditor(); assert.equal(vm.runInContext('animTab', ctx), null, 'leaving the home editor ends the theme preview');
+  sent.length = 0; await ctx.clearLightAnim();
+  assert.deepEqual(sent.map(m => [m.cmd, m.slot]), [['anim_clear', 'light']]);
+  assert.equal(ctx.cfg.home.anim.light, undefined); assert.equal(vm.runInContext('animFramesL.length', ctx), 0);
+  // the light metadata never goes to the device
+  animMeta(true).frames = 3;
+  const from = source.indexOf('function forDevice(');
+  vm.runInContext(source.slice(from, source.indexOf('function diffValue(', from)), ctx);
+  assert.equal(ctx.forDevice().home.anim.light, undefined); assert.equal(ctx.forDevice().home.anim.delays, undefined);
+});

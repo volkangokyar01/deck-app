@@ -259,64 +259,72 @@ static void pruneIcons() {
 /* ---------- custom animation (128x128 RGB565 frames) ----------
    Stored in LittleFS as /anim.bin (12-byte header 'VDAN' w h n fps flags + frames), so it survives power-off.
    flags bit0: a table of n uint16 per-frame durations (ms) follows the header, so a GIF keeps its own timing.
+   Two slots (1.7.0): /anim.bin for the dark theme, /anim_light.bin for the light theme; a missing slot uses the other.
    Loaded into PSRAM when possible; otherwise frames are streamed from flash one at a time. */
 static const size_t ANIM_FRAME = 128 * 128 * 2;
-struct Anim { int w = 0, h = 0, frames = 0, fps = 15; uint16_t* buf = nullptr; bool stream = false; uint16_t* frameBuf = nullptr; int cur = -1;
-               uint16_t delays[60]; uint32_t total = 0; size_t data = 12; } anim;
-File animFile;
+struct Anim { const char* path; int w = 0, h = 0, frames = 0, fps = 15; uint16_t* buf = nullptr; bool stream = false; uint16_t* frameBuf = nullptr; int cur = -1;
+               uint16_t delays[60]; uint32_t total = 0; size_t data = 12; File file; };
+Anim anim{ "/anim.bin" }, animLight{ "/anim_light.bin" };
+static Anim& animSlot(bool light) { return light ? animLight : anim; }
 
-static void unloadAnim() {
-  if (animFile) animFile.close();
-  if (anim.buf) { free(anim.buf); anim.buf = nullptr; }
-  anim.frames = 0; anim.stream = false; anim.cur = -1; anim.total = 0; anim.data = 12;
+static void unloadAnim(Anim& A) {
+  if (A.file) A.file.close();
+  if (A.buf) { free(A.buf); A.buf = nullptr; }
+  A.frames = 0; A.stream = false; A.cur = -1; A.total = 0; A.data = 12;
 }
 
-static bool loadAnim() {
-  unloadAnim();
-  File f = LittleFS.open("/anim.bin", "r");
+static bool loadAnim(Anim& A) {
+  unloadAnim(A);
+  File f = LittleFS.open(A.path, "r");
   if (!f) return false;
   uint8_t hd[12];
   if (f.read(hd, 12) != 12 || memcmp(hd, "VDAN", 4)) { f.close(); return false; }
   int w = hd[4] | hd[5] << 8, h = hd[6] | hd[7] << 8, n = hd[8] | hd[9] << 8;
   size_t bytes = ANIM_FRAME * n, data = (hd[11] & 1) ? 12 + 2 * n : 12;
   if (w != 128 || h != 128 || n <= 0 || n > 60 || f.size() < data + bytes) { f.close(); return false; }
-  anim.w = w; anim.h = h; anim.frames = n; anim.fps = hd[10] ? hd[10] : 15; anim.data = data;
+  A.w = w; A.h = h; A.frames = n; A.fps = hd[10] ? hd[10] : 15; A.data = data;
   if (hd[11] & 1) {
     uint8_t dl[120];
-    if (f.read(dl, 2 * n) != (size_t)(2 * n)) { f.close(); anim.frames = 0; return false; }
-    for (int i = 0; i < n; i++) { anim.delays[i] = max(20, dl[2 * i] | dl[2 * i + 1] << 8); anim.total += anim.delays[i]; }
+    if (f.read(dl, 2 * n) != (size_t)(2 * n)) { f.close(); A.frames = 0; return false; }
+    for (int i = 0; i < n; i++) { A.delays[i] = max(20, dl[2 * i] | dl[2 * i + 1] << 8); A.total += A.delays[i]; }
   }
   uint16_t* b = psramFound() ? (uint16_t*)ps_malloc(bytes) : nullptr;
   if (!b && bytes <= 96 * 1024) b = (uint16_t*)malloc(bytes);
-  if (b && f.read((uint8_t*)b, bytes) == bytes) { anim.buf = b; f.close(); return true; }
+  if (b && f.read((uint8_t*)b, bytes) == bytes) { A.buf = b; f.close(); return true; }
   if (b) free(b);
   // not enough RAM: keep the file open and read one frame at a time
-  if (!anim.frameBuf) anim.frameBuf = (uint16_t*)malloc(ANIM_FRAME);
-  if (!anim.frameBuf) { f.close(); anim.frames = 0; return false; }
-  animFile = f; anim.stream = true; anim.cur = -1;
+  if (!A.frameBuf) A.frameBuf = (uint16_t*)malloc(ANIM_FRAME);
+  if (!A.frameBuf) { f.close(); A.frames = 0; return false; }
+  A.file = f; A.stream = true; A.cur = -1;
   return true;
 }
 
-static const uint16_t* animFrame(int i) {
-  if (!anim.frames) return nullptr;
-  if (anim.buf) return anim.buf + (size_t)i * 128 * 128;
-  if (anim.stream && animFile) {
-    if (i != anim.cur) {
-      animFile.seek(anim.data + (size_t)i * ANIM_FRAME);
-      if (animFile.read((uint8_t*)anim.frameBuf, ANIM_FRAME) != ANIM_FRAME) return nullptr;
-      anim.cur = i;
+// the animation for the current theme; falls back to the other slot when only one was uploaded
+static Anim& themeAnim(bool light) {
+  Anim& want = animSlot(light);
+  return want.frames ? want : animSlot(!light);
+}
+
+static const uint16_t* animFrame(Anim& A, int i) {
+  if (!A.frames) return nullptr;
+  if (A.buf) return A.buf + (size_t)i * 128 * 128;
+  if (A.stream && A.file) {
+    if (i != A.cur) {
+      A.file.seek(A.data + (size_t)i * ANIM_FRAME);
+      if (A.file.read((uint8_t*)A.frameBuf, ANIM_FRAME) != ANIM_FRAME) return nullptr;
+      A.cur = i;
     }
-    return anim.frameBuf;
+    return A.frameBuf;
   }
   return nullptr;
 }
 
 // frame to show at time t: the GIF's own durations if it has them, else a fixed fps
-static int animIndex(uint32_t t, int fps) {
-  if (!anim.total) return (int)(t / 1000.0f * fps) % anim.frames;
-  uint32_t m = t % anim.total;
-  for (int i = 0; i < anim.frames; i++) { if (m < anim.delays[i]) return i; m -= anim.delays[i]; }
-  return anim.frames - 1;
+static int animIndex(const Anim& A, uint32_t t, int fps) {
+  if (!A.total) return (int)(t / 1000.0f * fps) % A.frames;
+  uint32_t m = t % A.total;
+  for (int i = 0; i < A.frames; i++) { if (m < A.delays[i]) return i; m -= A.delays[i]; }
+  return A.frames - 1;
 }
 
 // keep "Kendi GIF'im" selected after a reboot even if the full settings were never written

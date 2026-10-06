@@ -325,7 +325,8 @@ details.adv:not([open]) > summary{border-bottom:0}
 <pre>→ {"id":1,"cmd":"hello"}
 ← {"id":1,"ok":true,"fw":"<span class="fwv">1.6.3</span>","name":"Volkan Deck",
    "battery":84,"charging":false,"link":"usb","psram":8192,
-   "via":"usb"}                     // Bluetooth'ta "via":"ble","mtu":247
+   "via":"usb","anim":46,"animLight":0}
+                                    // Bluetooth'ta "via":"ble","mtu":247
 
 → {"id":2,"cmd":"get_config"}
 ← {"id":2,"ok":true,"config":{…}}
@@ -343,15 +344,16 @@ details.adv:not([open]) > summary{border-bottom:0}
 ← {"id":6,"ok":true}                     // bağlantı yoksa "no_host"
 
 → {"id":7,"cmd":"anim_begin","w":128,"h":128,"frames":24,
-   "fps":15,"bytes":786432,"delays":[80,80,…]}
+   "fps":15,"bytes":786432,"delays":[80,80,…],"slot":"light"}
 → {"id":8,"cmd":"anim_data","off":0,"data":"&lt;base64, ≤6144 bayt&gt;"}
 → {"id":9,"cmd":"anim_end","bytes":786432}
-← {"id":9,"ok":true,"mode":"ram"}       // ya da "flash"
+← {"id":9,"ok":true,"mode":"ram","slot":"light"}   // ya da "flash"
+→ {"id":12,"cmd":"anim_clear","slot":"light"}   // 1.7.0+
 
 → {"id":10,"cmd":"dfu"}       // yalnız USB: yükleme moduna geçer
 → {"id":11,"cmd":"restart"}</pre>
         <p class="hint">Yanıtlar komutun geldiği yoldan (USB ya da Bluetooth) döner; bilinmeyen komuta <span class="mono">"unknown_cmd"</span>. Masaüstü uygulaması <span class="mono">companion</span>'ı yaklaşık 2 sn'de bir gönderir; cihaz son 6 sn içinde alırsa uygulamayı “bağlı” sayar.</p>
-        <p class="hint">Animasyon: RGB565, küçük-endian, kareler art arda; <span class="mono">delays</span> isteğe bağlı kare süreleri (ms). Cihaz <span class="mono">/anim.bin</span> olarak saklar. İkonlar <span class="mono">set_config</span>'ten sonra gelir (40×40, #1E232C zemine oturtulmuş); ikonlu uygulamada <span class="mono">"img":true</span>.</p>
+        <p class="hint">Animasyon: RGB565, küçük-endian, kareler art arda; <span class="mono">delays</span> isteğe bağlı kare süreleri (ms). Cihaz koyu tema için <span class="mono">/anim.bin</span>, <span class="mono">"slot":"light"</span> ile açık tema için <span class="mono">/anim_light.bin</span> olarak saklar (1.7.0+); biri yoksa iki temada diğeri oynar. <span class="mono">hello</span>'daki <span class="mono">anim</span> / <span class="mono">animLight</span> kayıtlı kare sayısıdır. İkonlar <span class="mono">set_config</span>'ten sonra gelir (40×40, #1E232C zemine oturtulmuş); ikonlu uygulamada <span class="mono">"img":true</span>.</p>
       </div>
     </div>
     <div class="panel">
@@ -655,6 +657,7 @@ const SCREEN_PALETTES={
 };
 const SC={...SCREEN_PALETTES.dark}; let screenLight=false;
 function effectiveScreenLight(){
+  if (animTab && edit.kind==="home" && cfg.home.anim.kind==="custom") return animTab==="light";   // editing a theme's GIF: preview that theme
   const d=cfg.device; if(d.theme==="light") return true; if(d.theme==="dark") return false;
   const t=new Date(), m=t.getHours()*60+t.getMinutes(), l=themeMinute(d.lightFrom,420), b=themeMinute(d.darkFrom,1140);
   return l<=b ? m>=l&&m<b : m>=l||m<b;
@@ -945,9 +948,10 @@ function drawAnim(x,y,w,h,t){
     for (let i=0;i<n;i++){ const v=0.25+0.75*Math.abs(Math.sin(s*(1.3+i*0.37)+i*1.7)*Math.cos(s*0.7+i)); const bh=v*(h-36);
       cx.fillStyle=mixHex(c,SC.panel,0.35+0.65*v); rr(x+14+i*bw+2,y+h-16-bh,bw-4,bh,2); cx.fill(); }
     cx.globalAlpha=1;
-  } else if (A.kind==="custom" && animFrames.length){
-    const f = animIndex(A, s);
-    cx.drawImage(animFrames[f].bmp, x, y, w, h);
+  } else if (A.kind==="custom" && (animFrames.length || animFramesL.length)){
+    const light = screenLight ? animFramesL.length>0 : !animFrames.length;   // same fallback as the firmware
+    const fr = framesFor(light), f = animIndex(animMeta(light), s, fr);
+    cx.drawImage(fr[f].bmp, x, y, w, h);
   } else {
     cx.textAlign="center"; cx.fillStyle=SC.dim; cx.font=F(500,10);
     cx.fillText(A.kind==="custom"?"Animasyon yükle":"Animasyon kapalı", mx, my);
@@ -1072,19 +1076,26 @@ function tick(now){
 }
 
 /* ---------- Custom animation (GIF/image → 128×128 frames) ---------- */
-let animFrames = [];   // {img:ImageData, bmp:ImageBitmap}
-let animSource = null; // last uploaded File, kept to re-fit
-const MAX_FRAMES = 60, AW = 128, AH = 128;
+let animFrames = [];   // {img:ImageData, bmp:ImageBitmap} — dark theme (and both themes when there is no light one)
+let animFramesL = [];  // light theme, firmware 1.7.0+
+let animSource = null, animSourceL = null; // last uploaded Files, kept to re-fit
+const MAX_FRAMES = 60, AW = 128, AH = 128, ANIM_LIGHT_FW = "1.7.0";
+let animTab = null;    // "dark" / "light" once the user picks a theme tab; the preview follows it while editing
+// light: cfg.home.anim.light {frames,fps,delays,name} is local only (forDevice drops it)
+const animMeta = light => light ? (cfg.home.anim.light ||= {}) : cfg.home.anim;
+const framesFor = light => light ? animFramesL : animFrames;
+const animKey = light => light ? "animLight" : "anim";
+const animLightOK = () => !!deviceInfo?.fw && verGE(deviceInfo.fw, ANIM_LIGHT_FW);
 function idb(){ return new Promise((res,rej)=>{ try{ const r=indexedDB.open("volkandeck",1); r.onupgradeneeded=()=>r.result.createObjectStore("kv"); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }catch(e){ rej(e); } }); }
 async function idbSet(k,v){ try{ const db=await idb(); await new Promise((res,rej)=>{ const tx=db.transaction("kv","readwrite"); tx.objectStore("kv").put(v,k); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }catch(e){} }
 async function idbGet(k){ try{ const db=await idb(); return await new Promise((res,rej)=>{ const r=db.transaction("kv").objectStore("kv").get(k); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }catch(e){ return null; } }
-function fitDraw(ctx, src, sw, sh, mode){
-  ctx.fillStyle=SC.panel; ctx.fillRect(0,0,AW,AH);
+function fitDraw(ctx, src, sw, sh, mode, light){
+  ctx.fillStyle=SCREEN_PALETTES[light?"light":"dark"].panel; ctx.fillRect(0,0,AW,AH);   // the slot's own panel colour
   const sc = mode==="contain" ? Math.min(AW/sw, AH/sh) : Math.max(AW/sw, AH/sh);
   const dw=sw*sc, dh=sh*sc; ctx.imageSmoothingQuality="high";
   ctx.drawImage(src,(AW-dw)/2,(AH-dh)/2,dw,dh);
 }
-async function processAnimFile(file){
+async function processAnimFile(file, light=false){
   const mode=cfg.home.anim.fit, out=[];
   const c=document.createElement("canvas"); c.width=AW; c.height=AH; const ctx=c.getContext("2d",{willReadFrequently:true});
   let fps = cfg.home.anim.fps, partial=false, delays=null;
@@ -1098,7 +1109,7 @@ async function processAnimFile(file){
       const {image} = await dec.decode({frameIndex: Math.floor(i*step)});
       if (image.duration){ durSum+=image.duration; durN++; }
       durs.push(Math.round((image.duration||0)/1000));
-      fitDraw(ctx, image, image.displayWidth, image.displayHeight, mode); image.close();
+      fitDraw(ctx, image, image.displayWidth, image.displayHeight, mode, light); image.close();
       out.push(ctx.getImageData(0,0,AW,AH));
     }
     dec.close?.();
@@ -1107,33 +1118,36 @@ async function processAnimFile(file){
     if (step===1 && durN===count && count>1 && Math.max(...durs) > Math.min(...durs)*1.5) delays = durs.map(d=>Math.max(20,Math.min(60000,d)));
   } else {
     const bmp = await createImageBitmap(file);
-    fitDraw(ctx, bmp, bmp.width, bmp.height, mode); bmp.close?.();
+    fitDraw(ctx, bmp, bmp.width, bmp.height, mode, light); bmp.close?.();
     out.push(ctx.getImageData(0,0,AW,AH));
     if (/gif/.test(file.type)) partial=true;
   }
   return {frames:out, fps, delays, partial};
 }
-function animDelays(A){ return Array.isArray(A.delays) && A.delays.length===animFrames.length ? A.delays : null; }
-function animIndex(A, s){        // s: seconds; per-frame durations if the GIF has them, else fixed fps
-  const d=animDelays(A);
-  if (!d) return Math.floor(s*(A.fps||12)) % animFrames.length;
+function animDelays(A, frames=animFrames){ return Array.isArray(A.delays) && A.delays.length===frames.length ? A.delays : null; }
+function animIndex(A, s, frames=animFrames){        // s: seconds; per-frame durations if the GIF has them, else fixed fps
+  const d=animDelays(A, frames);
+  if (!d) return Math.floor(s*(A.fps||12)) % frames.length;
   let m=(s*1000) % d.reduce((a,b)=>a+b,0);
   for (let i=0;i<d.length;i++){ if (m<d[i]) return i; m-=d[i]; }
   return d.length-1;
 }
-async function setFrames(list){
-  animFrames = await Promise.all(list.map(async img=>({img, bmp: await createImageBitmap(img)})));
+async function setFrames(list, light=false){
+  const f = await Promise.all(list.map(async img=>({img, bmp: await createImageBitmap(img)})));
+  if (light) animFramesL = f; else animFrames = f;
 }
-async function loadAnim(file){
+async function loadAnim(file, light=false){
   if (!file) return;
   if (!/^image\//.test(file.type)){ toast("Bu dosya resim değil. GIF, PNG, JPG veya WebP seç."); return; }
   if (file.size > 30*1024*1024){ toast("Dosya 30 MB'tan büyük; daha kısa bir GIF seç."); return; }
   toast("İşleniyor…");
   try{
-    const r = await processAnimFile(file);
-    animSource = file; await setFrames(r.frames);
-    Object.assign(cfg.home.anim, {kind:"custom", frames:r.frames.length, fps:r.fps, delays:r.delays, name:file.name.slice(0,40)});
-    save(); await idbSet("anim", r.frames);
+    const r = await processAnimFile(file, light);
+    if (light) animSourceL = file; else animSource = file;
+    await setFrames(r.frames, light);
+    Object.assign(animMeta(light), {frames:r.frames.length, fps:r.fps, delays:r.delays, name:file.name.slice(0,40)});
+    cfg.home.anim.kind = "custom";
+    save(); await idbSet(animKey(light), r.frames);
     renderEditor(); drawScreen();
     toast(r.partial ? "Bu tarayıcı yalnızca ilk kareyi okuyabildi; GIF için Chrome veya Edge kullan." : `${r.frames.length} kare hazır`);
   }catch(e){ toast("Dosya okunamadı: "+e.message); }
@@ -1144,23 +1158,35 @@ function toRGB565(img){
   return out;
 }
 function b64(u8){ let s=""; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s); }
-async function sendAnim(btn, bar){
-  if (!animFrames.length) return;
+async function sendAnim(btn, bar, light=false){
+  const frames=framesFor(light);
+  if (!frames.length) return;
   if (port?.isBle){ toast("Animasyonu yüklemek için cihazı kabloyla bilgisayara bağla"); return; }
-  const A=cfg.home.anim, total=animFrames.length*AW*AH*2, CH=6144;
+  if (light && !animLightOK()){ toast("Açık tema animasyonu için cihaz yazılımı v"+ANIM_LIGHT_FW+" gerekir"); return; }   // older firmware would overwrite the dark one
+  const A=animMeta(light), total=frames.length*AW*AH*2, CH=6144;
   btn.disabled=true;
   try{
-    const delays = animDelays(A);
-    await send({cmd:"anim_begin",w:AW,h:AH,frames:animFrames.length,fps:A.fps,bytes:total,...(delays?{delays}:{})},4000);
+    const delays = animDelays(A, frames);
+    await send({cmd:"anim_begin",w:AW,h:AH,frames:frames.length,fps:A.fps||15,bytes:total,...(delays?{delays}:{}),...(light?{slot:"light"}:{})},4000);
     let off=0;
-    for (const f of animFrames){
+    for (const f of frames){
       const raw=toRGB565(f.img);
       for (let i=0;i<raw.length;i+=CH){ await send({cmd:"anim_data",off,data:b64(raw.subarray(i,i+CH))},4000,true); off+=Math.min(CH,raw.length-i); bar.style.width=(off/total*100).toFixed(1)+"%"; }
     }
     await send({cmd:"anim_end",bytes:total},15000);
-    toast("Animasyon cihaza kaydedildi; kapatıp açınca da kalır");
+    if (deviceInfo) deviceInfo[light?"animLight":"anim"]=frames.length;
+    toast((light?"Açık tema animasyonu":"Animasyon")+" cihaza kaydedildi; kapatıp açınca da kalır");
   }catch(e){ toast("Gönderilemedi: "+e.message); }
   finally{ btn.disabled=!port; }
+}
+
+async function clearLightAnim(){
+  animFramesL=[]; animSourceL=null; delete cfg.home.anim.light; save(); await idbSet("animLight", null);
+  if (port && animLightOK() && deviceInfo?.animLight){
+    try{ await send({cmd:"anim_clear",slot:"light"},4000); deviceInfo.animLight=0; toast("Açık tema animasyonu kaldırıldı; iki temada da koyu temadaki oynar"); }
+    catch(e){ toast("Cihazdan kaldırılamadı: "+e.message); }
+  } else toast("Açık tema animasyonu kaldırıldı");
+  renderEditor(); drawScreen();
 }
 
 function musicPlayerForApp(a){
@@ -1281,6 +1307,7 @@ function renderEditor(){
   const body=$("#edBody"); body.replaceChildren();
   if (captureOff) captureOff();
   if (edit.kind==="slot") return renderSlotEditor(body);
+  if (edit.kind!=="home") animTab=null;
   if (edit.kind==="home") return renderHomeEditor(body);
   if (edit.kind==="media") return renderMediaEditor(body);
   if (edit.kind==="system") return renderSysEditor(body);
@@ -1512,25 +1539,42 @@ function renderHomeEditor(body){
     sec2.append(el("div",{class:"field"},el("span",{},"Renk"),sw));
   }
   if (A.kind==="custom"){
-    const inp=el("input",{type:"file",id:"animFile",accept:"image/gif,image/webp,image/png,image/jpeg",hidden:true,onchange:e=>{loadAnim(e.target.files[0]); e.target.value="";}});
-    const drop=el("label",{class:"drop",for:"animFile"},el("b",{},animFrames.length?"Başka dosya seç veya buraya sürükle":"GIF veya resim seç, ya da buraya sürükle"),
+    // one GIF per theme; without a light one the dark one plays in both (and the other way round)
+    const tab = animTab || (screenLight?"light":"dark"), light = tab==="light", M = animMeta(light), frames = framesFor(light);
+    sec2.append(el("div",{class:"seg",role:"tablist","aria-label":"Tema"},...[["dark","Koyu tema"],["light","Açık tema"]].map(([k,n])=>
+      el("button",{role:"tab","aria-selected":tab===k?"true":"false","aria-pressed":tab===k?"true":"false",id:"animTab_"+k,onclick:()=>{ animTab=k; renderEditor(); drawScreen(); }},
+        n, framesFor(k==="light").length?" ✓":""))));
+    const other = framesFor(!light).length;
+    sec2.append(el("p",{class:"hint"},light
+      ? (frames.length?"Açık temada bu GIF oynar.":other?"Açık tema için GIF yok; koyu temadaki oynar. Açık zeminli bir GIF yükleyebilirsin.":"Açık temada gösterilecek GIF.")
+      : (frames.length?"Koyu temada bu GIF oynar"+(framesFor(true).length?".":"; açık tema için ayrı GIF yoksa orada da bu oynar."):other?"Koyu tema için GIF yok; açık temadaki oynar.":"Koyu temada gösterilecek GIF.")));
+    const inp=el("input",{type:"file",id:"animFile",accept:"image/gif,image/webp,image/png,image/jpeg",hidden:true,onchange:e=>{loadAnim(e.target.files[0], light); e.target.value="";}});
+    const drop=el("label",{class:"drop",for:"animFile"},el("b",{},frames.length?"Başka dosya seç veya buraya sürükle":(light?"Açık tema için ":"")+"GIF veya resim seç, ya da buraya sürükle"),
       el("span",{class:"hint"},`GIF, WebP, PNG, JPG · en fazla ${MAX_FRAMES} kare · kare alana sığdırılır`), inp);
     drop.addEventListener("dragover",e=>{e.preventDefault(); drop.classList.add("over");});
     drop.addEventListener("dragleave",()=>drop.classList.remove("over"));
-    drop.addEventListener("drop",e=>{e.preventDefault(); drop.classList.remove("over"); loadAnim(e.dataTransfer.files[0]);});
+    drop.addEventListener("drop",e=>{e.preventDefault(); drop.classList.remove("over"); loadAnim(e.dataTransfer.files[0], light);});
     sec2.append(drop);
-    if (animFrames.length){
-      const kb=animFrames.length*AW*AH*2/1024;
-      sec2.append(el("div",{class:"summary"},el("span",{class:"eyebrow"},A.name||"Animasyon"),el("b",{},`${animFrames.length} kare · ${kb>=1024?(kb/1024).toFixed(1)+" MB":Math.round(kb)+" KB"}`)));
+    if (frames.length){
+      const kb=frames.length*AW*AH*2/1024, delays=animDelays(M, frames);
+      sec2.append(el("div",{class:"summary"},el("span",{class:"eyebrow"},M.name||"Animasyon"),el("b",{},`${frames.length} kare · ${kb>=1024?(kb/1024).toFixed(1)+" MB":Math.round(kb)+" KB"}`)));
       const fitSeg=el("div",{class:"seg"});
-      [["cover","Kırparak doldur"],["contain","Tamamını sığdır"]].forEach(([v,n])=>fitSeg.append(el("button",{"aria-pressed":A.fit===v?"true":"false",onclick:async()=>{ A.fit=v; save(); if(animSource){ const r=await processAnimFile(animSource); await setFrames(r.frames); A.delays=r.delays; save(); await idbSet("anim",r.frames); } else toast("Yeni kırpma için dosyayı tekrar seç"); renderEditor(); drawScreen(); }},n)));
-      sec2.append(el("div",{class:"field"},el("span",{},"Yerleşim"),fitSeg));
-      const out=el("span",{class:"mono"},A.fps+" kare/sn");
-      if (animDelays(A)) sec2.append(el("div",{class:"field"},el("span",{},"Hız"),el("span",{class:"hint"},`GIF'in kendi zamanlaması: her kare kendi süresince kalır (döngü ${(A.delays.reduce((a,b)=>a+b,0)/1000).toFixed(1)} sn)`)));
-      else sec2.append(el("label",{class:"field"},el("span",{},"Hız · ",out),el("input",{type:"range",id:"animFps",min:"1",max:"30",step:"1",value:A.fps,oninput:e=>{A.fps=Number(e.target.value); out.textContent=A.fps+" kare/sn"; save();}})));
-      const bar=el("i"); const sb=el("button",{class:"btn sm primary",disabled:!port,title:port?"":"Önce cihaza bağlan"},"Animasyonu cihaza yaz");
-      sb.addEventListener("click",()=>sendAnim(sb,bar));
-      sec2.append(el("div",{class:"row"},sb,el("span",{class:"hint"},"Animasyon ayrıca cihaza yazılır ve belleğinde kalır.")));
+      [["cover","Kırparak doldur"],["contain","Tamamını sığdır"]].forEach(([v,n])=>fitSeg.append(el("button",{"aria-pressed":A.fit===v?"true":"false",onclick:async()=>{ A.fit=v; save();
+        let redone=0; for(const l of [false,true]){ const src=l?animSourceL:animSource; if(!src) continue; const r=await processAnimFile(src,l); await setFrames(r.frames,l); animMeta(l).delays=r.delays; save(); await idbSet(animKey(l),r.frames); redone++; }
+        if(!redone) toast("Yeni kırpma için dosyayı tekrar seç"); renderEditor(); drawScreen(); }},n)));
+      sec2.append(el("div",{class:"field"},el("span",{},"Yerleşim (iki tema için)"),fitSeg));
+      if (delays) sec2.append(el("div",{class:"field"},el("span",{},"Hız"),el("span",{class:"hint"},`GIF'in kendi zamanlaması: her kare kendi süresince kalır (döngü ${(delays.reduce((a,b)=>a+b,0)/1000).toFixed(1)} sn)`)));
+      else if (!light){ const out=el("span",{class:"mono"},A.fps+" kare/sn");
+        sec2.append(el("label",{class:"field"},el("span",{},"Hız · ",out),el("input",{type:"range",id:"animFps",min:"1",max:"30",step:"1",value:A.fps,oninput:e=>{A.fps=Number(e.target.value); out.textContent=A.fps+" kare/sn"; save();}}))); }
+      else sec2.append(el("div",{class:"field"},el("span",{},"Hız"),el("span",{class:"hint"},(M.fps||15)+" kare/sn (dosyadan)")));
+      const needFw = light && port && deviceInfo?.fw && !animLightOK();
+      const bar=el("i"); const sb=el("button",{class:"btn sm primary",id:"animSend",disabled:!port||needFw,title:!port?"Önce cihaza bağlan":needFw?"Cihaz yazılımı v"+ANIM_LIGHT_FW+" gerekir":""},light?"Açık tema animasyonunu cihaza yaz":"Animasyonu cihaza yaz");
+      sb.addEventListener("click",()=>sendAnim(sb,bar,light));
+      const row=el("div",{class:"row"},sb);
+      if (light) row.append(el("button",{class:"btn sm ghost",id:"animClearLight",onclick:()=>clearLightAnim()},"Kaldır"));
+      sec2.append(row);
+      sec2.append(el("p",{class:"hint"},needFw?"Açık tema animasyonu için kartta cihaz yazılımı v"+ANIM_LIGHT_FW+" olmalı (kartta v"+deviceInfo.fw+"). Cihaz ayarları → Firmware yükle."
+        :"Animasyon ayrıca cihaza yazılır ve belleğinde kalır."+(light?" Cihaz temayı değiştirince kendisi geçer.":"")));
       sec2.append(el("div",{class:"prog"},bar));
     }
   }
@@ -2100,7 +2144,7 @@ function setConnUI(on,txt){
   if(!on) deviceCfg=null; markPending();
 }
 $("#btnConnect").onclick=()=>port?disconnect():connect();
-function forDevice(c=cfg){ const d=clone(c); delete d.sensors; if(window.deck) d.device.host=window.deck.platform==="darwin"?"mac":"win"; if(d.home?.weather) delete d.home.weather.auto; if(d.home?.anim) delete d.home.anim.delays; for(const a of d.apps){ if(a.targets&&a.launch){ a.launch.path=a.targets.win||""; a.launch.mac=a.targets.mac||""; } delete a.targets; delete a.fallbackCustom; delete a.bg; a.img=!!(a.iconData||a.img); delete a.iconData; delete a.src; } return d; }
+function forDevice(c=cfg){ const d=clone(c); delete d.sensors; if(window.deck) d.device.host=window.deck.platform==="darwin"?"mac":"win"; if(d.home?.weather) delete d.home.weather.auto; if(d.home?.anim){ delete d.home.anim.delays; delete d.home.anim.light; } for(const a of d.apps){ if(a.targets&&a.launch){ a.launch.path=a.targets.win||""; a.launch.mac=a.targets.mac||""; } delete a.targets; delete a.fallbackCustom; delete a.bg; a.img=!!(a.iconData||a.img); delete a.iconData; delete a.src; } return d; }
 function diffValue(v,path){
   if(v==null||v==="") return "—";
   if(typeof v==="boolean") return v?"Açık":"Kapalı";
@@ -2140,7 +2184,7 @@ $("#btnRead").onclick=async()=>{ try{ const g=await send({cmd:"get_config"},4000
 function keepLocalExtras(n){
   if(cfg.home?.weather?.auto) n.home.weather=clone(cfg.home.weather);
   else if(n.home.weather) n.home.weather.auto=cfg.home?.weather?.auto??false;
-  if(cfg.home?.anim) for(const k of ["delays","fit","frames","w","h","name"]) if(k in cfg.home.anim) n.home.anim[k]=clone(cfg.home.anim[k]);
+  if(cfg.home?.anim) for(const k of ["delays","fit","frames","w","h","name","light"]) if(k in cfg.home.anim) n.home.anim[k]=clone(cfg.home.anim[k]);
   if(window.deck) n.device.host=cfg.device.host;
   for(const a of n.apps){
     const o=cfg.apps.find(x=>x.id===a.id), l=a.launch||{};
@@ -2183,7 +2227,7 @@ $("#iconIds").textContent=Object.keys(ICONS).join(", ");
 function renderAll(){ $("#brandName").textContent=cfg.device.name||"Volkan Deck"; renderList(); renderCtlMap(); renderEditor(); drawScreen(); renderDeviceForm(); renderStatus(); renderJson(); }
 function updateLiveTag(){ const t=$("#liveTag"); if(!t) return; t.classList.toggle("on",stats.live); t.textContent = stats.live ? "Ana sayfa kartları bilgisayardan canlı geliyor." : "Ana sayfa kartlarındaki değerler örnek veridir; masaüstü uygulaması açıkken gerçek değerler gelir."; }
 renderTplMenu(); renderAll(); updateLiveTag(); requestAnimationFrame(tick);
-idbGet("anim").then(async list=>{ if(Array.isArray(list)&&list.length){ await setFrames(list); if(edit.kind==="home") renderEditor(); } });
+for(const light of [false,true]) idbGet(animKey(light)).then(async list=>{ if(Array.isArray(list)&&list.length){ await setFrames(list,light); if(edit.kind==="home") renderEditor(); } });
 document.fonts?.ready.then(drawScreen);
 try{ let t=localStorage.getItem("volkandeck.tab"), sub=localStorage.getItem("volkandeck.sub");
   if(["json","wiring","proto"].includes(t)){ sub=t; t="dev"; }
