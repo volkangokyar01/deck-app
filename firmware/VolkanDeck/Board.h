@@ -1,6 +1,6 @@
 #pragma once
 // LilyGO T-Display-S3 + KY-040 + 2 buttons
-#define FW_VERSION "1.6.0"
+#define FW_VERSION "1.6.1"
 
 #define PIN_LCD_POWER 15
 #define PIN_LCD_BL    38

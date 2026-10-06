@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.6.0)
+## Firmware (v1.6.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -129,6 +129,7 @@
 - v1.5.1: karartma ve otomatik kapanma kabloda / pilde ayrı ayarlanır, ikisi de kapatılabilir (dimAfterUsb, sleepAfterUsb; eski config'te kablo = eski karartma süresi, kapanma yok)
 - v1.5.2: Ses ve parlaklık sayfasında mikrofon satırı, B tuşu varsayılan mikrofonu kapatır / açar (sys.micMute / evt sys micMute; Windows Core Audio capture mute, macOS giriş seviyesi 0 ↔ önceki seviye). Yeni "Widgetlar" sayfası (pages.widgets.enabled / cards, 1–4 kart; yerleşim 1: tam, 2: alt alta, 3: üst geniş + alt iki, 4: 2×2), döndürgeçte ana sayfadan hemen sonra, boşta ana sayfaya dönmez
 - v1.6.0: Bluetooth veri kanalı (masaüstü uygulaması kablosuz da bağlanır)
+- v1.6.1: Bluetooth gönderimi ayrı görevde (kuyruk 24); BLE alma geri çağrısı kuyrukta beklemez. 1.6.0'da ana döngü notify için bekliyor, NimBLE görevi de kuyrukta beklediği için menüler yavaşlıyor, stats/sys satırları düşüyordu
 
 ## Pinler
 | Parça | Pin | GPIO |

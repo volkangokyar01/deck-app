@@ -25,25 +25,35 @@ static uint8_t eventSrc() { return usbCompanion() || (Serial && !bleCompanion())
 
 const char* linkName();
 
-static void bleWrite(const uint8_t* p, size_t n) {
-  if (!bleTx || !bleHostOn()) return;
-  size_t chunk = bleHostMtu > 23 ? min<size_t>(bleHostMtu - 3, 244) : 20;
-  uint16_t conn = bleHostConn;
-  for (size_t i = 0; i < n; ) {
-    size_t k = min(chunk, n - i);
-    int tries = 0;
-    while (!bleTx->notify(p + i, k, conn)) {        // out of buffers: wait for the radio to drain
-      if (++tries > 60 || !bleHostOn()) return;
-      delay(8);
+// Bluetooth sending runs on its own task: the main loop (screen, knob) never waits for the radio,
+// and the NimBLE host task is never blocked by us, so its buffers keep draining.
+struct TxItem { char* p; size_t n; };
+static QueueHandle_t bleTxQ = nullptr;
+static void bleTxTask(void*) {
+  TxItem it;
+  for (;;) {
+    if (xQueueReceive(bleTxQ, &it, portMAX_DELAY) != pdTRUE) continue;
+    uint16_t conn = bleHostConn;
+    size_t chunk = bleHostMtu > 23 ? min<size_t>(bleHostMtu - 3, 244) : 20;
+    for (size_t i = 0; i < it.n && bleTx && bleHostConn == conn; ) {
+      size_t k = min(chunk, it.n - i);
+      if (bleTx->notify((const uint8_t*)it.p + i, k, conn)) { i += k; continue; }
+      int tries = 0;
+      while (!bleTx->notify((const uint8_t*)it.p + i, k, conn) && bleHostConn == conn && ++tries < 400) vTaskDelay(pdMS_TO_TICKS(5));
+      if (tries >= 400) break;                       // link stuck for 2 s: drop the rest of this line
+      i += k;
     }
-    i += k;
+    free(it.p);
   }
 }
 static void sendJson(JsonDocument& d) {   // replies: always write (host just talked to us)
   uint8_t to = replySrc >= 0 ? replySrc : eventSrc();
   if (to == SRC_USB) { serializeJson(d, Serial); Serial.print('\n'); return; }
-  String s; serializeJson(d, s); s += '\n';
-  bleWrite((const uint8_t*)s.c_str(), s.length());
+  if (!bleTxQ || !bleHostOn()) return;
+  size_t n = measureJson(d);
+  TxItem it; it.p = (char*)bigAlloc(n + 2); if (!it.p) return;
+  serializeJson(d, it.p, n + 1); it.p[n] = '\n'; it.n = n + 1;
+  if (xQueueSend(bleTxQ, &it, 0) != pdTRUE) free(it.p);   // queue full: drop (events are refreshed anyway)
 }
 static void replyOk(JsonVariantConst id) { JsonDocument r; r["id"] = id; r["ok"] = true; sendJson(r); }
 static void replyErr(JsonVariantConst id, const char* e) { JsonDocument r; r["id"] = id; r["ok"] = false; r["error"] = e; sendJson(r); }
@@ -261,7 +271,7 @@ static void bleRx(const uint8_t* p, size_t n) {
       if (bleLen) {
         rxLines++;
         LineItem it; it.p = (char*)bigAlloc(bleLen + 1); it.n = bleLen; it.src = SRC_BLE;
-        if (it.p) { memcpy(it.p, bleBuf, bleLen); it.p[bleLen] = 0; if (xQueueSend(lineQ, &it, pdMS_TO_TICKS(500)) != pdTRUE) free(it.p); }
+        if (it.p) { memcpy(it.p, bleBuf, bleLen); it.p[bleLen] = 0; if (xQueueSend(lineQ, &it, 0) != pdTRUE) free(it.p); }   // never block the BLE host task
       }
       bleLen = 0;
     } else if (c != '\r' && bleLen < bleCap - 1) bleBuf[bleLen++] = c;
@@ -270,7 +280,9 @@ static void bleRx(const uint8_t* p, size_t n) {
 
 static void protoBegin() {
   Serial.setRxBufferSize(8192);
-  lineQ = xQueueCreate(8, sizeof(LineItem));
+  lineQ = xQueueCreate(24, sizeof(LineItem));
+  bleTxQ = xQueueCreate(24, sizeof(TxItem));
+  xTaskCreatePinnedToCore(bleTxTask, "bletx", 4096, nullptr, 2, nullptr, 0);
   bleRxHook = bleRx;
   xTaskCreatePinnedToCore(serialTask, "ser", 4096, nullptr, 3, nullptr, 0);
 }
