@@ -211,7 +211,7 @@
       let geo = null, previous = '';
       try { previous = localStorage.getItem(geoKey) || ''; } catch (_) {}
       let allowed = retry || !previous;
-      if (!allowed && previous === 'granted') {
+      if (!allowed) {
         try { allowed = (await navigator.permissions.query({ name: 'geolocation' })).state === 'granted'; } catch (_) {}
       }
       if (allowed && navigator.geolocation && await deck.locationAvailable()) {
@@ -228,12 +228,12 @@
       geoAttempted = true; geoAt = Date.now(); geoOK = false;
       await deck.stats({ weather: cfg.home.weather, geolocation: null }).catch(() => {});
     } finally { locationPolling = false; }
-    pollLocation();
+    await pollLocation();
   }
   window.retryWeatherLocation = () => requestLocation(true);
   async function pollLocation() {
     if (locationPolling || !cfg.home?.weather?.auto || ['downloading', 'installing'].includes(updateState?.phase)) return;
-    if (!geoAttempted || (geoOK && Date.now() - geoAt >= 3600000)) { requestLocation(); return; }
+    if (!geoAttempted || Date.now() - geoAt >= 3600000) { await requestLocation(); return; }
     weatherLocationFailed = geoAttempted && !geoOK;
     for (const id of ['wxLocationSettings', 'wxLocationHint']) { const e = document.getElementById(id); if (e) e.hidden = !weatherLocationFailed; }
     locationPolling = true;
@@ -243,6 +243,8 @@
       const loc = snapshot.location;
       weatherLocationStatus = loc?.error || (loc?.pending ? 'Konum aranıyor…' : '');
       weatherLocationSource = loc?.source || '';
+      weatherLocationFailed = geoAttempted && !geoOK || weatherLocationSource === 'last';
+      for (const id of ['wxLocationSettings', 'wxLocationHint']) { const e = document.getElementById(id); if (e) e.hidden = !weatherLocationFailed; }
       if (loc?.city) {
         const w = cfg.home.weather;
         if (w.city !== loc.city || w.lat !== loc.lat || w.lon !== loc.lon) { Object.assign(w, { city: loc.city, lat: loc.lat, lon: loc.lon }); save(); drawScreen(); renderJson(); }

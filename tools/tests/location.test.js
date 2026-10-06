@@ -114,7 +114,59 @@ test('OS location wins; denied or invalid location falls back to IP; total failu
     stats.get({ weather: { auto: true }, geolocation: { lat: 39, lon: 32 } }); await tick();
     assert.equal(stats.get().location.source, 'geo');
     fail = true; stats.get({ weather: { auto: true }, geolocation: null }); await tick(); await tick();
-    assert.equal(stats.get().location.city, 'Ankara'); assert.equal(stats.get().location.source, 'geo');
-    assert.equal(stats.get().location.error, 'Konum bulunamadı'); assert.equal(stats.get().weather.city, 'Ankara');
+    assert.equal(stats.get().location.city, 'Ankara'); assert.equal(stats.get().location.source, 'last');
+    assert.equal(stats.get().location.error, ''); assert.equal(stats.get().weather.city, 'Ankara');
   } finally { stats.stop(); }
+});
+
+test('system location persists across restarts; denial never requests IP; recovery returns to geo', async t => {
+  const fs = require('node:fs/promises'), os = require('node:os'), path = require('node:path');
+  const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-location-test-'));
+  t.after(() => fs.rm(cacheDir, { recursive: true, force: true }));
+  const calls = [];
+  let city = 'Adana';
+  const fetch = async url => {
+    calls.push(url);
+    if (url.includes('ipapi') || url.includes('ipwho')) return response({ city: 'İstanbul', latitude: 41, longitude: 29 });
+    return response(url.includes('reverse-geocode') ? { city } : url.includes('open-meteo') ? { current: { temperature_2m: 20 }, daily: {} } : []);
+  };
+  const weather = { auto: true, city: 'İstanbul', lat: 41, lon: 29 };
+  const first = createStats({ platform: 'test', cacheDir, fetch });
+  t.after(() => first.stop());
+  first.get({ weather, geolocation: { lat: 37, lon: 35.32 } }); first.start(); await tick();
+  assert.equal(first.get().location.source, 'geo');
+  const saved = JSON.parse(await fs.readFile(path.join(cacheDir, 'last-system-location.json'), 'utf8'));
+  assert.deepEqual({ city: saved.city, lat: saved.lat, lon: saved.lon }, { city: 'Adana', lat: 37, lon: 35.32 });
+  assert.ok(saved.at > 0);
+  first.get({ weather, geolocation: null }); await tick();
+  assert.equal(first.get().location.source, 'last');
+  first.stop(); calls.length = 0;
+  const restarted = createStats({ platform: 'test', cacheDir, fetch });
+  t.after(() => restarted.stop());
+  restarted.get({ weather, geolocation: { pending: true } }); restarted.start(); await tick();
+  assert.equal(restarted.get().location.city, 'Adana');
+  restarted.get({ weather, geolocation: null }); await tick();
+  assert.equal(restarted.get().location.source, 'last');
+  assert.equal(restarted.get().weather.city, 'Adana');
+  await restarted.refreshLocation();
+  assert.equal(calls.some(url => /ipapi|ipwho/.test(url)), false, 'remembered system location wins over differing IP city');
+  city = 'Mersin';
+  restarted.get({ weather, geolocation: { lat: 36.8, lon: 34.63 } }); await tick();
+  assert.equal(restarted.get().location.source, 'geo');
+  assert.equal(restarted.get().weather.city, 'Mersin');
+  assert.equal(JSON.parse(await fs.readFile(path.join(cacheDir, 'last-system-location.json'), 'utf8')).city, 'Mersin');
+});
+
+test('no remembered system location uses IP without storing it as a system location', async t => {
+  const fs = require('node:fs/promises'), os = require('node:os'), path = require('node:path');
+  const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), 'deck-location-ip-test-'));
+  t.after(() => fs.rm(cacheDir, { recursive: true, force: true }));
+  const calls = [], stats = createStats({ platform: 'test', cacheDir, fetch: async url => {
+    calls.push(url);
+    return response(url.includes('ipapi') ? ankara : url.includes('open-meteo') ? { current: {}, daily: {} } : []);
+  } });
+  t.after(() => stats.stop());
+  stats.get({ weather: { auto: true }, geolocation: null }); stats.start(); await tick();
+  assert.equal(stats.get().location.source, 'ip'); assert.ok(calls.some(url => url.includes('ipapi')));
+  await assert.rejects(fs.stat(path.join(cacheDir, 'last-system-location.json')), { code: 'ENOENT' });
 });

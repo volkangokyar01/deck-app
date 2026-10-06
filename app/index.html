@@ -1537,6 +1537,7 @@ function renderHomeEditor(body){
 let weatherLocationStatus="", weatherLocationSource="", weatherLocationFailed=false;
 function weatherLocationLabel(){
   const city=cfg.home.weather.city||"Konum aranıyor…";
+  if(weatherLocationSource==="last") return "Son bilinen konum: "+city+" (izin yok, Konum ayarlarını aç)";
   return weatherLocationSource==="ip"?"Yaklaşık konum (IP): "+city+" — yanlışsa şehri elle seç":"Otomatik: "+city+(weatherLocationSource==="geo"?" (konum)":"");
 }
 function weatherCitySec(){
@@ -1549,7 +1550,7 @@ function weatherCitySec(){
       oninput:()=>{ clearTimeout(tmr); tmr=setTimeout(()=>geoSearch(inp.value,res),350); },
       onkeydown:e=>{ if(e.key==="Enter"){ e.preventDefault(); clearTimeout(tmr); geoSearch(inp.value,res); } }});
     if(!window.deck||!W.auto) sw.append(el("label",{class:"field"},el("span",{},"Şehir ara"),inp),res);
-    if(window.deck&&W.auto) sw.append(el("p",{class:"hint",id:"wxLocationStatus",role:"status"},weatherLocationStatus),el("div",{class:"seg"},el("button",{onclick:()=>window.retryWeatherLocation?.()},"Tekrar dene"),el("button",{id:"wxLocationSettings",hidden:!weatherLocationFailed,onclick:()=>window.deck.openLocationSettings().catch(e=>toast("Ayarlar açılamadı: "+e.message))},"Konum ayarlarını aç"),el("button",{onclick:()=>{W.auto=false;geoSeq++;save();renderEditor();$("#wxCity")?.focus();}},"Şehir ara")),el("p",{class:"hint",id:"wxLocationHint",hidden:!weatherLocationFailed},"Konum izni kapalı olabilir. Açtıktan sonra Tekrar dene'ye bas."),el("p",{class:"hint"},"Önce sistem konumu, bulunamazsa IP kullanılır."));
+    if(window.deck&&W.auto) sw.append(el("p",{class:"hint",id:"wxLocationStatus",role:"status"},weatherLocationStatus),el("div",{class:"seg"},el("button",{onclick:()=>window.retryWeatherLocation?.()},"Tekrar dene"),el("button",{id:"wxLocationSettings",hidden:!weatherLocationFailed,onclick:()=>window.deck.openLocationSettings().catch(e=>toast("Ayarlar açılamadı: "+e.message))},"Konum ayarlarını aç"),el("button",{onclick:()=>{W.auto=false;geoSeq++;save();renderEditor();$("#wxCity")?.focus();}},"Şehir ara")),el("p",{class:"hint",id:"wxLocationHint",hidden:!weatherLocationFailed},"Konum izni kapalı olabilir. Açtıktan sonra Tekrar dene'ye bas."),el("p",{class:"hint"},"Önce sistem konumu, bulunamazsa son bilinen konum kullanılır. Hiç bulunmadıysa IP kullanılır."));
     sw.append(el("p",{class:"hint"},"Arama Open-Meteo'nun ücretsiz şehir aramasıyla yapılır. Hava durumunu masaüstü uygulaması bu konuma göre 15 dakikada bir alır. Ana sayfa ve Kartlar sayfası aynı şehri kullanır."));
     return sw;
 }
@@ -2321,7 +2322,7 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
       let geo = null, previous = '';
       try { previous = localStorage.getItem(geoKey) || ''; } catch (_) {}
       let allowed = retry || !previous;
-      if (!allowed && previous === 'granted') {
+      if (!allowed) {
         try { allowed = (await navigator.permissions.query({ name: 'geolocation' })).state === 'granted'; } catch (_) {}
       }
       if (allowed && navigator.geolocation && await deck.locationAvailable()) {
@@ -2338,12 +2339,12 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
       geoAttempted = true; geoAt = Date.now(); geoOK = false;
       await deck.stats({ weather: cfg.home.weather, geolocation: null }).catch(() => {});
     } finally { locationPolling = false; }
-    pollLocation();
+    await pollLocation();
   }
   window.retryWeatherLocation = () => requestLocation(true);
   async function pollLocation() {
     if (locationPolling || !cfg.home?.weather?.auto || ['downloading', 'installing'].includes(updateState?.phase)) return;
-    if (!geoAttempted || (geoOK && Date.now() - geoAt >= 3600000)) { requestLocation(); return; }
+    if (!geoAttempted || Date.now() - geoAt >= 3600000) { await requestLocation(); return; }
     weatherLocationFailed = geoAttempted && !geoOK;
     for (const id of ['wxLocationSettings', 'wxLocationHint']) { const e = document.getElementById(id); if (e) e.hidden = !weatherLocationFailed; }
     locationPolling = true;
@@ -2353,6 +2354,8 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
       const loc = snapshot.location;
       weatherLocationStatus = loc?.error || (loc?.pending ? 'Konum aranıyor…' : '');
       weatherLocationSource = loc?.source || '';
+      weatherLocationFailed = geoAttempted && !geoOK || weatherLocationSource === 'last';
+      for (const id of ['wxLocationSettings', 'wxLocationHint']) { const e = document.getElementById(id); if (e) e.hidden = !weatherLocationFailed; }
       if (loc?.city) {
         const w = cfg.home.weather;
         if (w.city !== loc.city || w.lat !== loc.lat || w.lon !== loc.lon) { Object.assign(w, { city: loc.city, lat: loc.lat, lon: loc.lon }); save(); drawScreen(); renderJson(); }

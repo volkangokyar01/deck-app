@@ -218,3 +218,19 @@ for (const platform of ['darwin', 'win32', null]) test(`dim level and eco speed 
   ctx.cfg.device.ecoFpsUsb = 3; ctx.renderDeviceForm();
   assert.ok(ids.get('ecoFpsUsb').children.some(c => c.attributes.value === 3 && c.attributes.selected !== undefined));
 });
+
+for (const platform of ['darwin', 'win32', null]) test(`remembered location is safe on first weather editor render (${platform || 'browser'})`, () => {
+  for (const kind of ['home', 'widgets']) {
+    const { ctx, ids, body } = page(platform);
+    ctx.edit = { kind }; ctx.cfg.home.cards = ['weather', 'cpu']; ctx.cfg.pages.widgets.cards = ['weather'];
+    ctx.cfg.home.weather = { auto: true, city: 'Adana', lat: 37, lon: 35.32 };
+    vm.runInContext('weatherLocationSource="last";weatherLocationFailed=true;', ctx);
+    assert.equal(ids.has('wxSelected'), false); assert.equal(ids.has('launchAdvanced'), false);
+    assert.doesNotThrow(() => ctx.renderEditor());
+    if (platform) {
+      assert.ok(body.textContent.includes('Son bilinen konum: Adana (izin yok, Konum ayarlarını aç)'));
+      assert.ok(body.textContent.includes('Tekrar dene'));
+      assert.equal(ids.get('wxLocationSettings').attributes.hidden, undefined);
+    } else assert.ok(!body.textContent.includes('Son bilinen konum'));
+  }
+});

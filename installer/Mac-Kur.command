@@ -29,6 +29,8 @@ plutil -replace NSBluetoothAlwaysUsageDescription -string "Volkan Deck, kablo ta
 /usr/libexec/PlistBuddy -c 'Set :NSLocationWhenInUseUsageDescription Volkan Deck hava durumu için konumunu kullanır.' "$P" 2>/dev/null || \
   /usr/libexec/PlistBuddy -c 'Add :NSLocationWhenInUseUsageDescription string Volkan Deck hava durumu için konumunu kullanır.' "$P"
 codesign --force --deep --sign - "$A"
+codesign --force --sign - -r='designated => identifier "com.volkan.deck"' "$A"
+codesign --verify --deep --strict "$A"
 pkill -f "Volkan Deck.app/Contents/MacOS" 2>/dev/null || true
 rm -rf "/Applications/Volkan Deck.app"
 mv "$A" /Applications/

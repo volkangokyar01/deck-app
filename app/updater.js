@@ -14,8 +14,17 @@ const blobHash = content => crypto.createHash('sha1').update('blob ' + content.l
 const execFile = (cmd, args) => new Promise((resolve, reject) => cp.execFile(cmd, args,
   { timeout: 120e3, windowsHide: true, maxBuffer: 16 << 20 }, (err, out, stderr) => {
     if (err) { err.detail = (stderr || err.message).trim(); err.command = cmd; reject(err); }
-    else resolve(out);
+    // -dr writes the designated requirement to stderr on macOS.
+    else resolve(cmd === '/usr/bin/codesign' && args.includes('-dr') ? out + '\n' + stderr : out);
   }));
+async function signMac(run, bundle) {
+  try {
+    await run('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', bundle]);
+    // Only the outer bundle gets the stable requirement; helpers keep their own identifiers.
+    await run('/usr/bin/codesign', ['--force', '--sign', '-', '-r=designated => identifier "com.volkan.deck"', bundle]);
+    await run('/usr/bin/codesign', ['--verify', '--deep', '--strict', bundle]);
+  } catch (e) { throw userError('Uygulama imzası doğrulanamadı; kurulum betiğini yeniden çalıştır.', e); }
+}
 function userError(message, cause) {
   const e = new Error(message); e.userMessage = message;
   if (cause) e.detail = cause.detail || cause.message;
@@ -286,12 +295,7 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
     const chosen = target, current = app.getAppPath();
     let temp = null, stage = null, failure = null, restored = false;
     const bundle = platform === 'darwin' ? bundleFor(current) : null;
-    const sign = async () => {
-      try {
-        await run('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', bundle]);
-        await run('/usr/bin/codesign', ['--verify', '--deep', bundle]);
-      } catch (e) { throw userError('Uygulama imzası doğrulanamadı; kurulum betiğini yeniden çalıştır.', e); }
-    };
+    const sign = () => signMac(run, bundle);
     applying = true; publish({ phase: 'downloading', message: 'İndiriliyor…', detail: null });
     try {
       await cleanup;
@@ -364,7 +368,7 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
   }
   function start() {
     try { receipt = JSON.parse(fs.readFileSync(receiptPath(), 'utf8')); } catch (e) {}
-    if (packaged) cleanup = (async () => {
+    if (packaged && !applying) cleanup = cleanup.then(async () => {
       const current = app.getAppPath();
       let changed = false;
       const remove = async p => {
@@ -384,15 +388,22 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
         await removeMatching(path.dirname(current), 'app.new-');
       } finally {
         if (platform === 'darwin' && changed) {
-          const bundle = bundleFor(current);
-          try {
-            await run('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', bundle]);
-            await run('/usr/bin/codesign', ['--verify', '--deep', bundle]);
-          } catch (e) { throw userError('Uygulama imzası doğrulanamadı; kurulum betiğini yeniden çalıştır.', e); }
+          await signMac(run, bundleFor(current));
         }
       }
       await removeMatching(app.getPath('temp'), 'volkan-update-');
-    })().catch(e => { publish(errorState(e)); });
+      // The old updater signs this update with a cdhash requirement. Migrate on first launch.
+      // apply() awaits cleanup, including an already running migration, before changing files.
+      if (platform === 'darwin' && !applying) {
+        try {
+          const bundle = bundleFor(current);
+          const output = await run('/usr/bin/codesign', ['-dr', '-', bundle]);
+          const text = typeof output === 'string' ? output : [output?.stdout, output?.stderr].join('\n');
+          const requirement = text.match(/^designated\s*=>\s*(.+)$/m)?.[1].trim();
+          if (requirement !== 'identifier "com.volkan.deck"') await signMac(run, bundle);
+        } catch (e) { console.error('macOS imza geçişi tamamlanamadı:', e.detail || e.message); }
+      }
+    }).catch(e => { publish(errorState(e)); });
     timers = [setTimeout(() => check(), 15e3), setInterval(() => check(), 6 * 60 * 60e3)];
     return getState();
   }

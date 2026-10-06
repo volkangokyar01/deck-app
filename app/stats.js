@@ -98,9 +98,10 @@ async function reverseLocation(fetch, geo) {
   }
   return { ...parseLocation({ city: 'Konumum', latitude: lat, longitude: lon }), source: 'geo' };
 }
-async function resolveWeatherLocation(fetch, geo) {
+async function resolveWeatherLocation(fetch, geo, lastSystemLocation = null) {
   const loc = await reverseLocation(fetch, geo);
   if (loc) return loc;
+  if (lastSystemLocation) return { ...lastSystemLocation, source: 'last' };
   const ip = await resolveLocation(fetch);
   return ip ? { ...ip, source: 'ip' } : null;
 }
@@ -111,6 +112,15 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
   let macSample = null, macAt = 0;
   let geoCoordinates = null, geoPending = false;
   let autoLocation = false, locationBusy = false, locationAt = 0, locationGeneration = 0;
+  // cacheDir is under userData, outside the app bundle, so this survives updates and restarts.
+  const locationFile = cacheDir ? path.join(cacheDir, 'last-system-location.json') : null;
+  let lastSystemLocation = null;
+  try {
+    const saved = JSON.parse(fs.readFileSync(locationFile, 'utf8'));
+    const loc = parseLocation({ city: saved.city, latitude: saved.lat, longitude: saved.lon });
+    if (loc && Number.isFinite(saved.at) && saved.at > 0) lastSystemLocation = { ...loc, at: saved.at };
+  } catch (_) {}
+  if (lastSystemLocation) cache.location = { ...lastSystemLocation, source: 'last', pending: false, error: '' };
   const timers = new Set(), children = new Set(), sockets = new Set();
   function every(fn, ms) { const t = setInterval(() => { Promise.resolve().then(fn).catch(() => {}); }, ms); timers.add(t); }
   function stream(file, args, onLine) {
@@ -231,9 +241,19 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
     locationBusy = true; const generation = locationGeneration;
     cache.location = { ...cache.location, pending: true };
     try {
-      const next = await resolveWeatherLocation(fetch, geoCoordinates);
+      const next = await resolveWeatherLocation(fetch, geoCoordinates, lastSystemLocation);
       if (!running || generation !== locationGeneration) return;
       locationAt = Date.now();
+      if (next?.source === 'geo') {
+        lastSystemLocation = { city: next.city, lat: next.lat, lon: next.lon, at: locationAt };
+        if (locationFile) {
+          try {
+            fs.mkdirSync(cacheDir, { recursive: true });
+            fs.writeFileSync(locationFile + '.tmp', JSON.stringify(lastSystemLocation) + '\n');
+            fs.renameSync(locationFile + '.tmp', locationFile);
+          } catch (_) {}
+        }
+      }
       cache.location = { ...(next || cache.location), pending: false, error: next ? '' : 'Konum bulunamadı' };
       if (next) setWeather(next);
     } finally { locationBusy = false; if (running && autoLocation && generation !== locationGeneration) refreshLocation(); }

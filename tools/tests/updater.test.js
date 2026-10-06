@@ -34,7 +34,7 @@ async function fixture(t, { stamp = { commit: LOCAL, dirty: false }, status = 'b
   if (changed) await fs.writeFile(path.join(current, 'main.js'), 'local main');
   if (stamp === null) await fs.rm(path.join(current, 'build-info.json'));
   else await fs.writeFile(path.join(current, 'build-info.json'), JSON.stringify(stamp));
-  const requests = [], actions = [];
+  const requests = [], actions = [], signing = [];
   const config = { status, compareHttp: 200, compareError: null, archive: null, failSign: false };
   let stored = { updatesReleasesOnly: channel };
   const updater = createUpdater({
@@ -59,7 +59,17 @@ async function fixture(t, { stamp = { commit: LOCAL, dirty: false }, status = 'b
     media: { stop: () => actions.push('stop') }, readState: () => stored, writeState: value => { stored = value; },
     platform, electronVersion: '35.4.0', run: async (command, args) => {
       if (command === '/usr/bin/codesign') {
+        signing.push(args);
+        if (args[0] === '-dr') {
+          if (config.readRequirement) return config.readRequirement();
+          return config.requirement || 'designated => identifier "com.volkan.deck"';
+        }
         actions.push('sign');
+        if (config.startupSigning) {
+          if (config.migrationError) throw new Error('Migration signing failed');
+          if (args[0] === '--verify') config.requirement = 'designated => identifier "com.volkan.deck"';
+          return '';
+        }
         // The final stamp must be present before the app bundle is signed.
         const installed = JSON.parse(await fs.readFile(path.join(current, 'build-info.json')));
         if (!config.failSign) assert.deepEqual([installed.commit, installed.dirty],
@@ -72,7 +82,7 @@ async function fixture(t, { stamp = { commit: LOCAL, dirty: false }, status = 'b
       return execFileSync(command, args, { encoding: 'utf8' });
     }
   });
-  return { root, current, updater, requests, actions, config };
+  return { root, current, updater, requests, actions, signing, config };
 }
 
 for (const channel of [false, true]) {
@@ -220,7 +230,8 @@ test('apply writes target stamp before signing; next check is current despite co
   assert.equal(stamp.commit, REMOTE);
   assert.equal(stamp.dirty, false);
   assert.ok(Date.parse(stamp.built) >= before && Date.parse(stamp.built) <= Date.now());
-  assert.deepEqual(f.actions, ['stop', 'sign', 'sign', 'release', 'relaunch', ['exit', 0]]);
+  assert.deepEqual(f.actions, ['stop', 'sign', 'sign', 'sign', 'release', 'relaunch', ['exit', 0]]);
+  assert.deepEqual(f.signing, macSigningArgs(path.join(f.root, 'Volkan Deck.app')));
   assert.equal(await fs.readFile(path.join(f.current, 'main.js'), 'utf8'), contents['main.js']);
   assert.equal(JSON.parse(await fs.readFile(path.join(f.root, 'user-data', 'update-receipt.json'))).sha, REMOTE);
   assert.deepEqual((await fs.readdir(f.root)).filter(name => name.startsWith('volkan-update-')), []);
@@ -263,4 +274,84 @@ test('manual check refreshes a result older than 30 s', async t => {
   assert.equal(f.requests.length, count, 'automatic check keeps the 10 min cache');
   await f.updater.check({ manual: true });
   assert.ok(f.requests.length > count, 'manual check asks GitHub again after 30 s');
+});
+
+function macSigningArgs(bundle) {
+  return [
+    ['--force', '--deep', '--sign', '-', bundle],
+    ['--force', '--sign', '-', '-r=designated => identifier "com.volkan.deck"', bundle],
+    ['--verify', '--deep', '--strict', bundle]
+  ];
+}
+async function until(predicate) {
+  for (let i = 0; i < 200; i++) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.fail('Startup cleanup did not finish');
+}
+for (const [requirement, migrate] of [
+  ['designated => cdhash H"1234"', true],
+  [{ stdout: '', stderr: 'test.app: valid on disk\ndesignated => cdhash H"1234"\n' }, true],
+  ['designated => identifier "com.volkan.deck"', false],
+  [{ stdout: 'designated => identifier "com.volkan.deck"\n', stderr: '' }, false],
+  [{ stdout: '', stderr: 'designated => identifier "com.volkan.deck"\n' }, false],
+  ['designated => identifier "com.volkan.deck" and cdhash H"1234"', true]
+]) test(`startup migrates only unstable requirement: ${JSON.stringify(requirement)}`, async t => {
+  const f = await fixture(t, { platform: 'darwin' });
+  t.after(() => f.updater.stop());
+  f.config.startupSigning = true; f.config.requirement = requirement;
+  assert.doesNotThrow(() => f.updater.start());
+  await until(() => f.signing.length === (migrate ? 4 : 1));
+  const bundle = path.join(f.root, 'Volkan Deck.app');
+  assert.deepEqual(f.signing, [['-dr', '-', bundle], ...(migrate ? macSigningArgs(bundle) : [])]);
+  if (migrate) {
+    f.updater.stop(); f.updater.start();
+    await until(() => f.signing.length === 5);
+    assert.equal(f.actions.filter(x => x === 'sign').length, 3, 'second launch does not sign again');
+  }
+});
+for (const failure of ['read', 'sign']) test(`startup migration ${failure} failure logs and leaves updates usable`, async t => {
+  const f = await fixture(t, { platform: 'darwin' });
+  t.after(() => f.updater.stop());
+  const logs = []; t.mock.method(console, 'error', (...args) => logs.push(args));
+  f.config.startupSigning = true; f.config.requirement = 'designated => cdhash H"1234"';
+  if (failure === 'read') f.config.readRequirement = () => { throw Error('Read failed'); };
+  else f.config.migrationError = true;
+  assert.doesNotThrow(() => f.updater.start());
+  await until(() => logs.length > 0);
+  assert.equal(f.updater.getState().phase, 'idle');
+  assert.equal((await f.updater.check()).available, true);
+  f.config.startupSigning = false;
+  await archiveFixture(f);
+  assert.notEqual((await f.updater.apply()).phase, 'error');
+  assert.ok(f.actions.includes('relaunch'));
+});
+test('startup cleanup uses stable signing after removing leftover bundle files', async t => {
+  const f = await fixture(t, { platform: 'darwin' });
+  t.after(() => f.updater.stop());
+  f.config.startupSigning = true;
+  await fs.mkdir(f.current + '.old');
+  f.updater.start(); await until(() => f.signing.length === 4);
+  const bundle = path.join(f.root, 'Volkan Deck.app');
+  assert.deepEqual(f.signing, [...macSigningArgs(bundle), ['-dr', '-', bundle]]);
+  await assert.rejects(fs.stat(f.current + '.old'), { code: 'ENOENT' });
+});
+test('apply waits for an in-flight startup migration before swapping files', async t => {
+  const f = await fixture(t, { platform: 'darwin' });
+  t.after(() => f.updater.stop());
+  await archiveFixture(f); await f.updater.check();
+  let release;
+  f.config.startupSigning = true;
+  f.config.readRequirement = () => new Promise(resolve => { release = resolve; });
+  f.updater.start(); await until(() => !!release);
+  const updating = f.updater.apply();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.actions.includes('stop'), false);
+  // start during apply must not schedule cleanup/signing alongside the update.
+  f.updater.stop(); f.updater.start();
+  release('designated => cdhash H"1234"'); await updating;
+  assert.deepEqual(f.actions.slice(0, 4), ['sign', 'sign', 'sign', 'stop']);
+  assert.equal(f.signing.filter(args => args[0] === '-dr').length, 1);
+  assert.ok(f.actions.includes('relaunch'));
 });
