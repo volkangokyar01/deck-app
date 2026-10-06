@@ -43,8 +43,9 @@ test('macOS: polls lsappinfo only while linked and on; a higher badge sends a no
   let badge = 2, running = true;
   const calls = [], notes = [];
   const run = async (cmd, args) => {
-    calls.push(args[2]);
-    if (args[2] === 'pid') return { code: 0, stdout: running ? '"pid"=812\n' : '', stderr: '' };
+    assert.ok(args.includes('-long'));            // macOS 27 prints "pid = 812" without it
+    const key = args[args.length - 2]; calls.push(key);
+    if (key === 'pid') return { code: 0, stdout: running ? '"pid"=812\n' : '', stderr: '' };
     return { code: 0, stdout: running ? `"StatusLabel"={ "label"="${badge}" }` : '', stderr: '' };
   };
   const ft = fakeTimers();

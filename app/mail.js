@@ -50,8 +50,8 @@ function createMailWatcher({ platform, run, helper, onMail, onState, now = Date.
 
   async function sampleMac() {
     const [pid, badge] = await Promise.all([
-      run('/usr/bin/lsappinfo', ['info', '-only', 'pid', MAC_APP], 3000),
-      run('/usr/bin/lsappinfo', ['info', '-only', 'StatusLabel', MAC_APP], 3000)]);
+      run('/usr/bin/lsappinfo', ['info', '-long', '-only', 'pid', MAC_APP], 3000),
+      run('/usr/bin/lsappinfo', ['info', '-long', '-only', 'StatusLabel', MAC_APP], 3000)]);
     if (pid.code !== 0) return { error: (pid.stderr || 'lsappinfo').trim() };
     const running = /"pid"\s*=\s*\d+/.test(pid.stdout);
     return { running, unread: running && badge.code === 0 ? parseBadge(badge.stdout) : null, error: '' };
