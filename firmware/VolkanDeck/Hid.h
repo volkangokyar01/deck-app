@@ -22,15 +22,15 @@ bool bleStarted = false;
 #define VD_RX_UUID  "7d9a0002-5c2e-4b7a-9f3d-1a6c0de5d001"
 #define VD_TX_UUID  "7d9a0003-5c2e-4b7a-9f3d-1a6c0de5d001"
 NimBLECharacteristic* bleTx = nullptr;
-volatile uint16_t bleHostConn = BLE_HS_CONN_HANDLE_NONE;   // connection the desktop app writes from
-volatile uint16_t bleHostMtu = 23;
-volatile bool bleRxReset = false;                           // drop a half-received line after a disconnect
-void (*bleRxHook)(const uint8_t* p, size_t n) = nullptr;     // set by Proto.h
+// Several computers can be connected at once (e.g. the Mac on Bluetooth while Windows writes):
+// every connection has its own receive buffer and replies go back to the connection that asked (Proto.h).
+volatile uint16_t bleHostConn = BLE_HS_CONN_HANDLE_NONE;   // the desktop app's connection: events go here
+void (*bleRxHook)(uint16_t conn, uint16_t mtu, const uint8_t* p, size_t n) = nullptr;   // set by Proto.h
+void (*bleDropHook)(uint16_t conn) = nullptr;
 class BleRxCb : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& ci) override {
-    bleHostConn = ci.getConnHandle(); bleHostMtu = ci.getMTU();
     const NimBLEAttValue& v = c->getValue();
-    if (bleRxHook) bleRxHook(v.data(), v.length());
+    if (bleRxHook) bleRxHook(ci.getConnHandle(), ci.getMTU(), v.data(), v.length());
   }
 };
 
@@ -58,10 +58,10 @@ class BleCb : public NimBLEServerCallbacks {
   void onDisconnect(NimBLEServer* s, NimBLEConnInfo& ci, int reason) override {
     if (bleConns > 0) bleConns--;
     bleConnected = bleConns > 0;
-    if (ci.getConnHandle() == bleHostConn) { bleHostConn = BLE_HS_CONN_HANDLE_NONE; bleHostMtu = 23; bleRxReset = true; }
+    if (ci.getConnHandle() == bleHostConn) bleHostConn = BLE_HS_CONN_HANDLE_NONE;
+    if (bleDropHook) bleDropHook(ci.getConnHandle());
     NimBLEDevice::startAdvertising();
   }
-  void onMTUChange(uint16_t mtu, NimBLEConnInfo& ci) override { if (ci.getConnHandle() == bleHostConn) bleHostMtu = mtu; }
 };
 
 static void usbEvent(void* arg, esp_event_base_t base, int32_t id, void* data) {

@@ -3,6 +3,30 @@
 #include "esp32-hal-tinyusb.h"
 
 static const size_t LINEBUF_MAX = 128 * 1024;
+
+// Crash breadcrumbs: survive a panic / watchdog reset, reported once in the hello reply ("crash")
+RTC_NOINIT_ATTR static uint32_t crumbMagic;
+RTC_NOINIT_ATTR static char crumbWhere[28];
+static const uint32_t CRUMB_MAGIC = 0x56444352;
+static String bootReset, bootCrash;
+static void crumbSet(const char* a, const char* b = "") {
+  size_t i = 0;
+  for (const char* s = a; *s && i < sizeof(crumbWhere) - 1; ) crumbWhere[i++] = *s++;
+  if (*b && i < sizeof(crumbWhere) - 1) crumbWhere[i++] = ':';
+  for (const char* s = b; *s && i < sizeof(crumbWhere) - 1; ) crumbWhere[i++] = *s++;
+  crumbWhere[i] = 0; crumbMagic = CRUMB_MAGIC;
+}
+static void crumbClear() { crumbMagic = 0; }
+static void crumbBoot() {
+  esp_reset_reason_t r = esp_reset_reason();
+  const char* n = r == ESP_RST_POWERON ? "poweron" : r == ESP_RST_SW ? "software" : r == ESP_RST_PANIC ? "panic" : r == ESP_RST_INT_WDT ? "int_wdt"
+                : r == ESP_RST_TASK_WDT ? "task_wdt" : r == ESP_RST_WDT ? "wdt" : r == ESP_RST_BROWNOUT ? "brownout" : r == ESP_RST_DEEPSLEEP ? "deepsleep" : "other";
+  bootReset = n;
+  bool bad = r == ESP_RST_PANIC || r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT || r == ESP_RST_WDT || r == ESP_RST_BROWNOUT;
+  crumbWhere[sizeof(crumbWhere) - 1] = 0;
+  if (bad) bootCrash = String(n) + (crumbMagic == CRUMB_MAGIC ? String(" @ ") + crumbWhere : String(""));
+  crumbMagic = 0;
+}
 static void ecoSuspend();
 static uint32_t transferAt = 0;
 static volatile bool usbPartial = false;
@@ -31,19 +55,31 @@ const char* linkName();
 
 // Bluetooth sending runs on its own task: the main loop (screen, knob) never waits for the radio,
 // and the NimBLE host task is never blocked by us, so its buffers keep draining.
-struct TxItem { char* p; size_t n; };
+// One receive buffer per Bluetooth connection (lines from two computers must never mix)
+struct BleLink { volatile uint16_t conn = BLE_HS_CONN_HANDLE_NONE; volatile uint16_t mtu = 23; char* buf = nullptr; volatile size_t len = 0; };
+static const int BLE_LINKS = 3;
+static BleLink bleLinks[BLE_LINKS];
+static BleLink* bleLinkOf(uint16_t conn) {
+  for (auto& L : bleLinks) if (L.conn == conn) return &L;
+  return nullptr;
+}
+static bool bleConnAlive(uint16_t conn) { return conn != BLE_HS_CONN_HANDLE_NONE && bleLinkOf(conn); }
+static uint16_t bleMtuOf(uint16_t conn) { BleLink* L = bleLinkOf(conn); return L ? L->mtu : 23; }
+static volatile uint16_t replyConn = BLE_HS_CONN_HANDLE_NONE;   // Bluetooth connection of the command being handled
+
+struct TxItem { char* p; size_t n; uint16_t conn; };
 static QueueHandle_t bleTxQ = nullptr;
 static void bleTxTask(void*) {
   TxItem it;
   for (;;) {
     if (xQueueReceive(bleTxQ, &it, portMAX_DELAY) != pdTRUE) continue;
-    uint16_t conn = bleHostConn;
-    size_t chunk = bleHostMtu > 23 ? min<size_t>(bleHostMtu - 3, 244) : 20;
-    for (size_t i = 0; i < it.n && bleTx && bleHostConn == conn; ) {
+    uint16_t conn = it.conn, mtu = bleMtuOf(conn);
+    size_t chunk = mtu > 23 ? min<size_t>(mtu - 3, 244) : 20;
+    for (size_t i = 0; i < it.n && bleTx && bleConnAlive(conn); ) {
       size_t k = min(chunk, it.n - i);
       if (bleTx->notify((const uint8_t*)it.p + i, k, conn)) { i += k; continue; }
       int tries = 0;
-      while (!bleTx->notify((const uint8_t*)it.p + i, k, conn) && bleHostConn == conn && ++tries < 400) vTaskDelay(pdMS_TO_TICKS(5));
+      while (!bleTx->notify((const uint8_t*)it.p + i, k, conn) && bleConnAlive(conn) && ++tries < 400) vTaskDelay(pdMS_TO_TICKS(5));
       if (tries >= 400) break;                       // link stuck for 2 s: drop the rest of this line
       i += k;
     }
@@ -53,10 +89,11 @@ static void bleTxTask(void*) {
 static void sendJson(JsonDocument& d) {   // replies: always write (host just talked to us)
   uint8_t to = replySrc >= 0 ? replySrc : eventSrc();
   if (to == SRC_USB) { serializeJson(d, Serial); Serial.print('\n'); return; }
-  if (!bleTxQ || !bleHostOn()) return;
+  uint16_t conn = replySrc >= 0 ? replyConn : bleHostConn;
+  if (!bleTxQ || !bleConnAlive(conn)) return;
   size_t n = measureJson(d);
   TxItem it; it.p = (char*)bigAlloc(n + 2); if (!it.p) return;
-  serializeJson(d, it.p, n + 1); it.p[n] = '\n'; it.n = n + 1;
+  serializeJson(d, it.p, n + 1); it.p[n] = '\n'; it.n = n + 1; it.conn = conn;
   if (xQueueSend(bleTxQ, &it, 0) != pdTRUE) free(it.p);   // queue full: drop (events are refreshed anyway)
 }
 static void replyOk(JsonVariantConst id) { JsonDocument r; r["id"] = id; r["ok"] = true; sendJson(r); }
@@ -103,6 +140,7 @@ static void handleLine(char* buf, size_t len) {
   if (deserializeJson(doc, buf, len)) { JsonDocument r; r["ok"] = false; r["error"] = "json"; sendJson(r); return; }
   JsonVariantConst id = doc["id"];
   const char* cmd = doc["cmd"] | "";
+  crumbSet("cmd", cmd);
   // Transfers suspend eco without counting desktop traffic as a user touch.
   if (!strcmp(cmd, "set_config") || !strcmp(cmd, "icon_set") || !strncmp(cmd, "anim_", 5) || !strcmp(cmd, "dfu")) { ecoSuspend(); transferAt = millis() | 1; }
   // Two computers at once (one on USB, one on Bluetooth): the USB one feeds the screen
@@ -115,8 +153,9 @@ static void handleLine(char* buf, size_t len) {
   if (!strcmp(cmd, "hello")) {
     JsonDocument r; r["id"] = id; r["ok"] = true; r["fw"] = FW_VERSION; r["name"] = S.name;
     r["battery"] = batPct; r["charging"] = charging; r["link"] = linkName(); r["psram"] = (uint32_t)(ESP.getPsramSize() / 1024);
-    r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleHostMtu;
+    r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleMtuOf(replyConn);
     r["anim"] = anim.frames; r["animLight"] = animLight.frames;   // frames stored per theme (0: none)
+    r["reset"] = bootReset; if (bootCrash.length()) r["crash"] = bootCrash;
     sendJson(r);
   }
   else if (!strcmp(cmd, "get_config")) {
@@ -207,7 +246,7 @@ static void handleLine(char* buf, size_t len) {
     if (!companionOn()) companionNew = true;
     companionMediaLaunch = doc["mediaLaunch"] | false;
     companionAt = millis();
-    if (replySrc == SRC_BLE) companionBleAt = companionAt; else companionUsbAt = companionAt;
+    if (replySrc == SRC_BLE) { companionBleAt = companionAt; bleHostConn = replyConn; } else companionUsbAt = companionAt;
     const char* os = doc["os"] | "";
     if (*os) S.hostMac = !strcmp(os, "mac");
     if (doc["ack"] | false) { JsonDocument r; r["id"] = id; r["ok"] = true; r["fw"] = FW_VERSION; sendJson(r); }
@@ -262,7 +301,7 @@ static void handleLine(char* buf, size_t len) {
   else replyErr(id, "unknown_cmd");
 }
 
-struct LineItem { char* p; size_t n; uint8_t src; };
+struct LineItem { char* p; size_t n; uint8_t src; uint16_t conn; };
 static QueueHandle_t lineQ = nullptr;
 
 // Reads USB serial on its own task so drawing the screen never stalls input.
@@ -281,7 +320,7 @@ static void serialTask(void*) {
       if (c == '\n') {
         if (len) {
           rxLines++;
-          LineItem it; it.p = (char*)bigAlloc(len + 1); it.n = len; it.src = SRC_USB;
+          LineItem it; it.p = (char*)bigAlloc(len + 1); it.n = len; it.src = SRC_USB; it.conn = BLE_HS_CONN_HANDLE_NONE;
           if (it.p) { memcpy(it.p, buf, len); it.p[len] = 0; xQueueSend(lineQ, &it, portMAX_DELAY); }
         }
         len = 0;
@@ -292,37 +331,49 @@ static void serialTask(void*) {
 }
 
 // Bluetooth data channel: called on the NimBLE host task with each written chunk
-static char* bleBuf = nullptr; static size_t bleLen = 0, bleCap = 0;
-static void bleRx(const uint8_t* p, size_t n) {
-  if (bleRxReset) { bleRxReset = false; bleLen = 0; }
-  if (!bleBuf) { bleCap = psramFound() ? LINEBUF_MAX : 24 * 1024; bleBuf = (char*)bigAlloc(bleCap); if (!bleBuf) return; }
+static size_t bleCap = 0;
+static void bleRx(uint16_t conn, uint16_t mtu, const uint8_t* p, size_t n) {
+  BleLink* L = bleLinkOf(conn);
+  if (!L) { L = bleLinkOf(BLE_HS_CONN_HANDLE_NONE); if (!L) return; L->len = 0; L->conn = conn; }
+  L->mtu = mtu;
+  if (!bleCap) bleCap = psramFound() ? LINEBUF_MAX : 24 * 1024;
+  if (!L->buf) { L->buf = (char*)bigAlloc(bleCap); if (!L->buf) return; }
   for (size_t i = 0; i < n; i++) {
     char c = (char)p[i]; rxBytes++;
     if (c == '\n') {
-      if (bleLen) {
+      if (L->len) {
         rxLines++;
-        LineItem it; it.p = (char*)bigAlloc(bleLen + 1); it.n = bleLen; it.src = SRC_BLE;
-        if (it.p) { memcpy(it.p, bleBuf, bleLen); it.p[bleLen] = 0; if (xQueueSend(lineQ, &it, 0) != pdTRUE) free(it.p); }   // never block the BLE host task
+        LineItem it; it.p = (char*)bigAlloc(L->len + 1); it.n = L->len; it.src = SRC_BLE; it.conn = conn;
+        if (it.p) { memcpy(it.p, L->buf, L->len); it.p[L->len] = 0; if (xQueueSend(lineQ, &it, 0) != pdTRUE) free(it.p); }   // never block the BLE host task
       }
-      bleLen = 0;
-    } else if (c != '\r' && bleLen < bleCap - 1) bleBuf[bleLen++] = c;
+      L->len = 0;
+    } else if (c != '\r' && L->len < bleCap - 1) L->buf[L->len++] = c;
   }
 }
+static void bleDrop(uint16_t conn) { BleLink* L = bleLinkOf(conn); if (L) { L->len = 0; L->conn = BLE_HS_CONN_HANDLE_NONE; } }   // keeps the buffer for reuse
+static bool bleRxPartial() { for (auto& L : bleLinks) if (L.len) return true; return false; }
 
 static void protoBegin() {
+  crumbBoot();
   Serial.setRxBufferSize(8192);
   lineQ = xQueueCreate(24, sizeof(LineItem));
   bleTxQ = xQueueCreate(24, sizeof(TxItem));
   xTaskCreatePinnedToCore(bleTxTask, "bletx", 4096, nullptr, 2, nullptr, 0);
-  bleRxHook = bleRx;
+  bleRxHook = bleRx; bleDropHook = bleDrop;
   xTaskCreatePinnedToCore(serialTask, "ser", 4096, nullptr, 3, nullptr, 0);
 }
 
 static void protoPoll() {
   LineItem it;
-  while (lineQ && xQueueReceive(lineQ, &it, 0) == pdTRUE) { replySrc = it.src; handleLine(it.p, it.n); replySrc = -1; free(it.p); }
+  while (lineQ && xQueueReceive(lineQ, &it, 0) == pdTRUE) {
+    replySrc = it.src; replyConn = it.conn;
+    if (it.src == SRC_BLE && !bleConnAlive(bleHostConn)) bleHostConn = it.conn;   // first app on Bluetooth gets the events
+    handleLine(it.p, it.n);
+    replySrc = -1; replyConn = BLE_HS_CONN_HANDLE_NONE; free(it.p);
+    crumbClear();
+  }
 }
 
 static bool protoTransferBusy() {
-  return animUp || configChangedFlag || usbPartial || bleLen || (lineQ && uxQueueMessagesWaiting(lineQ)) || (transferAt && millis() - transferAt < 1000);
+  return animUp || configChangedFlag || usbPartial || bleRxPartial() || (lineQ && uxQueueMessagesWaiting(lineQ)) || (transferAt && millis() - transferAt < 1000);
 }

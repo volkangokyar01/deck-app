@@ -3,6 +3,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,7 +21,8 @@ class FirmwareAnimTest(unittest.TestCase):
         self.assertIn('persistAnimChoice(animUpLight ? 0 : animFpsIn)', proto)
         self.assertIn('themeAnim(lightTheme)', ui)
         self.assertIn('loadAnim(anim); loadAnim(animLight);', ino)
-        self.assertIn('#define FW_VERSION "1.8.0"', (FW / 'Board.h').read_text())
+        ver = re.search(r'#define FW_VERSION "(\d+)\.(\d+)\.(\d+)"', (FW / 'Board.h').read_text())
+        self.assertGreaterEqual(tuple(map(int, ver.groups())), (1, 7, 0))   # theme slots need 1.7.0+
 
     def test_slots_fallback_timing_and_streaming(self):
         compiler = shutil.which('clang++') or shutil.which('g++')

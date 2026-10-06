@@ -386,11 +386,11 @@ void setup() {
 
 void loop() {
   protoPoll();
-  if (configChangedFlag) { configChangedFlag = false; applySideEffects(); }
+  if (configChangedFlag) { configChangedFlag = false; crumbSet("apply"); applySideEffects(); crumbClear(); }
   if (companionNew) { companionNew = false; toast("Masaüstü uygulaması bağlı"); dirty = true; evtMedia("select"); }
   if (mailNew) { mailNew = false; mailWake(); }
   if (mailActive() && !screenOff) mailInput();
-  handleInput();
+  crumbSet("input"); handleInput(); crumbClear();
 
   uint32_t now = millis();
   static uint32_t tBat = 0, tStatus = 0, tFrame = 0, tTheme = 0;
@@ -445,7 +445,7 @@ void loop() {
   if (toastExpired) { toastUntil = 0; dirty = true; }
   if (!screenOff) {
     if (dirty || (!ecoActive && ((animate && now - tFrame >= 40) || (onPage && now - tFrame >= 250) || ((onHome || onWidgets) && now - tFrame >= 1000) || (mailOn && now - tFrame >= 250)))) {
-      tFrame = now; dirty = false; render(linkName());
+      tFrame = now; dirty = false; crumbSet("render"); render(linkName()); crumbClear();
     } else if (ecoActive) {
       if (animate && ecoAnimFps > 0 && now - tFrame >= (uint32_t)(1000 / ecoAnimFps)) { tFrame = now; renderEcoAnim(now); }
       if (clockChanged) renderEcoClock();

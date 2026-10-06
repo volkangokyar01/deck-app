@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.6.2)
+## Firmware (v1.8.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -167,3 +167,12 @@ Masaüstü uygulaması Outlook'u izler; okunmamış sayısı artınca cihaza `{"
 - Windows: ayrı bir PowerShell yardımcısı (`app/win-mail.ps1`) çalışan klasik Outlook'a COM ile bağlanır (Outlook'u hiçbir zaman kendisi başlatmaz). 3 sn'de bir tüm hesapların Gelen Kutusu okunmamış sayısını okur; konu yalnız sayı artınca, en yeni okunmamış postadan alınır. Yalnız `Subject`, `ReceivedTime`, `UnRead`, `UnReadItemCount` okunur; bunlar Outlook güvenlik uyarısı açmaz. Yeni Outlook (olk.exe) başka uygulamalara posta bilgisi vermez; desteklenmez, ayarlarda belirtilir. Outlook'u açmak: App Paths'te OUTLOOK.EXE varsa `outlook.exe /recycle` (açık pencereyi öne getirir), yoksa Başlat menüsündeki Outlook.
 - İzleme yalnız özellik açıkken ve 1.8.0+ bir kart doğrudan açma modunda bağlıyken çalışır. Outlook açıldıktan sonraki ilk 20 sn eşitleme sayılır, bildirim verilmez. Bağlantı yokken gelen posta sonradan gösterilmez.
 - Ayarlar masaüstü uygulamasında (`state.json` → `mail`: `enabled`, `seconds` 5/10/15/30/60, `subject`), cihaz ayarına girmez. Konu `devText` ile cihaz fontlarına indirgenir (en çok 90 karakter), cihazda iki satıra kelime sınırından bölünür.
+
+## 2026-10-06 — "Cihaza yaz" kartı yeniden başlatıyordu (firmware 1.8.1)
+
+Windows'ta ayar yazınca kart yeniden başlıyor, ayar kaydedilmiyordu. Kart boşta tasarruftayken (80 MHz) gelen `set_config` önce `ecoSuspend()` ile CPU'yu 240 MHz'e çeviriyor, hemen ardından LittleFS'e yazıyordu; CPU geçişi donanımda doğrulanmamıştı. `VOLKAN_ECO_CPU` varsayılanı 0: tasarrufta çizim azaltma sürer, CPU frekansı değişmez.
+
+Aynı sürümde:
+- Bluetooth'ta her bağlantının kendi alma tamponu var; yanıt komutun geldiği bağlantıya, olaylar masaüstü uygulamasının bağlantısına (son `companion`) gider. Önceden iki bilgisayar (ör. Mac Bluetooth'ta, Windows yazarken) aynı tampona yazınca satırlar karışabiliyordu.
+- Kırıntı: RTC_NOINIT'te son komut / aşama (`cmd:<ad>`, `apply`, `input`, `render`). Panik / watchdog / brownout sonrası `hello` yanıtında `crash` ("panic @ cmd:set_config" gibi) ve her zaman `reset`; uygulama günlüğe yazar ve bildirir.
+- Uygulama her zaman önce USB'yi dener; `getPorts()` boşsa ana sürecin seçicisiz `requestPort` yanıtıyla kabloyu algılar. Bluetooth yalnız kablo yokken.

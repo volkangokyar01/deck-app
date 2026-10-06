@@ -1,10 +1,11 @@
 #pragma once
 // LilyGO T-Display-S3 + KY-040 + 2 buttons
-#define FW_VERSION "1.8.0"
+#define FW_VERSION "1.8.1"
 
-// Disable CPU scaling alone if a board needs it; idle redraw saving stays enabled.
+// CPU scaling (240 <-> 80 MHz) is off since 1.8.1: the switch back to 240 MHz happened right before the
+// config write and the board restarted ("Cihaza yaz" on Windows). Idle redraw saving stays enabled.
 #ifndef VOLKAN_ECO_CPU
-#define VOLKAN_ECO_CPU 1
+#define VOLKAN_ECO_CPU 0
 #endif
 
 #define PIN_LCD_POWER 15

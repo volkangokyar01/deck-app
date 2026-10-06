@@ -75,15 +75,23 @@
   /* ---- automatic connection (main process picks the deck's port, no chooser) ---- */
   // USB first; with no cable to this computer, the deck's Bluetooth data channel (firmware 1.6.0+)
   let bleReady = null, bleTriedAt = 0;
-  const usbDeck = async () => { try { return (await navigator.serial.getPorts()).some(p => p.getInfo().usbVendorId === ESP_VID); } catch (e) { return false; } };
+  // Is the deck plugged into this computer? getPorts() may be empty until a port was picked once,
+  // so ask the main process too (it answers requestPort without a chooser).
+  const usbDeck = async () => {
+    try { if ((await navigator.serial.getPorts()).some(p => p.getInfo().usbVendorId === ESP_VID)) return true; } catch (e) {}
+    try { return !!(await navigator.serial.requestPort({ filters: [{ usbVendorId: ESP_VID }] })); } catch (e) { return false; }
+  };
   window.__deckAutoConnect = async () => {
-    if (connecting || busy) return;
-    if (port && !(port.isBle && await usbDeck())) return;     // cable plugged in while on Bluetooth: move to USB
+    if (connecting || busy || (port && !port.isBle)) return;
     connecting = true;
     try {
-      if (port) await disconnect();
-      // Bluetooth first when it is due: requestDevice needs the fresh user activation this call carries
-      const bleDue = !(await usbDeck()) && cfg.device.connection !== 'usb' && Date.now() - bleTriedAt > 12000;
+      if (port) {                                               // on Bluetooth: move to USB as soon as the cable is here
+        if (!(await usbDeck())) return;
+        log('', '  Kablo bağlı: USB\'ye geçiliyor'); await disconnect();
+      }
+      await connect(true);                                      // USB always first
+      // No cable to this computer: the deck's Bluetooth data channel
+      const bleDue = !port && cfg.device.connection !== 'usb' && Date.now() - bleTriedAt > 12000;
       if (bleDue) {
         if (!('bluetooth' in navigator)) { if (bleReady !== false) log('er', '  Bluetooth: bu pencerede Web Bluetooth yok'); bleReady = false; }
         if (bleReady === null) {
@@ -97,7 +105,6 @@
           else await connect(true, true);
         }
       }
-      if (!port) await connect(true);
     } catch (e) { log('er', '  Bağlantı: ' + (e && e.message || e)); } finally { connecting = false; }
     if (port && deviceInfo) await afterConnect();
   };
