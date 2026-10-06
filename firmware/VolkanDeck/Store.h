@@ -155,8 +155,8 @@ static void applyConfig(JsonObjectConst c) {
   N.ecoAfterUsb = constrain(d["ecoAfterUsb"] | 60, 0, 3600); N.ecoAfter = constrain(d["ecoAfter"] | 30, 0, 3600);
   N.dimLevelUsb = constrain(d["dimLevelUsb"] | 17, 5, 90);
   N.dimLevel = constrain(d["dimLevel"] | 17, 5, 90);
-  N.ecoFpsUsb = constrain(d["ecoFpsUsb"] | 4, 0, 8);
-  N.ecoFps = constrain(d["ecoFps"] | 4, 0, 8);
+  N.ecoFpsUsb = constrain(d["ecoFpsUsb"] | 4, 0, 15);   // 1.7.1: up to 15 (was 8)
+  N.ecoFps = constrain(d["ecoFps"] | 4, 0, 15);
   N.launchDelay = d["launchDelay"] | 400; N.encDetent = constrain(d["encDetent"] | 4, 1, 4);
   N.wrap = d["wrap"] | true; N.encRev = d["encReverse"] | false; N.flip = d["flip"] | false;
   const char* th = d["theme"] | "auto";

@@ -4,7 +4,7 @@ LilyGO T-Display-S3 tabanlı, kendin yap (DIY) bir stream deck. Döndürgeç ve 
 
 | Klasör | İçerik |
 |---|---|
-| `firmware/VolkanDeck/` | ESP32-S3 firmware kaynağı (Arduino), **v1.7.0** |
+| `firmware/VolkanDeck/` | ESP32-S3 firmware kaynağı (Arduino), **v1.7.1** |
 | `firmware/bin/` | Derlenmiş firmware (`flash_args` adresleriyle) |
 | `web/` | Ayar sayfası kaynağı (`head.css.html` + `body.html`), yazı tipleri (`fonts/`), firmware yükleyicisi (`vendor/esptool-js/`) ve derlenmiş `StreamDeck-Ayar.html` |
 | `app/` | Masaüstü uygulaması (Electron 44.5.1, Windows + macOS); `media.js` + `win-helper.ps1` medya, ses ve parlaklık |

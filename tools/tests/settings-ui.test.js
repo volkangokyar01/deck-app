@@ -179,8 +179,8 @@ for (const platform of ['darwin', 'win32', null]) test(`dim level and eco speed 
   const controls = [
     ['dimLevelUsb', 'dimAfterUsb', 'Karartınca parlaklık (kabloda)', 30, 17, 5, 90],
     ['dimLevel', 'dimAfter', 'Karartınca parlaklık (pilde)', 10, 17, 5, 90],
-    ['ecoFpsUsb', 'ecoAfterUsb', 'Tasarrufta animasyon (kabloda)', 8, 4, 0, 8],
-    ['ecoFps', 'ecoAfter', 'Tasarrufta animasyon (pilde)', 0, 4, 0, 8]
+    ['ecoFpsUsb', 'ecoAfterUsb', 'Tasarrufta animasyon (kabloda)', 15, 4, 0, 15],
+    ['ecoFps', 'ecoAfter', 'Tasarrufta animasyon (pilde)', 0, 4, 0, 15]
   ];
   for (const kind of ['home', 'media', 'widgets', 'system']) {
     ctx.edit = { kind }; ctx.renderEditor(); ctx.renderDeviceForm();
@@ -188,7 +188,7 @@ for (const platform of ['darwin', 'win32', null]) test(`dim level and eco speed 
   }
   assert.deepEqual(ids.get('dimLevelUsb').children.map(c => c.attributes.value), [75, 50, 30, 20, 10, 5, 17]);
   assert.ok(ids.get('dimLevelUsb').children.some(c => c.textContent === '%17' && c.attributes.selected !== undefined));
-  assert.deepEqual(ids.get('ecoFps').children.map(c => c.attributes.value), [8, 4, 2, 1, 0]);
+  assert.deepEqual(ids.get('ecoFps').children.map(c => c.attributes.value), [15, 10, 8, 4, 2, 1, 0]);
   assert.equal(ids.get('ecoFps').children.at(-1).textContent, 'Durdur');
   for (const [key, timer, , value] of controls) {
     assert.equal(!!ids.get(key).disabled, false);
@@ -281,6 +281,29 @@ test('dragging an app moves it before or after the target', () => {
   ctx.moveApp('d', 'b', false); assert.equal(order(), 'dbca');
   ctx.moveApp('b', 'b', false); assert.equal(order(), 'dbca');
   ctx.moveApp('x', 'b', false); assert.equal(order(), 'dbca');
+});
+
+test('GIF with its own timing: fps comes from the shortest frame, so long pauses do not freeze the power-saving speed', async () => {
+  const { ctx } = page('darwin');
+  // 12 s pause + 40-60 ms motion frames (e.g. the Spider-Man GIF): the average frame would be ~1 fps
+  const durs = [12000, 40, 120, 50, 60, 60, 10000, 50];
+  class ImageDecoder {
+    constructor() { this.tracks = { ready: Promise.resolve(), selectedTrack: { frameCount: durs.length } }; this.completed = Promise.resolve(); }
+    async decode({ frameIndex }) { return { image: { duration: durs[frameIndex] * 1000, displayWidth: 128, displayHeight: 128, close() {} } }; }
+    close() {}
+  }
+  const canvasCtx = { fillRect() {}, drawImage() {}, getImageData: () => ({ data: new Uint8Array(4) }) };
+  ctx.document.createElement = tag => tag === 'canvas' ? { getContext: () => canvasCtx } : null;
+  Object.assign(ctx, { ImageDecoder, SCREEN_PALETTES: { dark: { panel: '#0F1012' }, light: { panel: '#ECE8E0' } } });
+  ctx.window.ImageDecoder = ImageDecoder;
+  const start = source.indexOf('/* ---------- Custom animation');
+  vm.runInContext(source.slice(start, source.indexOf('function musicPlayerForApp(', start)), ctx);
+  const r = await ctx.processAnimFile({ type: 'image/gif', arrayBuffer: async () => new ArrayBuffer(0) });
+  assert.deepEqual([...r.delays], durs); assert.equal(r.fps, 25);
+  // even frame times: no delay table, fps from the average as before
+  durs.splice(0, durs.length, 100, 100, 100);
+  const even = await ctx.processAnimFile({ type: 'image/gif', arrayBuffer: async () => new ArrayBuffer(0) });
+  assert.equal(even.delays, null); assert.equal(even.fps, 10);
 });
 
 test('light-theme animation: own slot, sent only to firmware 1.7.0+, removable, editor tabs and fallback', async () => {

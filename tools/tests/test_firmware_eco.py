@@ -93,7 +93,7 @@ int main(){
         store = (ROOT / 'firmware/VolkanDeck/Store.h').read_text()
         ino = (ROOT / 'firmware/VolkanDeck/VolkanDeck.ino').read_text()
         keys = [('dimLevelUsb', 17, 5, 90), ('dimLevel', 17, 5, 90),
-                ('ecoFpsUsb', 4, 0, 8), ('ecoFps', 4, 0, 8)]
+                ('ecoFpsUsb', 4, 0, 15), ('ecoFps', 4, 0, 15)]
         assignments = []
         for key, default, low, high in keys:
             self.assertIn(f'{key} = {default}', store)
@@ -131,7 +131,7 @@ void redraw(bool animate){
 int main(){
  parse();assert(N.dimLevelUsb==17&&N.dimLevel==17&&N.ecoFpsUsb==4&&N.ecoFps==4);
  d.values={{"dimLevelUsb",0},{"dimLevel",200},{"ecoFpsUsb",-1},{"ecoFps",100}};
- parse();assert(N.dimLevelUsb==5&&N.dimLevel==90&&N.ecoFpsUsb==0&&N.ecoFps==8);
+ parse();assert(N.dimLevelUsb==5&&N.dimLevel==90&&N.ecoFpsUsb==0&&N.ecoFps==15);
  d.values={{"dimLevelUsb",30},{"dimLevel",10},{"ecoFpsUsb",8},{"ecoFps",0}};
  parse();S=N;
  usbMounted=true;update();assert(dimmed&&bright==24&&ecoActive&&ecoAnimFps==8);
