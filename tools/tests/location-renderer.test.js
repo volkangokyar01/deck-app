@@ -6,7 +6,7 @@ function renderer({ denied = false, available = true, previous = '', permission 
   const stored = new Map(previous ? [['test.location-attempt', previous]] : []), calls = [], timers = [], ui = { textContent: '' };
   let asks = 0, checks = 0;
   const ctx = vm.createContext({ KEY: 'test', cfg: { home: { weather: { auto: true, city: 'İstanbul', lat: 41, lon: 29 } } },
-    updateState: null, weatherLocationStatus: '', weatherLocationSource: '', window: {},
+    updateState: null, weatherLocationStatus: '', weatherLocationSource: '', weatherLocationFailed: false, window: {},
     weatherLocationLabel: () => '', document: { getElementById: () => ui }, save() {}, drawScreen() {}, renderJson() {},
     localStorage: { getItem: k => stored.get(k), setItem: (k, v) => stored.set(k, v) },
     setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {},
@@ -25,6 +25,7 @@ function renderer({ denied = false, available = true, previous = '', permission 
 test('renderer asks once on first auto use, persists denial, falls back and retries only explicitly', async () => {
   const r = renderer({ denied: true });
   await r.ctx.requestLocation(); assert.equal(r.asks(), 1);
+  assert.equal(r.ctx.weatherLocationFailed, true);
   assert.equal(r.calls[0].geolocation.pending, true); assert.equal(r.calls[1].geolocation, null);
   await r.ctx.requestLocation(); assert.equal(r.asks(), 1);
   await r.ctx.window.retryWeatherLocation(); assert.equal(r.asks(), 2);
@@ -32,7 +33,7 @@ test('renderer asks once on first auto use, persists denial, falls back and retr
   const restarted = renderer({ previous: 'attempted' }); await restarted.ctx.requestLocation(); assert.equal(restarted.asks(), 0);
 });
 test('successful permission is cached; revoked permission and missing macOS plist use IP silently', async () => {
-  const r = renderer(); await r.ctx.requestLocation(); assert.equal(r.stored.get('test.location-attempt'), 'granted');
+  const r = renderer(); await r.ctx.requestLocation(); assert.equal(r.ctx.weatherLocationFailed, false); assert.equal(r.stored.get('test.location-attempt'), 'granted');
   assert.deepEqual(JSON.parse(JSON.stringify(r.calls[1].geolocation)), { lat: 39.93, lon: 32.85 });
   const revoked = renderer({ previous: 'granted', permission: 'denied' }); await revoked.ctx.requestLocation(); assert.equal(revoked.asks(), 0);
   const oldBundle = renderer({ available: false }); await oldBundle.ctx.requestLocation(); assert.equal(oldBundle.asks(), 0);

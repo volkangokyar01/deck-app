@@ -19,6 +19,7 @@ class FirmwareMediaTest(unittest.TestCase):
         action = source[source.index('static void mediaAction('):source.index('static void cyclePlayer()')]
         harness = r'''
 #include <string>
+#include <cstring>
 #include <vector>
 #include <algorithm>
 #include <cassert>

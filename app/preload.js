@@ -1,10 +1,12 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('deck', {
   platform: process.platform,
+  debug: process.env.VOLKAN_DEBUG === '1',
   launch: e => ipcRenderer.invoke('launch', e),
   pickApps: multi => ipcRenderer.invoke('pick-apps', multi),
   appInfo: p => ipcRenderer.invoke('app-info', p),
   locationAvailable: () => ipcRenderer.invoke('location-available'),
+  openLocationSettings: () => ipcRenderer.invoke('open-location-settings'),
   stats: o => ipcRenderer.invoke('stats-get', o),
   sensorStatus: () => ipcRenderer.invoke('sensor-status'),
   installSensors: () => ipcRenderer.invoke('sensor-install'),
@@ -22,7 +24,7 @@ contextBridge.exposeInMainWorld('deck', {
   onUpdateState: fn => { const listener = (ev, s) => fn(s); ipcRenderer.on('update-state', listener); return () => ipcRenderer.removeListener('update-state', listener); },
   onUpdateOpen: fn => { const listener = () => fn(); ipcRenderer.on('update-open', listener); return () => ipcRenderer.removeListener('update-open', listener); },
   hostState: o => ipcRenderer.invoke('host-state', o),
-  mediaArt: key => ipcRenderer.invoke('media-art', key),
+  mediaArt: (key, waitMs) => ipcRenderer.invoke('media-art', key, waitMs),
   mediaControl: (action, target, options) => ipcRenderer.invoke('media-ctl', action, target, options),
   sysSet: o => ipcRenderer.invoke('sys-set', o),
   pathForFile: f => { try { return webUtils.getPathForFile(f) || ''; } catch (e) { return ''; } }

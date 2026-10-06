@@ -234,6 +234,8 @@
   async function pollLocation() {
     if (locationPolling || !cfg.home?.weather?.auto || ['downloading', 'installing'].includes(updateState?.phase)) return;
     if (!geoAttempted || (geoOK && Date.now() - geoAt >= 3600000)) { requestLocation(); return; }
+    weatherLocationFailed = geoAttempted && !geoOK;
+    for (const id of ['wxLocationSettings', 'wxLocationHint']) { const e = document.getElementById(id); if (e) e.hidden = !weatherLocationFailed; }
     locationPolling = true;
     try {
       const snapshot = await deck.stats({ weather: cfg.home.weather });
@@ -284,41 +286,89 @@
 
   /* ---- media + volume/brightness pages (firmware 1.3.0+): this computer feeds the deck ---- */
   const MEDIA_FW = '1.3.0';
-  let mediaTarget = (cfg.pages && cfg.pages.media && cfg.pages.media.player) || 'auto', polling = false;
-  let lastArtKey, artGeneration = 0;
-  window.onDeckSerialOpen = () => { lastArtKey = undefined; artGeneration++; };
+  let mediaTarget = (cfg.pages && cfg.pages.media && cfg.pages.media.player) || 'auto';
+  let lastArtKey, wantArtKey = '', wantArtAt = 0, artGeneration = 0, mediaRevision = 0, artBusy = false, deckPage = '', controlling = 0, controlAt = 0;
+  window.onDeckSerialOpen = () => { lastArtKey = undefined; wantArtKey = ''; artGeneration++; mediaRevision++; deckPage = ''; };
   const pagesOn = () => { const p = cfg.pages || {}; return { media: !p.media || p.media.enabled !== false, sys: !p.system || p.system.enabled !== false }; };
-  async function pollHost() {
-    if (updateState && ['downloading', 'installing'].includes(updateState.phase)) return;
-    if (polling || busy || !writer || !deviceInfo || !direct || !deviceInfo.fw || !verGE(deviceInfo.fw, MEDIA_FW)) return;
-    const on = pagesOn(); if (!on.media && !on.sys) return;
-    polling = true;
-    const serialWriter = writer, generation = artGeneration;
-    try {
-      const st = await deck.hostState({ target: mediaTarget, launch: cfg.pages.media.launch, media: on.media, sys: on.sys });
-      if (writer !== serialWriter || generation !== artGeneration) return;
-      if (st && st.media) {
-        await sendRaw({ cmd: 'media', ...st.media }); Object.assign(hostDemo.media, st.media); hostDemo.at = performance.now();
-        const key = st.media.artKey || '';
-        if (hostDemo.artKey !== key) { hostDemo.art = null; hostDemo.artKey = key; }
-        if (key !== lastArtKey) {
-          const art = key ? await deck.mediaArt(key) : null;
-          if (writer !== serialWriter || generation !== artGeneration) return;
-          if (art && art.key === key) { await sendRaw({ cmd: 'media_art', ...art }); lastArtKey = key; setMediaArt(art); }
-          else if (lastArtKey !== '') { await sendRaw({ cmd: 'media_art', key: '' }); lastArtKey = ''; }
-        }
-      }
-      if (st && st.sys && st.sys.vol != null) Object.assign(hostDemo.sys, { vol: st.sys.vol, mute: !!st.sys.mute, bright: st.sys.bright ?? hostDemo.sys.bright, micMute: st.sys.micMute ?? null });
-      if (st && st.sys) await sendRaw({ cmd: 'sys', vol: st.sys.vol, mute: !!st.sys.mute, bright: st.sys.bright, micMute: st.sys.micMute ?? null });
-    } catch (e) {} finally { polling = false; }
+  const hostReady = () => !(updateState && ['downloading', 'installing'].includes(updateState.phase)) && !busy && !!writer && !!deviceInfo && direct && !!deviceInfo.fw && verGE(deviceInfo.fw, MEDIA_FW);
+  // One poll in flight per lane; a concurrent run requests one more after completion.
+  function createPollRunner(poll, cadence, timers = { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id) }) {
+    let active = false, again = false, timer = null;
+    async function run() {
+      if (timer != null) { timers.clearTimeout(timer); timer = null; }
+      if (active) { again = true; return; }
+      active = true;
+      try { do { again = false; await poll(); } while (again); }
+      catch (e) { console.error('Bilgisayar sorgusu', e); }
+      finally { active = false; timer = timers.setTimeout(run, cadence()); }
+    }
+    return run;
   }
-  setInterval(pollHost, 2000);
+  // Media: 0.5 s playing, 1 s paused; other pages 2 s, unknown 1 s. Bluetooth: at most 1/s.
+  function mediaCadence() {
+    const ms = deckPage === 'media' ? (hostDemo.media.playing ? 500 : 1000) : deckPage ? 2000 : 1000;
+    return port?.isBle ? Math.max(ms, 1000) : ms;
+  }
+  const sysCadence = () => deckPage === 'system' || deckPage === 'media' ? 1000 : 2000;
+  const controlBusy = () => controlling > 0 && performance.now() - controlAt < 3000;
+  async function pollMedia() {
+    if (!hostReady() || !pagesOn().media || controlBusy()) return;
+    const link = writer, revision = mediaRevision, generation = artGeneration, started = performance.now();
+    const st = await deck.hostState({ target: mediaTarget, launch: cfg.pages?.media?.launch, media: true, sys: false });
+    // A button press or reconnect makes this answer stale.
+    if (writer !== link || revision !== mediaRevision || generation !== artGeneration || controlBusy() || !hostReady() || !st?.media) return;
+    await sendRaw({ cmd: 'media', ...st.media }, () => revision === mediaRevision);
+    Object.assign(hostDemo.media, st.media); hostDemo.at = performance.now();
+    const key = st.media.artKey || '';
+    if (hostDemo.artKey !== key) { hostDemo.art = null; hostDemo.artKey = key; }
+    if (key !== wantArtKey) { wantArtKey = key; wantArtAt = started; }
+    pushArt();                                            // cover loading never holds up media polling
+  }
+  // Wait up to 4 s for a cover; drop it if its track is no longer current.
+  async function pushArt() {
+    if (artBusy) return;
+    artBusy = true;
+    try {
+      while (hostReady() && pagesOn().media && wantArtKey !== lastArtKey) {
+        const key = wantArtKey, link = writer, generation = artGeneration;
+        if (!key) { if (await sendRaw({ cmd: 'media_art', key: '' })) lastArtKey = ''; else break; continue; }
+        const art = await deck.mediaArt(key, 4000);
+        if (writer !== link || generation !== artGeneration) break;
+        if (key !== wantArtKey) continue;                   // track changed while loading
+        if (!art || art.key !== key) {
+          if (lastArtKey && await sendRaw({ cmd: 'media_art', key: '' })) lastArtKey = '';
+          break;
+        }
+        if (await sendRaw({ cmd: 'media_art', ...art }, () => writer === link && key === wantArtKey)) {
+          lastArtKey = key; setMediaArt(art);
+          if (deck.debug) console.log('[Volkan süre] kapak', Math.round(performance.now() - wantArtAt) + ' ms', '(sorgu başı → yazıldı)');
+        } else if (writer === link && key === wantArtKey) break;
+      }
+    } catch (e) { console.error('Kapak', e); } finally { artBusy = false; }
+  }
+  async function pollSys() {
+    if (!hostReady() || !pagesOn().sys) return;
+    const link = writer;
+    const st = await deck.hostState({ target: mediaTarget, media: false, sys: true });
+    if (writer !== link || !hostReady() || !st?.sys) return;
+    if (st.sys.vol != null) Object.assign(hostDemo.sys, { vol: st.sys.vol, mute: !!st.sys.mute, bright: st.sys.bright ?? hostDemo.sys.bright, micMute: st.sys.micMute ?? null });
+    await sendRaw({ cmd: 'sys', vol: st.sys.vol, mute: !!st.sys.mute, bright: st.sys.bright, micMute: st.sys.micMute ?? null });
+  }
+  window.onDeckSelect = id => {
+    const was = deckPage; deckPage = String(id || '');
+    if (deckPage !== was && (deckPage === 'media' || was === 'media')) runMedia();
+    if (deckPage === 'system' && was !== 'system') runSys();
+  };
   window.onDeckMedia = async m => {
     if (m.player) { mediaTarget = m.player; pageState.player = m.player; }
-    if (m.action === 'select') { log('rx', '← oynatıcı: ' + mediaTarget); setTimeout(pollHost, 50); return; }
-    const r = await deck.mediaControl(m.action, mediaTarget, { launch: cfg.pages.media.launch });
-    if (!r || !r.ok) log('er', '  medya: ' + (r && r.error || 'hata'));
-    setTimeout(pollHost, 300);
+    mediaRevision++;
+    if (m.action === 'select') { log('rx', '← oynatıcı: ' + mediaTarget); runMedia(); return; }
+    controlling++; controlAt = performance.now();
+    try {
+      const r = await deck.mediaControl(m.action, mediaTarget, { launch: cfg.pages.media.launch });
+      if (!r || !r.ok) log('er', '  medya: ' + (r && r.error || 'hata'));
+    } catch (e) { log('er', '  medya: ' + e.message); }
+    finally { controlling--; mediaRevision++; runMedia(); }
   };
   // volume / brightness changes arrive every ~60 ms while the knob turns: keep only the newest, one call at a time
   let sysPending = null, sysBusy = false;
@@ -329,6 +379,9 @@
     try { while (sysPending) { const p = sysPending; sysPending = null; await deck.sysSet(p); } }
     finally { sysBusy = false; }
   };
+
+  const runMedia = createPollRunner(pollMedia, mediaCadence), runSys = createPollRunner(pollSys, sysCadence);
+  runMedia(); runSys();
 
   /* ---- per-app direct targets in the editor ---- */
   const _renderEditor = renderEditor;

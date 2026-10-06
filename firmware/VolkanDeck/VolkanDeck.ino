@@ -90,6 +90,23 @@ Btn bEnc(PIN_ENC_SW), bA(PIN_BTN_A), bB(PIN_BTN_B), bPwr(PIN_KEY_PWR), bRst(PIN_
 /* ---------- power / screen ---------- */
 uint32_t lastActivity = 0;
 bool screenOff = false, dimmed = false;
+bool dirty = true;
+
+// Restore the CPU before processing inputs or heavy transfers; no sleep / USB reset.
+static void ecoSuspend() {
+  if (!ecoActive) return;
+#if VOLKAN_ECO_CPU
+  if (!setCpuFrequencyMhz(240)) return;
+#endif
+  ecoActive = false; dirty = true;
+}
+static void ecoExit() { ecoSuspend(); lastActivity = millis(); }
+static void ecoEnter() {
+#if VOLKAN_ECO_CPU
+  if (!setCpuFrequencyMhz(80)) return;
+#endif
+  ecoActive = true;
+}
 int curBright = -1;
 
 static void setBright(int pct) {
@@ -98,8 +115,8 @@ static void setBright(int pct) {
 }
 
 static bool wakeUp() {   // returns true if the input should be swallowed
-  lastActivity = millis();
-  bool was = screenOff || dimmed;
+  bool wasEco = ecoActive; ecoExit();
+  bool was = (screenOff || dimmed) && !wasEco;
   screenOff = false; dimmed = false; setBright(S.brightness);
   return was;
 }
@@ -125,7 +142,6 @@ static void goSleep() {
 }
 
 /* ---------- navigation & actions ---------- */
-bool dirty = true;
 
 static void selectIndex(int i) {
   int n = items.size(); if (!n) return;
@@ -221,6 +237,7 @@ static void doLaunch(App* a) {
 }
 
 static void onPress() {
+  ecoExit();
   if (items.empty()) return;
   Item& it = items[sel];
   switch (it.kind) {
@@ -283,11 +300,13 @@ static void handleInput() {
 
   int p = bPwr.poll(2000);
   if (p == 1) {
+    ecoExit();
     if (screenOff || dimmed) wakeUp();
     else { screenOff = true; setBright(0); }
-  } else if (p == 2) goSleep();
+  } else if (p == 2) { ecoExit(); goSleep(); }
 
   if (bRst.poll(0) == 1) {     // act on release so BOOT is not held during reset
+    ecoExit();
     spr.fillSprite(SC_BG); text("Yeniden başlatılıyor", 160, 85, FB18, SC_SUB, textdatum_t::middle_center); spr.pushSprite(0, 0);
     delay(300); ESP.restart();
   }
@@ -355,8 +374,8 @@ void loop() {
   static uint32_t tBat = 0, tStatus = 0, tFrame = 0, tTheme = 0;
   if (now - tTheme >= 3000) { tTheme = now; bool light = effectiveLight(); if (light != lightTheme) { applyTheme(light); dirty = true; } }
   static Link lastLink = L_NONE;
-  if (now - tBat > 2000) { tBat = now; readBattery(); bleBattery(batPct); }
-  if (now - tStatus > 5000) { tStatus = now; evtStatus(); dirty = true; }
+  if (now - tBat > 2000) { tBat = now; uint8_t oldBat = batPct; bool oldCharge = charging; readBattery(); bleBattery(batPct); if (oldBat != batPct || oldCharge != charging) dirty = true; }
+  if (now - tStatus > 5000) { tStatus = now; evtStatus(); if (!ecoActive) dirty = true; }
   Link l = activeLink(); if (l != lastLink) { lastLink = l; dirty = true; evtStatus(); }
 
   bool onHome = !items.empty() && items[sel].home;
@@ -378,15 +397,31 @@ void loop() {
   // dimming / auto power-off: separate settings on cable (USB host or charger) and on battery, 0 = off
   bool onCable = usbMounted || charging;
   int dimLimit = onCable ? S.dimAfterUsb : S.dimAfter, sleepLimit = onCable ? S.sleepAfterUsb : S.sleepAfter;
+  int ecoLimit = onCable ? S.ecoAfterUsb : S.ecoAfter;
+  bool ecoBlocked = protoTransferBusy() || adjust || (toastUntil && now <= toastUntil);
+  if (ecoActive && (ecoLimit <= 0 || adjust || (toastUntil && now <= toastUntil))) ecoSuspend();
+  if (!ecoActive && !ecoBlocked && ecoLimit > 0 && idle >= (uint32_t)ecoLimit) ecoEnter();
   if (dimmed && dimLimit <= 0) { dimmed = false; setBright(S.brightness); }          // switched to a source with dimming off
   if (!screenOff && !dimmed && dimLimit > 0 && idle >= (uint32_t)dimLimit) { dimmed = true; setBright(max(5, S.brightness / 6)); }
   if (sleepLimit > 0 && idle >= (uint32_t)sleepLimit) goSleep();
 
   onHome = !items.empty() && items[sel].home;
   bool animate = onHome && !screenOff && S.animKind != A_NONE;
-  if (!screenOff && (dirty || (animate && now - tFrame >= 40) || (onPage && now - tFrame >= 250) || ((onHome || curKind() == K_WIDGETS) && now - tFrame >= 1000) || (toastUntil && now > toastUntil && now - toastUntil < 100))) {
-    tFrame = now; dirty = false;
-    render(linkName());
+  static int64_t clockMinute = -1;
+  int64_t minute = st.timeAt ? (st.epoch + st.tz + (int64_t)((now - st.timeAt) / 1000)) / 60 : -1;
+  bool clockChanged = minute != clockMinute; clockMinute = minute;
+  static uint8_t liveBits = 0;
+  uint8_t bits = (cpuFresh() ? 1 : 0) | (gpuFresh() ? 2 : 0) | (netFresh() ? 4 : 0) | (wxFresh() ? 8 : 0) | (fxFresh() ? 16 : 0) | (mediaLive() ? 32 : 0) | (sysLive() ? 64 : 0);
+  if (bits != liveBits) { liveBits = bits; dirty = true; }
+  bool toastExpired = toastUntil && now > toastUntil;
+  if (toastExpired) { toastUntil = 0; dirty = true; }
+  if (!screenOff) {
+    if (dirty || (!ecoActive && ((animate && now - tFrame >= 40) || (onPage && now - tFrame >= 250) || ((onHome || onWidgets) && now - tFrame >= 1000)))) {
+      tFrame = now; dirty = false; render(linkName());
+    } else if (ecoActive) {
+      if (animate && now - tFrame >= (uint32_t)(1000 / min(S.animFps, 4))) { tFrame = now; renderEcoAnim(now); }
+      if (clockChanged) renderEcoClock();
+    }
   }
   delay(2);
 }

@@ -10,7 +10,7 @@ uint16_t SC_BG = C(0x000000), SC_PANEL = C(0x0F1012), SC_LINE = C(0x222326), SC_
          SC_SUB = C(0x8E9199), SC_DIM = C(0x4A4C52), SC_HL = C(0xF2A93B), SC_RED = C(0xF06A6A),
          SC_ACC = C(0x7D9BFF), ICON_BG = C(0x18191C), SC_GREEN = C(0x3DD68C), SC_SUN = C(0xF2C94C), SC_RAIN = C(0x5AB0FF);
 const uint16_t HOME_COL = C(0x3B6CF6), WHITE = 0xFFFF, INK = C(0x17181B);
-bool lightTheme = false;
+bool lightTheme = false, ecoActive = false;
 
 void applyTheme(bool light) {
   lightTheme = light;
@@ -420,6 +420,7 @@ static void drawCard(uint8_t wdg, int x, int y, int w, int h) {
 }
 
 static void drawAnim(int x, int y, int w, int h, uint32_t t) {
+  if (ecoActive) { uint32_t gap = 1000 / min(S.animFps, 4); t -= t % gap; }
   uint16_t c = S.animColor;
   spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
   spr.setClipRect(x, y, w, h);
@@ -509,6 +510,30 @@ static void drawHome() {
     text(i ? "B" : "A", 7, y + 8, FB10, SC_DIM);
     if (a) { miniIcon(a, 22, y + 8); text(fit(a->name, 94, FSB11), 32, y + 8, FSB11, SC_SUB); }
     else text("-", 18, y + 8, FSB11, SC_DIM);
+  }
+}
+
+// Keep periodic eco updates inside their own LCD regions.
+static void pushRegion(int x, int y, int w, int h) {
+  lcd.setClipRect(x, y, w, h); spr.pushSprite(0, 0); lcd.clearClipRect();
+}
+static void renderEcoAnim(uint32_t now) {
+  drawAnim(2, 2, 128, 128, now); pushRegion(2, 2, 128, 128);
+}
+static void renderEcoClock() {
+  if (items.empty()) return;
+  if (items[sel].home) {
+    for (int i = 0; i < 2; i++) if (S.cards[i] == W_CLOCK) { int y = i ? 93 : 15; drawClockCard(132, y, 186, 76); pushRegion(132, y, 186, 76); }
+  } else if (items[sel].kind == K_WIDGETS) {
+    // drawWidgets shares the layout; only clock rectangles reach the LCD.
+    drawWidgets();
+    static const int16_t r[4][4] = { {2,15,157,76}, {161,15,157,76}, {2,93,157,75}, {161,93,157,75} };
+    for (int i = 0; i < S.wcount; i++) if (S.wcards[i] == W_CLOCK) {
+      if (S.wcount == 1) pushRegion(2, 15, 316, 153);
+      else if (S.wcount == 2) pushRegion(2, i ? 93 : 15, 316, i ? 75 : 76);
+      else if (S.wcount == 3 && i == 0) pushRegion(2, 15, 316, 76);
+      else { int k = S.wcount == 3 ? i + 1 : i; pushRegion(r[k][0], r[k][1], r[k][2], r[k][3]); }
+    }
   }
 }
 

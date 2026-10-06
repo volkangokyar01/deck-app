@@ -124,3 +124,49 @@ test('simulator launch changes the session player and page only when media is en
   ctx.cfg.pages.media.enabled = false; ctx.sel = 0; ctx.pageState.player = null;
   ctx.simulateLaunch({ name: 'Apple Music' }); queue.shift()(1); queue.shift()(); assert.equal(ctx.sel, 0); assert.equal(ctx.pageState.player, null);
 });
+
+test('eco controls render and round-trip through device projection and semantic diff', () => {
+  const { ctx, ids } = page('darwin');
+  ctx.renderDeviceForm();
+  const form = ids.get('devForm');
+  assert.ok(form.textContent.includes('Boşta tasarruf (kabloda)')); assert.ok(form.textContent.includes('Boşta tasarruf (pilde)'));
+  assert.ok(form.textContent.includes('Ekran açık kalır'));
+  for (const key of ['ecoAfterUsb', 'ecoAfter']) {
+    const control = ids.get(key); assert.equal(control.children.length, 6);
+    assert.deepEqual(control.children.map(c => c.attributes.value), [0, 15, 30, 60, 120, 300]);
+    control.events.change({ target: { value: key === 'ecoAfterUsb' ? '120' : '0' } });
+  }
+  const from = source.indexOf('function forDevice(');
+  vm.runInContext(source.slice(from, source.indexOf('function diffValue(', from)), ctx);
+  const sent = ctx.forDevice(); assert.equal(sent.device.ecoAfterUsb, 120); assert.equal(sent.device.ecoAfter, 0);
+  assert.equal(ctx.configDiff(ctx.cfg, sent, { platform: 'darwin' }).length, 0);
+  assert.ok(ctx.configDiff(ctx.cfg, ctx.defaultConfig()).some(d => d.label === 'Cihaz · Boşta tasarruf (kabloda)'));
+  const old = ctx.defaultConfig(); delete old.device.ecoAfterUsb; delete old.device.ecoAfter; ctx.validate(old);
+  assert.equal(old.device.ecoAfterUsb, 60); assert.equal(old.device.ecoAfter, 30);
+  old.device.ecoAfterUsb = 9999; old.device.ecoAfter = -4; ctx.validate(old);
+  assert.equal(old.device.ecoAfterUsb, 3600); assert.equal(old.device.ecoAfter, 0);
+  const n = ctx.normalizeConfig({ device: { ecoAfterUsb: -5, ecoAfter: 4000 } });
+  assert.equal(n.device.ecoAfterUsb, 0); assert.equal(n.device.ecoAfter, 3600);
+});
+
+for (const platform of ['darwin', 'win32', null]) test(`location settings recovery appears only after failure in desktop auto mode (${platform || 'browser'})`, async () => {
+  const { ctx, body } = page(platform);
+  let opens = 0, retries = 0;
+  if (platform) ctx.window.deck.openLocationSettings = async () => { opens++; };
+  ctx.window.retryWeatherLocation = () => { retries++; };
+  const all = e => [e, ...(e?.children || []).flatMap(all)];
+  const shown = text => all(body).find(e => e?.tag === 'button' && e.textContent === text && e.attributes.hidden === undefined);
+  for (const kind of ['home', 'widgets']) {
+    ctx.edit = { kind }; ctx.cfg.home.cards = ['weather', 'cpu']; ctx.cfg.home.weather.auto = true;
+    vm.runInContext('weatherLocationFailed=false', ctx); ctx.renderEditor();
+    assert.equal(!!shown('Konum ayarlarını aç'), false);
+    vm.runInContext('weatherLocationFailed=true', ctx); ctx.renderEditor();
+    assert.equal(!!shown('Konum ayarlarını aç'), !!platform);
+    if (platform) {
+      const hint = all(body).find(e => e?.attributes?.id === 'wxLocationHint');
+      assert.equal(hint.textContent, "Konum izni kapalı olabilir. Açtıktan sonra Tekrar dene'ye bas."); assert.equal(hint.attributes.hidden, undefined);
+      await shown('Konum ayarlarını aç').events.click(); assert.ok(opens); assert.equal(retries, 0);
+    }
+    ctx.cfg.home.weather.auto = false; ctx.renderEditor(); assert.equal(!!shown('Konum ayarlarını aç'), false);
+  }
+});

@@ -7,9 +7,11 @@ const { pathToFileURL } = require('url');
 const fs = require('fs');
 const cp = require('child_process');
 const media = require('./media');
+const { timing } = require('./debug');
 const { createStats } = require('./stats');
 const { createSensorInstaller } = require('./sensor-install');
 const { createUpdater, REPO_URL } = require('./updater');
+const { createTrayUpdate, openLocationSettings } = require('./main-actions');
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -39,7 +41,7 @@ const updater = createUpdater({ app, net, media, readState, writeState, onState:
   refreshTray();
   if (win && !win.isDestroyed()) win.webContents.send('update-state', s);
 } });
-let updateSectionPending = false;
+const trayUpdate = createTrayUpdate({ updater, dialog, refreshTray });
 
 const startHidden = process.argv.includes('--hidden') || (IS_MAC && app.getLoginItemSettings().wasOpenedAtLogin);
 
@@ -55,17 +57,16 @@ function createWindow() {
   win.removeMenu?.();
   setupBluetooth(win.webContents);
   win.loadFile(path.join(__dirname, 'index.html'));
-  win.webContents.on('did-finish-load', () => {
-    if (updateSectionPending) { win.webContents.send('update-open'); updateSectionPending = false; }
-  });
   win.on('page-title-updated', e => e.preventDefault());   // keep the status in the title bar / taskbar
   win.once('ready-to-show', () => {
     if (!startHidden || updatedAtStart) showWindow();
     else if (IS_MAC) setDock(false);                           // started at login: menu bar only
     applyStatusVisual();
   });
-  if (process.env.DECK_SHOT) {   // test hook: screenshot + console dump, then quit
+  if (process.env.DECK_SHOT || process.env.VOLKAN_DEBUG === '1') {
     win.webContents.on('console-message', (e, ...a) => { const d = a[0] && typeof a[0] === 'object' ? a[0] : { level: a[0], message: a[1], lineNumber: a[2] }; console.log('[page]', d.level, d.message, d.lineNumber); });
+  }
+  if (process.env.DECK_SHOT) {   // test hook: screenshot + console dump, then quit
     win.webContents.once('did-finish-load', () => setTimeout(async () => {
       try { if (process.env.DECK_EVAL) console.log('[eval]', JSON.stringify(await win.webContents.executeJavaScript(process.env.DECK_EVAL, true))); } catch (e) { console.log('[eval-err]', e.message); }
       const img = await win.webContents.capturePage(); fs.writeFileSync(process.env.DECK_SHOT, img.toPNG()); quitting = true; app.quit();
@@ -95,12 +96,6 @@ function showWindow() { setDock(true); if (IS_MAC) app.show(); if (win.isMinimiz
 // The X button never quits: the window hides and the app lives only as a status icon
 // (macOS: menu bar, no Dock icon; Windows: notification area of the taskbar).
 function hideWindow() { win.hide(); setDock(false); }
-function openUpdateSection() {
-  if (!win || win.isDestroyed()) return;
-  showWindow();
-  if (win.webContents.isLoading()) updateSectionPending = true;
-  else win.webContents.send('update-open');
-}
 
 /* ---------------- running status, always visible (Dock icon / taskbar overlay / tray) ---------------- */
 function statusKey() { return status.connected ? (status.direct ? 'on' : 'warn') : 'off'; }
@@ -136,10 +131,7 @@ function refreshTray() {
     { label: status.direct ? 'Uygulamalar doğrudan açılıyor' : 'Doğrudan açma kapalı (klavye yöntemi)', enabled: false },
     { type: 'separator' },
     { label: 'Ayarları aç', click: showWindow },
-    { label: updater.getState().available ? 'Güncelleme var — yükle…' : 'Güncellemeleri kontrol et', click: () => {
-      openUpdateSection();
-      if (!updater.getState().available) updater.check({ manual: true });
-    } },
+    { label: updater.getState().available ? 'Güncelleme var — yükle…' : 'Güncellemeleri kontrol et', click: trayUpdate },
     { label: 'Bilgisayar açılınca başlat', type: 'checkbox', checked: login, click: m => setLogin(m.checked) },
     { type: 'separator' },
     { label: 'Çık', click: () => { quitting = true; app.quit(); } }
@@ -371,6 +363,7 @@ ipcMain.handle('pick-apps', (ev, multi) => pickApps(!!multi));
 ipcMain.handle('app-info', (ev, p) => appInfo(String(p || '')));
 ipcMain.handle('stats-get', (ev, o) => stats.get(o));
 // Old macOS bundles lack CoreLocation usage strings: do not ask there, use IP quietly.
+ipcMain.handle('open-location-settings', () => openLocationSettings(process.platform, shell));
 ipcMain.handle('location-available', () => {
   if (!IS_MAC) return true;
   try {
@@ -391,8 +384,12 @@ ipcMain.handle('update-channel', (ev, on) => updater.setChannel(!!on));
 ipcMain.handle('update-ack', () => updater.acknowledge());
 ipcMain.handle('update-repo', () => shell.openExternal(REPO_URL));
 const mediaPaused = () => updater.getState().phase === 'installing';
-ipcMain.handle('host-state', (ev, o) => mediaPaused() ? {} : media.hostState(o || {}).catch(e => ({ error: e.message })));
-ipcMain.handle('media-art', (ev, key) => mediaPaused() ? null : media.mediaArt(String(key || '')));
+ipcMain.handle('host-state', async (ev, o) => {
+  const t0 = performance.now();
+  try { return mediaPaused() ? {} : await media.hostState(o || {}).catch(e => ({ error: e.message })); }
+  finally { timing('host-state', t0, o?.media === false ? 'ses/parlaklık' : 'medya'); }
+});
+ipcMain.handle('media-art', (ev, key, waitMs) => mediaPaused() ? null : media.mediaArtWait(String(key || ''), Math.max(0, Math.min(5000, Number(waitMs) || 0))));
 ipcMain.handle('media-ctl', (ev, action, target, options) => mediaPaused() ? { ok: false, error: 'Güncelleme kuruluyor.' } : media.mediaControl(String(action || ''), String(target || 'auto'), { launch: options?.launch, launchPlayer: launchMediaPlayer }).catch(e => ({ ok: false, error: e.message })));
 ipcMain.handle('sys-set', (ev, o) => mediaPaused() ? {} : media.sysSet(o || {}).catch(e => ({ error: e.message })));
 app.on('will-quit', () => { updater.stop(); media.stop(); stats.stop(); });

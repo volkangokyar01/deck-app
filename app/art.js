@@ -1,5 +1,6 @@
 // Track artwork is fetched once per key, outside the host-state poll.
 const fs = require('fs/promises');
+const { timing } = require('./debug');
 const os = require('os');
 const path = require('path');
 const { createHash } = require('crypto');
@@ -25,18 +26,31 @@ async function fetchData(url, json = false) {
 }
 // Apple Music for Windows reports "Artist — Album" as the artist; search with the artist part only.
 const mainArtist = a => String(a || '').split(/\s+[\u2014\u2013]\s+/)[0].trim();
-async function fallback(c) {
-  const r = await fetchData('https://itunes.apple.com/search?term=' + encodeURIComponent(mainArtist(c.artist) + ' ' + c.title) + '&entity=song&limit=1', true);
-  const url = r && r.results && r.results[0] && r.results[0].artworkUrl100;
-  return url ? fetchData(url.replace('100x100', '300x300')) : null;
+function decodeTo565(buffer) {
+  const { nativeImage } = require('electron');
+  let img = nativeImage.createFromBuffer(buffer); if (img.isEmpty()) return null;
+  const { width, height } = img.getSize(), side = Math.min(width, height);
+  if (width !== height) img = img.crop({ x: Math.floor((width - side) / 2), y: Math.floor((height - side) / 2), width: side, height: side });
+  const bitmap = img.resize({ width: 64, height: 64, quality: 'best' }).toBitmap({ scaleFactor: 1 });
+  return bitmap.length === 64 * 64 * 4 ? bgraToRGB565(bitmap).toString('base64') : null;
 }
-function create({ run, ps }) {
+function create({ run, ps, fetchData: fetchImpl = fetchData, decode = decodeTo565, platform = process.platform }) {
+  async function fallback(c) {
+    const r = await fetchImpl('https://itunes.apple.com/search?term=' + encodeURIComponent(mainArtist(c.artist) + ' ' + c.title) + '&entity=song&limit=1', true);
+    const url = r && r.results && r.results[0] && r.results[0].artworkUrl100;
+    return url ? fetchImpl(url.replace('100x100', '300x300')) : null;
+  }
+  const SPOTIFY_640 = '/ab67616d0000b273', SPOTIFY_300 = '/ab67616d00001e02';   // 300 px is plenty for 64x64
+  async function spotifyImage(url) {
+    if (url.includes(SPOTIFY_640)) { const b = await fetchImpl(url.replace(SPOTIFY_640, SPOTIFY_300)).catch(() => null); if (b && b.length) return b; }
+    return fetchImpl(url).catch(() => null);
+  }
   const cache = new Map();
   function prune() {
     for (const [key, e] of cache) { if (cache.size <= 8) break; if (!e.pending) cache.delete(key); }
   }
   async function source(c) {
-    if (process.platform === 'win32') {
+    if (platform === 'win32') {
       // Windows' media session thumbnail first; Apple Music for Windows often has none -> iTunes catalogue artwork
       const r = await ps('art', { app: c.app, title: c.title, artist: c.artist }, 12000);
       if (r.ok && r.r) return Buffer.from(r.r, 'base64');
@@ -46,9 +60,10 @@ function create({ run, ps }) {
     // Verify the raw metadata again: a track can change while the background job is starting.
     const guard = `if (name of current track) is not ${asText(c.title)} or (artist of current track) is not ${asText(c.artist)} then return ""`;
     if (c.player === 'spotify') {
+      if (/^https:\/\//i.test(c.artUrl || '')) { const b = await spotifyImage(c.artUrl); if (b && b.length) return b; }
       const r = await run('osascript', ['-'], 4000, `tell application "${app}"\n${guard}\nreturn artwork url of current track\nend tell`);
       const url = r.code ? '' : r.stdout.trim();
-      return /^https:\/\//i.test(url) ? fetchData(url) : fallback(c);
+      return /^https:\/\//i.test(url) ? spotifyImage(url) : fallback(c);
     }
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'volkan-art-')), file = path.join(dir, 'cover');
     try {
@@ -75,22 +90,20 @@ end if`;
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   }
   async function load(c) {
+    const t = performance.now();
     const b = await source(c); if (!b || !b.length) return null;
-    const { nativeImage } = require('electron');
-    let img = nativeImage.createFromBuffer(b); if (img.isEmpty()) return null;
-    const { width, height } = img.getSize(), side = Math.min(width, height);
-    if (width !== height) img = img.crop({ x: Math.floor((width - side) / 2), y: Math.floor((height - side) / 2), width: side, height: side });
-    const bitmap = img.resize({ width: 64, height: 64, quality: 'best' }).toBitmap({ scaleFactor: 1 });
-    return bitmap.length === 64 * 64 * 4 ? bgraToRGB565(bitmap).toString('base64') : null;
+    const data = await decode(b);
+    timing('kapak hazır', t, c.player);
+    return data;
   }
   function request(c) {
-    if (!c || !c.title || !['spotify', 'music'].includes(c.player) || !['darwin', 'win32'].includes(process.platform)) return '';
+    if (!c || !c.title || !['spotify', 'music'].includes(c.player) || !['darwin', 'win32'].includes(platform)) return '';
     const key = createHash('sha256').update(JSON.stringify([c.player, c.title, c.artist, c.app || ''])).digest('hex');
     let e = cache.get(key);
     const start = () => {
       e.pending = true; e.tries = (e.tries || 0) + 1; e.at = Date.now();
       const job = { ...c, tries: e.tries };
-      setImmediate(() => load(job).then(data => { e.data = data; }).catch(() => {}).finally(() => { e.pending = false; prune(); }));
+      e.job = new Promise(r => setImmediate(r)).then(() => load(job)).then(data => { e.data = data; }).catch(() => {}).finally(() => { e.pending = false; prune(); });
     };
     if (e) {
       cache.delete(key); cache.set(key, e);
@@ -103,6 +116,12 @@ end if`;
     return e.pending || e.data ? key : '';
   }
   function get(key) { const e = cache.get(key); return e && e.data ? { key, w: 64, h: 64, data: e.data } : null; }
-  return { request, get };
+  // Send the cover as soon as its pending load completes, bounded by ms.
+  async function wait(key, ms = 0) {
+    const e = cache.get(key);
+    if (e && e.pending && e.job && ms > 0) { let t; await Promise.race([e.job, new Promise(r => { t = setTimeout(r, ms); })]); clearTimeout(t); }
+    return get(key);
+  }
+  return { request, get, wait };
 }
 module.exports = { create, bgraToRGB565 };

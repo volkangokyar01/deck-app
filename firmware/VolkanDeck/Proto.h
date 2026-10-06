@@ -3,6 +3,9 @@
 #include "esp32-hal-tinyusb.h"
 
 static const size_t LINEBUF_MAX = 128 * 1024;
+static void ecoSuspend();
+static uint32_t transferAt = 0;
+static volatile bool usbPartial = false;
 static File animUp; static size_t animBytes = 0, animGot = 0; static int animW = 0, animH = 0, animN = 0, animFpsIn = 15;
 bool configChangedFlag = false;
 uint32_t rxBytes = 0, rxLines = 0;
@@ -95,6 +98,8 @@ static void handleLine(char* buf, size_t len) {
   if (deserializeJson(doc, buf, len)) { JsonDocument r; r["ok"] = false; r["error"] = "json"; sendJson(r); return; }
   JsonVariantConst id = doc["id"];
   const char* cmd = doc["cmd"] | "";
+  // Transfers suspend eco without counting desktop traffic as a user touch.
+  if (!strcmp(cmd, "set_config") || !strcmp(cmd, "icon_set") || !strncmp(cmd, "anim_", 5) || !strcmp(cmd, "dfu")) { ecoSuspend(); transferAt = millis() | 1; }
   // Two computers at once (one on USB, one on Bluetooth): the USB one feeds the screen
   if (replySrc == SRC_BLE && usbCompanion() &&
       (!strcmp(cmd, "stats") || !strcmp(cmd, "media") || !strcmp(cmd, "media_art") || !strcmp(cmd, "sys"))) {
@@ -256,6 +261,7 @@ static void serialTask(void*) {
         }
         len = 0;
       } else if (c != '\r' && len < cap - 1) buf[len++] = (char)c;
+      usbPartial = len != 0;
     }
   }
 }
@@ -290,4 +296,8 @@ static void protoBegin() {
 static void protoPoll() {
   LineItem it;
   while (lineQ && xQueueReceive(lineQ, &it, 0) == pdTRUE) { replySrc = it.src; handleLine(it.p, it.n); replySrc = -1; free(it.p); }
+}
+
+static bool protoTransferBusy() {
+  return animUp || configChangedFlag || usbPartial || bleLen || (lineQ && uxQueueMessagesWaiting(lineQ)) || (transferAt && millis() - transferAt < 1000);
 }
