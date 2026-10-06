@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('deck', {
   notify: (t, b) => ipcRenderer.invoke('notify', t, b),
   status: s => ipcRenderer.send('status', s),
   version: () => ipcRenderer.invoke('version'),
+  bleReady: () => ipcRenderer.invoke('ble-ready'),
   updateState: () => ipcRenderer.invoke('update-state'),
   checkUpdates: () => ipcRenderer.invoke('update-check'),
   applyUpdate: () => ipcRenderer.invoke('update-apply'),

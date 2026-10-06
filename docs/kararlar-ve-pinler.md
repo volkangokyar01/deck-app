@@ -83,9 +83,20 @@
 - Dağıtım: VolkanDeck-kurulum.zip (Windows-Kur.bat / Mac-Kur.command Electron'u GitHub'dan indirip kurar). Mac'te /Applications/Volkan Deck.app kurulu; güncellemeler Contents/Resources/app'e yazılıyor
 - macOS 27'de app.getFileIcon ana süreçte çöküyordu; ikon artık plutil + sips ile .icns'ten okunuyor
 - Kaynak: GitHub volkangokyar01/deck-app (app/main.js, preload.js, companion.js — ayar sayfasının IIFE'sine gömülür, tools/build.py)
-- Sınır: doğrudan açma yalnız USB'de
+- Sınır: doğrudan açma USB'de; v1.6.0'dan itibaren kablo bu bilgisayara takılı değilse Bluetooth veri kanalıyla da (aşağıda)
 
-## Firmware (v1.5.2)
+## Bluetooth veri kanalı (v1.6.0, 2026-10-06)
+- Önceden Bluetooth yalnız HID klavye + medya tuşuydu; ayarlar, stats, medya ve launch olayları yalnız USB seri porttan gidiyordu
+- Yeni GATT servisi 7d9a0001-5c2e-4b7a-9f3d-1a6c0de5d001: RX 7d9a0002 (write / write without response, şifreli bağlantı ister), TX 7d9a0003 (notify). İçerik USB ile aynı satır başına bir JSON
+- Yanıt komutun geldiği yola gider; olaylar (launch, media, sys, input, select, status) USB'deki masaüstü uygulamasına, yoksa Bluetooth'takine
+- İki bilgisayar aynı anda (biri USB, biri Bluetooth): ekranı USB'deki besler; Bluetooth'tan gelen stats / media / media_art / sys yok sayılır
+- Cihaz bağlıyken de yayın yapar (en fazla 2 bağlantıya kadar), Windows'ta Web Bluetooth taraması bağlı cihazı bulabilsin diye. Yayın: görünüm 0x03C1 + HID ve Volkan Deck servis UUID'leri; ad tarama yanıtında
+- hello yanıtında via ("usb" / "ble") ve Bluetooth'ta mtu; uygulama yazmaları mtu-3'e (en çok 240) böler, hello'dan önce 20 bayt
+- Masaüstü uygulaması: önce USB; kablo yoksa 12 sn'de bir Web Bluetooth ile servis UUID'si üzerinden arar (ana süreç seçiciyi kendisi kapatır, 8 sn'de bulamazsa vazgeçer). Kablo takılınca USB'ye geçer. Bağlantı ayarı "Sadece USB" ise Bluetooth denenmez
+- Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
+- macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
+
+## Firmware (v1.6.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -117,6 +128,7 @@
 - v1.1: 74,5 × 80 × 60 mm, ekran 60°
 - v1.5.1: karartma ve otomatik kapanma kabloda / pilde ayrı ayarlanır, ikisi de kapatılabilir (dimAfterUsb, sleepAfterUsb; eski config'te kablo = eski karartma süresi, kapanma yok)
 - v1.5.2: Ses ve parlaklık sayfasında mikrofon satırı, B tuşu varsayılan mikrofonu kapatır / açar (sys.micMute / evt sys micMute; Windows Core Audio capture mute, macOS giriş seviyesi 0 ↔ önceki seviye). Yeni "Widgetlar" sayfası (pages.widgets.enabled / cards, 1–4 kart; yerleşim 1: tam, 2: alt alta, 3: üst geniş + alt iki, 4: 2×2), döndürgeçte ana sayfadan hemen sonra, boşta ana sayfaya dönmez
+- v1.6.0: Bluetooth veri kanalı (masaüstü uygulaması kablosuz da bağlanır)
 
 ## Pinler
 | Parça | Pin | GPIO |

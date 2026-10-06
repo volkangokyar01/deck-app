@@ -74,10 +74,24 @@
   setInterval(() => { if (updateState) renderUpdate(updateState); }, 60e3);
 
   /* ---- automatic connection (main process picks the deck's port, no chooser) ---- */
+  // USB first; with no cable to this computer, the deck's Bluetooth data channel (firmware 1.6.0+)
+  let bleReady = null, bleTriedAt = 0;
+  const usbDeck = async () => { try { return (await navigator.serial.getPorts()).some(p => p.getInfo().usbVendorId === ESP_VID); } catch (e) { return false; } };
   window.__deckAutoConnect = async () => {
-    if (port || connecting || busy) return;
+    if (connecting || busy) return;
+    if (port && !(port.isBle && await usbDeck())) return;     // cable plugged in while on Bluetooth: move to USB
     connecting = true;
-    try { await connect(true); } catch (e) {} finally { connecting = false; }
+    try {
+      if (port) await disconnect();
+      await connect(true);
+      if (!port && 'bluetooth' in navigator && cfg.device.connection !== 'usb' && Date.now() - bleTriedAt > 12000) {
+        if (bleReady === null) {
+          bleReady = await deck.bleReady().catch(() => false);
+          if (!bleReady) log('', '  Bluetooth kapalı: Mac-Kur.command bir kez yeniden çalıştırılmalı (Bluetooth izni).');
+        }
+        if (bleReady) { bleTriedAt = Date.now(); await connect(true, true); }
+      }
+    } catch (e) {} finally { connecting = false; }
     if (port && deviceInfo) await afterConnect();
   };
   async function afterConnect() {
@@ -107,9 +121,9 @@
   }, 2000);
   function pushStatus() {
     const on = !!(port && deviceInfo);
-    deck.status({ connected: on, direct: on && direct, text: on ? (deviceInfo.name || 'Volkan Deck') + (deviceInfo.fw ? ' · v' + deviceInfo.fw : '') : 'Bağlı değil' });
+    deck.status({ connected: on, direct: on && direct, text: on ? (deviceInfo.name || 'Volkan Deck') + (deviceInfo.fw ? ' · v' + deviceInfo.fw : '') + (port.isBle ? ' · Bluetooth' : '') : 'Bağlı değil' });
     const ct = document.getElementById('connText');
-    if (on && ct) ct.textContent = (deviceInfo.name || 'Cihaz') + (deviceInfo.fw ? ' · v' + deviceInfo.fw : '') + (direct ? ' · doğrudan açma' : '');
+    if (on && ct) ct.textContent = (deviceInfo.name || 'Cihaz') + (deviceInfo.fw ? ' · v' + deviceInfo.fw : '') + (port.isBle ? ' · Bluetooth' : '') + (direct ? ' · doğrudan açma' : '');
   }
 
   /* ---- the deck asked us to open an app ---- */

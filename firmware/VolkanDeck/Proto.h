@@ -10,23 +10,51 @@ static void* bigAlloc(size_t n) { void* p = psramFound() ? ps_malloc(n) : nullpt
 String pendingName;
 uint32_t companionAt = 0; bool companionNew = false, companionMediaLaunch = false;
 bool mediaDirty = false; uint32_t sysLocalAt = 0;
-static bool companionOn() { return companionAt && millis() - companionAt < 6000 && Serial; }
+
+// Two transports carry the same JSON lines: USB serial and the Bluetooth data channel (Hid.h).
+// Replies go back where the command came from; events go to the desktop app's link (USB first).
+enum Src : uint8_t { SRC_USB = 0, SRC_BLE };
+uint32_t companionUsbAt = 0, companionBleAt = 0;
+static int8_t replySrc = -1;                         // set while a command is handled
+static bool bleHostOn() { return bleHostConn != BLE_HS_CONN_HANDLE_NONE; }
+static bool usbCompanion() { return companionUsbAt && millis() - companionUsbAt < 6000 && Serial; }
+static bool bleCompanion() { return companionBleAt && millis() - companionBleAt < 6000 && bleHostOn(); }
+static bool companionOn() { return usbCompanion() || bleCompanion(); }
+static bool hostListening() { return Serial || bleHostOn(); }   // something may read events
+static uint8_t eventSrc() { return usbCompanion() || (Serial && !bleCompanion()) ? SRC_USB : SRC_BLE; }
 
 const char* linkName();
 
+static void bleWrite(const uint8_t* p, size_t n) {
+  if (!bleTx || !bleHostOn()) return;
+  size_t chunk = bleHostMtu > 23 ? min<size_t>(bleHostMtu - 3, 244) : 20;
+  uint16_t conn = bleHostConn;
+  for (size_t i = 0; i < n; ) {
+    size_t k = min(chunk, n - i);
+    int tries = 0;
+    while (!bleTx->notify(p + i, k, conn)) {        // out of buffers: wait for the radio to drain
+      if (++tries > 60 || !bleHostOn()) return;
+      delay(8);
+    }
+    i += k;
+  }
+}
 static void sendJson(JsonDocument& d) {   // replies: always write (host just talked to us)
-  serializeJson(d, Serial); Serial.print('\n');
+  uint8_t to = replySrc >= 0 ? replySrc : eventSrc();
+  if (to == SRC_USB) { serializeJson(d, Serial); Serial.print('\n'); return; }
+  String s; serializeJson(d, s); s += '\n';
+  bleWrite((const uint8_t*)s.c_str(), s.length());
 }
 static void replyOk(JsonVariantConst id) { JsonDocument r; r["id"] = id; r["ok"] = true; sendJson(r); }
 static void replyErr(JsonVariantConst id, const char* e) { JsonDocument r; r["id"] = id; r["ok"] = false; r["error"] = e; sendJson(r); }
 
-static void evtInput(const char* ctl) { if (!Serial) return; JsonDocument d; d["evt"] = "input"; d["control"] = ctl; sendJson(d); }
+static void evtInput(const char* ctl) { if (!hostListening()) return; JsonDocument d; d["evt"] = "input"; d["control"] = ctl; sendJson(d); }
 static void evtSelect() {
-  if (!Serial || items.empty()) return;
+  if (!hostListening() || items.empty()) return;
   JsonDocument d; d["evt"] = "select"; d["app"] = itemId(items[sel]); sendJson(d);
 }
 static void evtStatus() {
-  if (!Serial) return;
+  if (!hostListening()) return;
   JsonDocument d; d["evt"] = "status"; d["fw"] = FW_VERSION; d["battery"] = batPct; d["charging"] = charging; d["link"] = linkName();
   d["rx"] = rxBytes; d["lines"] = rxLines; d["psram"] = (uint32_t)(ESP.getPsramSize() / 1024); sendJson(d);
 }
@@ -57,10 +85,18 @@ static void handleLine(char* buf, size_t len) {
   if (deserializeJson(doc, buf, len)) { JsonDocument r; r["ok"] = false; r["error"] = "json"; sendJson(r); return; }
   JsonVariantConst id = doc["id"];
   const char* cmd = doc["cmd"] | "";
+  // Two computers at once (one on USB, one on Bluetooth): the USB one feeds the screen
+  if (replySrc == SRC_BLE && usbCompanion() &&
+      (!strcmp(cmd, "stats") || !strcmp(cmd, "media") || !strcmp(cmd, "media_art") || !strcmp(cmd, "sys"))) {
+    if (!id.isNull()) replyOk(id);
+    return;
+  }
 
   if (!strcmp(cmd, "hello")) {
     JsonDocument r; r["id"] = id; r["ok"] = true; r["fw"] = FW_VERSION; r["name"] = S.name;
-    r["battery"] = batPct; r["charging"] = charging; r["link"] = linkName(); r["psram"] = (uint32_t)(ESP.getPsramSize() / 1024); sendJson(r);
+    r["battery"] = batPct; r["charging"] = charging; r["link"] = linkName(); r["psram"] = (uint32_t)(ESP.getPsramSize() / 1024);
+    r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleHostMtu;
+    sendJson(r);
   }
   else if (!strcmp(cmd, "get_config")) {
     JsonDocument c;
@@ -142,6 +178,7 @@ static void handleLine(char* buf, size_t len) {
     if (!companionOn()) companionNew = true;
     companionMediaLaunch = doc["mediaLaunch"] | false;
     companionAt = millis();
+    if (replySrc == SRC_BLE) companionBleAt = companionAt; else companionUsbAt = companionAt;
     const char* os = doc["os"] | "";
     if (*os) S.hostMac = !strcmp(os, "mac");
     if (doc["ack"] | false) { JsonDocument r; r["id"] = id; r["ok"] = true; r["fw"] = FW_VERSION; sendJson(r); }
@@ -177,6 +214,7 @@ static void handleLine(char* buf, size_t len) {
     sysSt.stamp = now | 1; mediaDirty = true;
   }
   else if (!strcmp(cmd, "dfu")) {
+    if (replySrc == SRC_BLE) { replyErr(id, "usb_only"); return; }
     replyOk(id); Serial.flush(); delay(200);
     usb_persist_restart(RESTART_BOOTLOADER);
   }
@@ -184,7 +222,7 @@ static void handleLine(char* buf, size_t len) {
   else replyErr(id, "unknown_cmd");
 }
 
-struct LineItem { char* p; size_t n; };
+struct LineItem { char* p; size_t n; uint8_t src; };
 static QueueHandle_t lineQ = nullptr;
 
 // Reads USB serial on its own task so drawing the screen never stalls input.
@@ -203,7 +241,7 @@ static void serialTask(void*) {
       if (c == '\n') {
         if (len) {
           rxLines++;
-          LineItem it; it.p = (char*)bigAlloc(len + 1); it.n = len;
+          LineItem it; it.p = (char*)bigAlloc(len + 1); it.n = len; it.src = SRC_USB;
           if (it.p) { memcpy(it.p, buf, len); it.p[len] = 0; xQueueSend(lineQ, &it, portMAX_DELAY); }
         }
         len = 0;
@@ -212,13 +250,32 @@ static void serialTask(void*) {
   }
 }
 
+// Bluetooth data channel: called on the NimBLE host task with each written chunk
+static char* bleBuf = nullptr; static size_t bleLen = 0, bleCap = 0;
+static void bleRx(const uint8_t* p, size_t n) {
+  if (bleRxReset) { bleRxReset = false; bleLen = 0; }
+  if (!bleBuf) { bleCap = psramFound() ? LINEBUF_MAX : 24 * 1024; bleBuf = (char*)bigAlloc(bleCap); if (!bleBuf) return; }
+  for (size_t i = 0; i < n; i++) {
+    char c = (char)p[i]; rxBytes++;
+    if (c == '\n') {
+      if (bleLen) {
+        rxLines++;
+        LineItem it; it.p = (char*)bigAlloc(bleLen + 1); it.n = bleLen; it.src = SRC_BLE;
+        if (it.p) { memcpy(it.p, bleBuf, bleLen); it.p[bleLen] = 0; if (xQueueSend(lineQ, &it, pdMS_TO_TICKS(500)) != pdTRUE) free(it.p); }
+      }
+      bleLen = 0;
+    } else if (c != '\r' && bleLen < bleCap - 1) bleBuf[bleLen++] = c;
+  }
+}
+
 static void protoBegin() {
   Serial.setRxBufferSize(8192);
   lineQ = xQueueCreate(8, sizeof(LineItem));
+  bleRxHook = bleRx;
   xTaskCreatePinnedToCore(serialTask, "ser", 4096, nullptr, 3, nullptr, 0);
 }
 
 static void protoPoll() {
   LineItem it;
-  while (lineQ && xQueueReceive(lineQ, &it, 0) == pdTRUE) { handleLine(it.p, it.n); free(it.p); }
+  while (lineQ && xQueueReceive(lineQ, &it, 0) == pdTRUE) { replySrc = it.src; handleLine(it.p, it.n); replySrc = -1; free(it.p); }
 }

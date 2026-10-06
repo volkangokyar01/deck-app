@@ -53,6 +53,7 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, backgroundThrottling: false }
   });
   win.removeMenu?.();
+  setupBluetooth(win.webContents);
   win.loadFile(path.join(__dirname, 'index.html'));
   win.webContents.on('did-finish-load', () => {
     if (updateSectionPending) { win.webContents.send('update-open'); updateSectionPending = false; }
@@ -149,6 +150,26 @@ function setLogin(on) {
   refreshTray();
 }
 
+/* ---------------- Web Bluetooth: the deck's data channel, picked without a chooser ---------------- */
+// macOS kills an app that touches Bluetooth without a usage description in its Info.plist
+function bluetoothReady() {
+  if (!IS_MAC) return true;
+  try { return fs.readFileSync(path.join(path.dirname(app.getPath('exe')), '..', 'Info.plist')).includes('NSBluetoothAlwaysUsageDescription'); }
+  catch (e) { return false; }
+}
+function setupBluetooth(wc) {
+  let pending = null, timer = null;
+  const finish = id => { clearTimeout(timer); timer = null; const cb = pending; pending = null; if (cb) cb(id); };
+  wc.on('select-bluetooth-device', (event, list, callback) => {
+    event.preventDefault();
+    pending = callback;
+    if (list.length) return finish(list[0].deviceId);         // the page filters by the Volkan Deck service
+    if (!timer) timer = setTimeout(() => finish(''), 8000);    // nothing nearby: give up, the page retries later
+  });
+  session.defaultSession.setBluetoothPairingHandler?.((details, callback) => callback({ confirmed: details.pairingKind === 'confirm' || details.pairingKind === 'confirmPin' }));
+}
+ipcMain.handle('ble-ready', () => bluetoothReady());
+
 /* ---------------- Web Serial: auto-pick the deck, no chooser ---------------- */
 function isEsp(p) {
   const v = p.vendorId; if (v == null) return false;
@@ -163,10 +184,10 @@ function setupSerial() {
     callback(p ? p.portId : '');
   });
   const ownPage = (wc, url) => wc === win?.webContents && url === pathToFileURL(path.join(__dirname, 'index.html')).href;
-  const allowed = ['serial', 'notifications', 'clipboard-sanitized-write', 'clipboard-read'];
+  const allowed = ['serial', 'bluetooth', 'notifications', 'clipboard-sanitized-write', 'clipboard-read'];
   ses.setPermissionCheckHandler((wc, perm, origin, details) => perm === 'geolocation' ? ownPage(wc, details?.requestingUrl || wc?.getURL()) : allowed.includes(perm));
   ses.setPermissionRequestHandler((wc, perm, callback, details) => callback(perm === 'geolocation' ? ownPage(wc, details?.requestingUrl || wc?.getURL()) : allowed.includes(perm)));
-  ses.setDevicePermissionHandler(d => d.deviceType === 'serial');
+  ses.setDevicePermissionHandler(d => d.deviceType === 'serial' || d.deviceType === 'bluetooth');
   // ask the page to (re)connect every few seconds; userGesture=true satisfies requestPort()
   setInterval(() => {
     if (win && !win.isDestroyed()) win.webContents.executeJavaScript('window.__deckAutoConnect && window.__deckAutoConnect()', true).catch(() => {});

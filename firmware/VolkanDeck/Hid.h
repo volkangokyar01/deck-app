@@ -9,11 +9,29 @@ USBHIDKeyboard usbKb;
 USBHIDConsumerControl usbCc;
 volatile bool usbMounted = false, usbSuspended = false;
 volatile bool bleConnected = false;
+volatile int bleConns = 0;
 NimBLEServer* bleServer = nullptr;
 NimBLEHIDDevice* bleHid = nullptr;
 NimBLECharacteristic* bleIn = nullptr;
 NimBLECharacteristic* bleCc = nullptr;   // consumer (media) report
 bool bleStarted = false;
+
+// Data channel for the desktop app over Bluetooth (same JSON lines as USB serial): RX = write, TX = notify
+#define VD_SVC_UUID "7d9a0001-5c2e-4b7a-9f3d-1a6c0de5d001"
+#define VD_RX_UUID  "7d9a0002-5c2e-4b7a-9f3d-1a6c0de5d001"
+#define VD_TX_UUID  "7d9a0003-5c2e-4b7a-9f3d-1a6c0de5d001"
+NimBLECharacteristic* bleTx = nullptr;
+volatile uint16_t bleHostConn = BLE_HS_CONN_HANDLE_NONE;   // connection the desktop app writes from
+volatile uint16_t bleHostMtu = 23;
+volatile bool bleRxReset = false;                           // drop a half-received line after a disconnect
+void (*bleRxHook)(const uint8_t* p, size_t n) = nullptr;     // set by Proto.h
+class BleRxCb : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& ci) override {
+    bleHostConn = ci.getConnHandle(); bleHostMtu = ci.getMTU();
+    const NimBLEAttValue& v = c->getValue();
+    if (bleRxHook) bleRxHook(v.data(), v.length());
+  }
+};
 
 enum Link : uint8_t { L_NONE = 0, L_USB, L_BLE };
 
@@ -32,8 +50,17 @@ static const uint8_t HID_MAP[] = {
 };
 
 class BleCb : public NimBLEServerCallbacks {
-  void onConnect(NimBLEServer* s, NimBLEConnInfo& ci) override { bleConnected = true; }
-  void onDisconnect(NimBLEServer* s, NimBLEConnInfo& ci, int reason) override { bleConnected = false; NimBLEDevice::startAdvertising(); }
+  void onConnect(NimBLEServer* s, NimBLEConnInfo& ci) override {
+    bleConns++; bleConnected = true;
+    if (bleConns < 2) NimBLEDevice::startAdvertising();   // stay visible so the desktop app can find us while the OS holds the keyboard link
+  }
+  void onDisconnect(NimBLEServer* s, NimBLEConnInfo& ci, int reason) override {
+    if (bleConns > 0) bleConns--;
+    bleConnected = bleConns > 0;
+    if (ci.getConnHandle() == bleHostConn) { bleHostConn = BLE_HS_CONN_HANDLE_NONE; bleHostMtu = 23; bleRxReset = true; }
+    NimBLEDevice::startAdvertising();
+  }
+  void onMTUChange(uint16_t mtu, NimBLEConnInfo& ci) override { if (ci.getConnHandle() == bleHostConn) bleHostMtu = mtu; }
 };
 
 static void usbEvent(void* arg, esp_event_base_t base, int32_t id, void* data) {
@@ -44,6 +71,20 @@ static void usbEvent(void* arg, esp_event_base_t base, int32_t id, void* data) {
     case ARDUINO_USB_SUSPEND_EVENT: usbSuspended = true; break;
     case ARDUINO_USB_RESUME_EVENT: usbSuspended = false; break;
   }
+}
+
+// advertising: keyboard appearance + HID and Volkan Deck service UUIDs; the name goes in the scan response
+static void bleAdvData(const String& name) {
+  NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+  NimBLEAdvertisementData ad, sr;
+  ad.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+  ad.setAppearance(0x03C1);
+  ad.addServiceUUID(NimBLEUUID((uint16_t)0x1812));
+  ad.addServiceUUID(NimBLEUUID(VD_SVC_UUID));
+  sr.setName(name.c_str());
+  adv->setAdvertisementData(ad);
+  adv->setScanResponseData(sr);
+  adv->enableScanResponse(true);
 }
 
 static void bleBegin(const String& name) {
@@ -61,13 +102,15 @@ static void bleBegin(const String& name) {
   bleHid->setHidInfo(0x00, 0x01);
   bleHid->setReportMap((uint8_t*)HID_MAP, sizeof(HID_MAP));
   bleHid->setBatteryLevel(100);
+  NimBLEService* svc = bleServer->createService(VD_SVC_UUID);
+  NimBLECharacteristic* rx = svc->createCharacteristic(VD_RX_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::WRITE_ENC);
+  rx->setCallbacks(new BleRxCb());
+  bleTx = svc->createCharacteristic(VD_TX_UUID, NIMBLE_PROPERTY::NOTIFY);
+  svc->start();
+  NimBLEDevice::setMTU(517);
   bleServer->start();
-  NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
-  adv->setAppearance(0x03C1);
-  adv->addServiceUUID(bleHid->getHidService()->getUUID());
-  adv->setName(name.c_str());
-  adv->enableScanResponse(true);
-  adv->start();
+  bleAdvData(name);
+  NimBLEDevice::getAdvertising()->start();
   bleStarted = true;
 }
 
@@ -75,7 +118,7 @@ static void bleRename(const String& name) {
   if (!bleStarted) return;
   NimBLEDevice::setDeviceName(name.c_str());
   NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
-  adv->stop(); adv->setName(name.c_str()); adv->start();
+  adv->stop(); bleAdvData(name); adv->start();
 }
 
 static void bleBattery(uint8_t pct) { if (bleHid) bleHid->setBatteryLevel(pct, bleConnected); }

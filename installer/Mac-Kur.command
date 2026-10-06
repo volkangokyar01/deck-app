@@ -23,6 +23,7 @@ plutil -replace CFBundleName -string "Volkan Deck" "$P"
 plutil -replace CFBundleDisplayName -string "Volkan Deck" "$P"
 plutil -replace CFBundleIdentifier -string "com.volkan.deck" "$P"
 plutil -replace NSAppleEventsUsageDescription -string "Volkan Deck, çalan şarkıyı göstermek ve Spotify / Müzik uygulamasını cihazdaki tuşlarla kontrol etmek için izin ister." "$P"
+plutil -replace NSBluetoothAlwaysUsageDescription -string "Volkan Deck, kablo takılı değilken cihaza Bluetooth ile bağlanmak için izin ister." "$P"
 /usr/libexec/PlistBuddy -c 'Set :NSLocationUsageDescription Volkan Deck hava durumu için konumunu kullanır.' "$P" 2>/dev/null || \
   /usr/libexec/PlistBuddy -c 'Add :NSLocationUsageDescription string Volkan Deck hava durumu için konumunu kullanır.' "$P"
 /usr/libexec/PlistBuddy -c 'Set :NSLocationWhenInUseUsageDescription Volkan Deck hava durumu için konumunu kullanır.' "$P" 2>/dev/null || \
