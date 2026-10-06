@@ -43,6 +43,76 @@ ol.steps-ol{margin:0;padding-left:20px;display:grid;gap:6px;font-size:13px}
 .iconrow .big{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;background:#1E232C;color:#fff}
 .iconrow .big img{width:40px;height:40px;image-rendering:auto}
 .iconrow .big svg{width:24px;height:24px}
+/* Tabs: everyday pages on the left, developer tools pushed to the right */
+nav.tabs .tab-dev{margin-left:auto;font-size:12.5px}
+.subtabs{display:flex;gap:4px;flex-wrap:wrap}
+.subtabs button{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:12.5px;color:var(--muted)}
+.subtabs button[aria-selected="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.devhead{display:grid;gap:10px;margin-bottom:14px}
+/* Device settings: cards in two balanced columns, firmware / app update on the side */
+.devlayout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;align-items:start}
+@media (max-width:1100px){.devlayout{grid-template-columns:minmax(0,1fr)}}
+.devcards{columns:2 340px;column-gap:16px}
+.devcards > *{break-inside:avoid;margin-bottom:16px}
+.devside{display:grid;gap:16px}
+.devside > .panel{margin:0!important}
+.card-ico{width:26px;height:26px;border-radius:7px;display:inline-grid;place-items:center;background:var(--accent-soft);color:var(--accent);flex:none}
+.card-ico svg{width:16px;height:16px}
+.panel-h .ttl{display:flex;align-items:center;gap:9px;min-width:0}
+.statchips{display:flex;flex-wrap:wrap;gap:6px}
+.statchip{display:inline-flex;gap:6px;align-items:baseline;padding:4px 10px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);font-size:12.5px}
+.statchip b{font-weight:600}
+.statchip.warn{border-color:color-mix(in srgb,var(--signal) 45%,transparent);background:color-mix(in srgb,var(--signal) 12%,var(--panel))}
+.panel.focus{animation:cardflash 1.4s ease-out}
+@keyframes cardflash{0%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.panel.focus{animation:none;outline:2px solid var(--accent)}}
+/* On/off switch built on a real checkbox */
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;min-height:30px}
+.sw > span{display:grid;gap:1px;min-width:0}
+.sw > span small{font-size:12px;color:var(--muted)}
+.sw input{appearance:none;-webkit-appearance:none;flex:none;width:36px;height:20px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;margin:0;transition:background .15s}
+.sw input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .15s}
+.sw input:checked{background:var(--accent)}
+.sw input:checked::after{transform:translateX(16px)}
+.sw input:disabled{opacity:.5;cursor:not-allowed}
+@media (prefers-reduced-motion:reduce){.sw input,.sw input::after{transition:none}}
+/* Cable / battery matrix */
+.mtx{width:100%;border-collapse:collapse;font-size:13px}
+.mtx th,.mtx td{padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:middle}
+.mtx thead th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.mtx tbody th{font-weight:500;text-transform:none;letter-spacing:0;font-size:13px;color:var(--fg);padding-right:10px}
+.mtx tbody th small{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
+.mtx td{width:32%}
+.mtx tr:last-child th,.mtx tr:last-child td{border-bottom:0}
+.mtx select{padding:5px 8px}
+/* Return-to-home list */
+.retlist{display:grid;gap:2px;margin:0;padding:0;list-style:none}
+.retlist li{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.retlist li:last-child{border-bottom:0}
+.retlist .pg-ico{width:26px;height:26px;border-radius:7px}
+.retlist .pg-ico svg{width:15px;height:15px}
+.retlist .what{font-size:12.5px;color:var(--muted);text-align:right}
+.retlist .what.stay{color:var(--ok);font-weight:600}
+.retsum{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);font-size:13px}
+/* Unsaved changes on the write button */
+.btn.pending{position:relative}
+.btn.pending::after{content:"";position:absolute;top:-4px;right:-4px;width:10px;height:10px;border-radius:50%;background:var(--signal);border:2px solid var(--bg)}
+/* Left list: section labels, drag to reorder */
+.pg-sec{padding:10px 8px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600;display:flex;justify-content:space-between}
+.pagelist li[draggable="true"] button.pg{cursor:grab}
+.pagelist li.drag-before button.pg{box-shadow:0 -2px 0 var(--accent)}
+.pagelist li.drag-after button.pg{box-shadow:0 2px 0 var(--accent)}
+.pagelist li.dragging{opacity:.4}
+.edsec{display:grid;gap:10px;padding-top:12px;border-top:1px solid var(--line)}
+.edsec > h3{font-size:12px;font-family:var(--f-body);font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.slotbtns{display:flex;gap:6px;flex-wrap:wrap}
+.slotbtns button{display:inline-flex;align-items:center;gap:6px}
+details.adv > summary{cursor:pointer;list-style:none}
+details.adv > summary::-webkit-details-marker{display:none}
+details.adv > summary::after{content:"▾";color:var(--muted);font-size:12px}
+details.adv[open] > summary::after{content:"▴"}
+details.adv:not([open]) > summary{border-bottom:0}
+.slotbtns button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 </style>
 
 <header class="top">
@@ -57,7 +127,7 @@ ol.steps-ol{margin:0;padding-left:20px;display:grid;gap:6px;font-size:13px}
   </div>
 </header>
 
-<div class="notice warn" id="serialNote" hidden><span class="grow" id="serialNoteText"></span></div>
+<div class="notice warn" id="serialNote" hidden><span class="grow" id="serialNoteText"></span><button class="btn sm" id="serialNoteFw" hidden>Cihaz yazılımına git</button></div>
 <div class="notice" id="diffNote" hidden>
   <span class="grow">Cihazdaki ayar buradakinden farklı. Hangisiyle devam edeceksin?</span>
   <button class="btn sm" id="showDiff" aria-expanded="false" aria-controls="diffList">Farkları göster</button>
@@ -69,9 +139,7 @@ ol.steps-ol{margin:0;padding-left:20px;display:grid;gap:6px;font-size:13px}
 <nav class="tabs" role="tablist">
   <button role="tab" aria-selected="true" data-view="editor">Uygulamalar</button>
   <button role="tab" aria-selected="false" data-view="device">Cihaz ayarları</button>
-  <button role="tab" aria-selected="false" data-view="wiring">Kablolama</button>
-  <button role="tab" aria-selected="false" data-view="json">Yedek / JSON</button>
-  <button role="tab" aria-selected="false" data-view="proto">Firmware protokolü</button>
+  <button role="tab" aria-selected="false" data-view="dev" class="tab-dev" title="Bağlantı günlüğü, yedek, kablolama ve protokol">Geliştirici</button>
 </nav>
 
 <main>
@@ -82,7 +150,7 @@ ol.steps-ol{margin:0;padding-left:20px;display:grid;gap:6px;font-size:13px}
       <ul class="pagelist applist" id="appList"></ul>
       <div class="foot">
         <button class="btn sm primary" id="btnBrowse">Bilgisayardan seç…</button>
-        <button class="btn sm" id="toggleTpl">Hazır listeden</button>
+        <button class="btn sm" id="toggleTpl" aria-expanded="false">Hazır listeden</button>
         <input type="file" id="pickFiles" multiple accept=".exe,.lnk,.url,.ico,.png" hidden>
         <p class="hint">.exe, kısayol (.lnk) veya Steam oyun kısayolu (.url) seç ya da buraya sürükle. İkon ve açma yöntemi otomatik gelir.</p>
       </div>
@@ -120,59 +188,84 @@ ol.steps-ol{margin:0;padding-left:20px;display:grid;gap:6px;font-size:13px}
 </section>
 
 <section class="view" id="view-device" hidden>
-  <div class="panel" style="margin-bottom:16px">
-    <div class="panel-h"><h2>Firmware</h2><span class="eyebrow mono" id="fwVer"></span></div>
-    <div class="panel-b fwbox">
-      <p class="hint" style="font-size:13px;color:var(--fg)">Kartın Volkan Deck gibi çalışması için bu yazılımın bir kez yüklenmesi gerekir. Ayarların ve ikonların silinmez; güncellemelerde de aynı düğmeyi kullan.</p>
-      <ol class="fwsteps">
-        <li>Kartı USB-C kabloyla bilgisayara tak. Bu sayfa Chrome veya Edge'de, bilgisayarındaki dosyadan açık olmalı.</li>
-        <li>“Firmware yükle”ye bas ve listeden kartı seç (genelde “USB JTAG/serial debug unit” ya da “ESP32-S3”).</li>
-        <li>Yükleme yaklaşık 1 dakika sürer. Bitince kart kendiliğinden yeniden başlar; ardından “USB ile bağlan” ve “Cihaza yaz”.</li>
-      </ol>
-      <div class="row"><button class="btn primary" id="btnFlash">Firmware yükle</button><button class="btn" id="btnFlash2" hidden>Kartı seç ve yüklemeye devam et</button><span class="fwstate" id="fwState"></span></div>
-      <div class="prog"><i id="fwBar"></i></div>
-      <details class="box"><summary>Kart bulunamazsa</summary><div>
-        <p class="hint" style="font-size:13px">Kartın üzerindeki <b>BOOT</b> tuşunu (GPIO 0) basılı tutarken USB kablosunu çıkarıp tekrar tak, sonra tuşu bırak ve “Firmware yükle”ye yeniden bas. Kart bu sırada ekranı karanlık bekler; bu normaldir.</p>
-        <p class="hint" style="font-size:13px">Seri Monitörü açık bir Arduino IDE veya başka bir sekme kartı kullanıyorsa kapat.</p>
-      </div></details>
-      <div class="fwlog" id="fwLog" hidden></div>
-    </div>
-  </div>
-  <div class="cols">
-    <div class="panel">
-      <div class="panel-h"><h2>Genel</h2></div>
-      <div class="panel-b" id="devForm"></div>
-    </div>
-    <div style="display:grid;gap:16px">
-      <div class="panel">
-        <div class="panel-h"><h2>Kartın kendi tuşları</h2><span class="eyebrow">Sabit</span></div>
-        <div class="panel-b">
-          <div class="tbl-wrap"><table>
-            <thead><tr><th>Tuş</th><th>Hareket</th><th>Ne olur</th></tr></thead>
-            <tbody>
-              <tr><td><b>Güç</b> <span class="mono muted">GPIO 0 (BOOT)</span></td><td>Kısa bas</td><td>Ekranı kapatır / açar (bağlantı açık kalır)</td></tr>
-              <tr><td></td><td>2 sn basılı tut</td><td>Cihazı kapatır (derin uyku). Tekrar basınca açılır.</td></tr>
-              <tr><td></td><td>USB takarken basılı tut</td><td>Yazılım yükleme moduna girer (firmware güncellerken gerekirse)</td></tr>
-              <tr><td><b>Reset</b> <span class="mono muted">GPIO 14</span></td><td>Bas</td><td>Cihazı yeniden başlatır</td></tr>
-            </tbody>
-          </table></div>
+  <div class="devlayout">
+    <div class="devcards" id="devForm"></div>
+    <aside class="devside" id="devSystem">
+      <div class="panel" id="fwPanel">
+        <div class="panel-h"><h2>Cihaz yazılımı</h2><span class="eyebrow mono" id="fwVer"></span></div>
+        <div class="panel-b fwbox">
+          <p class="hint" id="fwSummary">Kartın Volkan Deck gibi çalışması için bu yazılım bir kez yüklenir. Ayarların ve ikonların silinmez; güncellemelerde de aynı düğmeyi kullan.</p>
+          <div class="row"><button class="btn primary" id="btnFlash">Firmware yükle</button><button class="btn" id="btnFlash2" hidden>Kartı seç ve yüklemeye devam et</button></div>
+          <span class="fwstate" id="fwState" role="status" aria-live="polite"></span>
+          <div class="prog" id="fwProg" hidden><i id="fwBar"></i></div>
+          <details class="box"><summary>Nasıl yüklenir</summary><div>
+            <ol class="fwsteps">
+              <li>Kartı USB-C kabloyla bilgisayara tak. Bu sayfa Chrome veya Edge'de, bilgisayarındaki dosyadan açık olmalı.</li>
+              <li>“Firmware yükle”ye bas ve listeden kartı seç (genelde “USB JTAG/serial debug unit” ya da “ESP32-S3”).</li>
+              <li>Yükleme yaklaşık 1 dakika sürer. Bitince kart kendiliğinden yeniden başlar; ardından “USB ile bağlan” ve “Cihaza yaz”.</li>
+            </ol>
+          </div></details>
+          <details class="box"><summary>Kart bulunamazsa</summary><div>
+            <p class="hint">Kartın üzerindeki <b>BOOT</b> tuşunu (GPIO 0) basılı tutarken USB kablosunu çıkarıp tekrar tak, sonra tuşu bırak ve “Firmware yükle”ye yeniden bas. Kart bu sırada ekranı karanlık bekler; bu normaldir.</p>
+            <p class="hint">Seri Monitörü açık bir Arduino IDE veya başka bir sekme kartı kullanıyorsa kapat.</p>
+          </div></details>
+          <div class="fwlog" id="fwLog" hidden></div>
         </div>
       </div>
+    </aside>
+  </div>
+</section>
+
+<section class="view" id="view-dev" hidden>
+  <div class="devhead">
+    <p class="hint">Sorun giderme ve geliştirme araçları. Günlük kullanımda bu sayfaya gerek yok.</p>
+    <div class="subtabs" role="tablist" aria-label="Geliştirici bölümleri">
+      <button role="tab" aria-selected="true" data-sub="conn">Bağlantı ve günlük</button>
+      <button role="tab" aria-selected="false" data-sub="json">Yedek / JSON</button>
+      <button role="tab" aria-selected="false" data-sub="wiring">Kablolama ve tuşlar</button>
+      <button role="tab" aria-selected="false" data-sub="proto">Firmware protokolü</button>
+    </div>
+  </div>
+
+  <div class="sub" id="sub-conn">
+    <div class="cols">
       <div class="panel">
         <div class="panel-h"><h2>Bağlantı durumu</h2></div>
         <div class="panel-b">
           <div class="tbl-wrap"><table><tbody id="statusTbl"></tbody></table></div>
           <div class="field"><span>Ayar boyutu (cihaz sınırı 16 KB)</span><div class="meter"><i id="sizeBar"></i></div><span class="mono muted" id="sizeTxt"></span></div>
-          <div class="field"><span>Seri günlük</span><div class="log" id="log"></div></div>
-          <div class="row"><button class="btn sm" id="btnRead" disabled>Cihazdan oku</button><button class="btn sm ghost" id="clearLog">Günlüğü temizle</button></div>
+          <div class="row"><button class="btn sm" id="btnRead" disabled>Cihazdan oku</button></div>
+          <p class="hint">“Cihazdan oku” kartta kayıtlı ayarı buraya yükler; buradaki değişiklikler kaybolur.</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>Seri günlük</h2><button class="btn sm ghost" id="clearLog">Temizle</button></div>
+        <div class="panel-b">
+          <div class="log" id="log"></div>
         </div>
       </div>
     </div>
   </div>
-</section>
 
-<section class="view" id="view-wiring" hidden>
-  <div class="cols">
+  <div class="sub" id="sub-json" hidden>
+    <div class="panel">
+      <div class="panel-h"><h2>Ayar dosyası</h2>
+        <div class="row">
+          <button class="btn sm" id="jsonCopy">Kopyala</button>
+          <button class="btn sm" id="jsonDownload">İndir</button>
+          <label class="btn sm">Dosyadan yükle<input type="file" id="jsonFile" accept=".json,application/json" hidden></label>
+          <button class="btn sm primary" id="jsonApply">Metni uygula</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <textarea id="jsonText" rows="22" spellcheck="false" aria-label="Ayar JSON"></textarea>
+        <p class="hint">Ayarlar bu bilgisayarda otomatik saklanır. Yedeklemek için JSON'u kopyala veya indir. Yükledikten sonra “Cihaza yaz”a bas.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub" id="sub-wiring" hidden>
+  <div class="cols" id="view-wiring">
     <div class="panel">
       <div class="panel-h"><h2>Pin bağlantıları</h2><span class="eyebrow">Firmware bu pinleri bekler</span></div>
       <div class="panel-b">
@@ -206,27 +299,25 @@ ol.steps-ol{margin:0;padding-left:20px;display:grid;gap:6px;font-size:13px}
         </ul>
       </div>
     </div>
-  </div>
-</section>
-
-<section class="view" id="view-json" hidden>
-  <div class="panel">
-    <div class="panel-h"><h2>Ayar dosyası</h2>
-      <div class="row">
-        <button class="btn sm" id="jsonCopy">Kopyala</button>
-        <button class="btn sm" id="jsonDownload">İndir</button>
-        <label class="btn sm">Dosyadan yükle<input type="file" id="jsonFile" accept=".json,application/json" hidden></label>
-        <button class="btn sm primary" id="jsonApply">Metni uygula</button>
+    <div class="panel">
+      <div class="panel-h"><h2>Kartın kendi tuşları</h2><span class="eyebrow">Sabit</span></div>
+      <div class="panel-b">
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Tuş</th><th>Hareket</th><th>Ne olur</th></tr></thead>
+          <tbody>
+            <tr><td><b>Güç</b> <span class="mono muted">GPIO 0 (BOOT)</span></td><td>Kısa bas</td><td>Ekranı kapatır / açar (bağlantı açık kalır)</td></tr>
+            <tr><td></td><td>2 sn basılı tut</td><td>Cihazı kapatır (derin uyku). Tekrar basınca açılır.</td></tr>
+            <tr><td></td><td>USB takarken basılı tut</td><td>Yazılım yükleme moduna girer (firmware güncellerken gerekirse)</td></tr>
+            <tr><td><b>Reset</b> <span class="mono muted">GPIO 14</span></td><td>Bas</td><td>Cihazı yeniden başlatır</td></tr>
+          </tbody>
+        </table></div>
       </div>
     </div>
-    <div class="panel-b">
-      <textarea id="jsonText" rows="22" spellcheck="false" aria-label="Ayar JSON"></textarea>
-      <p class="hint">Ayarlar bu bilgisayarda otomatik saklanır. Yedeklemek için JSON'u kopyala veya indir. Yükledikten sonra “Cihaza yaz”a bas.</p>
-    </div>
   </div>
-</section>
+  </div>
 
-<section class="view" id="view-proto" hidden>
+  <div class="sub" id="sub-proto" hidden>
+  <div id="view-proto">
   <div class="cols">
     <div class="panel">
       <div class="panel-h"><h2>USB seri komutları</h2><span class="eyebrow mono">115200 baud · satır başına 1 JSON</span></div>
@@ -283,6 +374,8 @@ ol.steps-ol{margin:0;padding-left:20px;display:grid;gap:6px;font-size:13px}
         <p class="hint">Bekleme süresi <span class="mono">device.launchDelay</span> (ms). <span class="mono">device.layout</span> <span class="mono">"tr_q"</span> ise firmware yazılan metni Türkçe Q düzenine göre çevirir. İkon kimlikleri: <span class="mono" id="iconIds"></span>.</p>
       </div>
     </div>
+  </div>
+  </div>
   </div>
 </section>
 </main>
@@ -495,7 +588,14 @@ function validate(c){
 }
 const KEY = "volkandeck.v2";
 function load(){ try{ const c=JSON.parse(localStorage.getItem(KEY)); return validate(c)?c:null; }catch(e){ return null; } }
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify(cfg)); }catch(e){} }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(cfg)); }catch(e){} markPending(); }
+// "Cihaza yaz" gets a dot while this computer's settings differ from what the deck last reported or received.
+let pendingT=0;
+function markPending(){ if(pendingT) return; pendingT=setTimeout(()=>{ pendingT=0;
+  const b=document.getElementById("btnWrite"); if(!b) return;
+  let n=0; try{ n=port&&deviceCfg?configDiff(cfg,deviceCfg,{platform:window.deck?.platform}).length:0; }catch(e){}
+  b.classList.toggle("pending",n>0); b.title=!port?"Önce cihaza bağlan":n?"Cihaza yazılmamış "+n+" değişiklik var":"";
+},150); }
 
 let cfg = load() || defaultConfig();
 let edit = cfg.home.enabled ? {kind:"home"} : {kind:"app", id:cfg.apps[0].id};   // or {kind:"slot", slot:"a"}
@@ -1049,23 +1149,45 @@ function simulateLaunch(app){
 /* ---------- Left list ---------- */
 function renderList(){
   const ul=$("#appList"); ul.replaceChildren();
+  ul.append(el("li",{class:"pg-sec","aria-hidden":"true"},el("span",{},"Ekranlar")));
   const ht=el("span",{class:"pg-tags"}); if(!cfg.home.enabled) ht.append(el("span",{class:"badge off"},"kapalı"));
   ul.append(el("li",{},el("button",{class:"pg","aria-current":edit.kind==="home"?"true":"false",onclick:()=>selectHome()},
     el("span",{class:"pg-ico",style:`background:${HOME.color}`},svgIcon("home")), el("span",{class:"pg-name"},"Ana sayfa"), ht)));
   [[WIDGP,"widgets"],[MEDIA,"media"],[SYSP,"system"]].forEach(([P,k])=>{ const t=el("span",{class:"pg-tags"}); if(!cfg.pages[k].enabled) t.append(el("span",{class:"badge off"},"kapalı"));
-    ul.append(el("li",{class:k==="system"?"home-row":""},el("button",{class:"pg","aria-current":edit.kind===k?"true":"false",onclick:()=>selectPage(k)},
+    ul.append(el("li",{},el("button",{class:"pg","aria-current":edit.kind===k?"true":"false",onclick:()=>selectPage(k)},
       el("span",{class:"pg-ico",style:`background:${P.color}`},svgIcon(P.icon)), el("span",{class:"pg-name"},P.name), t))); });
+  ul.append(el("li",{class:"pg-sec","aria-hidden":"true"},el("span",{},"Uygulamalar"),el("span",{class:"mono"},cfg.apps.length+"/"+MAX_APPS)));
   cfg.apps.forEach(a=>{
     const tags = el("span",{class:"pg-tags"});
     if (cfg.quick.a===a.id) tags.append(el("span",{class:"badge"},"A"));
     if (cfg.quick.b===a.id) tags.append(el("span",{class:"badge"},"B"));
     if (!a.inWheel) tags.append(el("span",{class:"badge off"},"listede yok"));
-    ul.append(el("li",{},el("button",{class:"pg","aria-current":edit.kind==="app"&&edit.id===a.id?"true":"false",onclick:()=>selectApp(a.id)},
+    const li=el("li",{draggable:"true","data-app":a.id,title:"Sırayı değiştirmek için sürükle"},el("button",{class:"pg","aria-current":edit.kind==="app"&&edit.id===a.id?"true":"false",onclick:()=>selectApp(a.id)},
       icoEl(a),
-      el("span",{class:"pg-name"},a.name||"Adsız"), tags)));
+      el("span",{class:"pg-name"},a.name||"Adsız"), tags));
+    dragReorder(li,a.id);
+    ul.append(li);
   });
-  $("#appCount").textContent = cfg.apps.length+"/"+MAX_APPS;
+  $("#appCount").textContent = wheel().length+" ekran";
   $("#toggleTpl").disabled = cfg.apps.length>=MAX_APPS; $("#btnBrowse").disabled = cfg.apps.length>=MAX_APPS;
+}
+// Drag an app row onto another to move it; files dropped on the list still go to importFiles.
+const DRAG_TYPE="application/x-volkandeck-app";
+let dragId=null;
+function dragReorder(li,id){
+  const clear=()=>li.classList.remove("drag-before","drag-after");
+  const after=e=>{ const r=li.getBoundingClientRect(); return e.clientY>r.top+r.height/2; };
+  li.addEventListener("dragstart",e=>{ dragId=id; e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData(DRAG_TYPE,id); li.classList.add("dragging"); });
+  li.addEventListener("dragend",()=>{ dragId=null; li.classList.remove("dragging"); document.querySelectorAll("#appList li").forEach(x=>x.classList.remove("drag-before","drag-after")); });
+  li.addEventListener("dragover",e=>{ if(!dragId||dragId===id) return; e.preventDefault(); e.stopPropagation(); const af=after(e); li.classList.toggle("drag-after",af); li.classList.toggle("drag-before",!af); });
+  li.addEventListener("dragleave",clear);
+  li.addEventListener("drop",e=>{ if(!dragId) return; e.preventDefault(); e.stopPropagation(); clear(); moveApp(dragId,id,after(e)); });
+}
+function moveApp(from,to,after){
+  if(from===to) return;
+  const i=cfg.apps.findIndex(a=>a.id===from); if(i<0) return;
+  const [a]=cfg.apps.splice(i,1); let j=cfg.apps.findIndex(x=>x.id===to); if(j<0){ cfg.apps.splice(i,0,a); return; }
+  cfg.apps.splice(after?j+1:j,0,a); save(); selectApp(a.id);
 }
 function renderTplMenu(){
   const m=$("#tplMenu"); m.replaceChildren();
@@ -1129,10 +1251,10 @@ function renderEditor(){
   const a = appById(edit.id); if(!a){ edit={kind:"app",id:cfg.apps[0].id}; return renderEditor(); }
   $("#edTitle").textContent = a.name || "Uygulama";
   const quick = () => { save(); drawScreen(); renderList(); renderCtlMap(); };
-  body.append(el("div",{class:"row"},
-    el("label",{class:"field"},el("span",{},`Ad (en fazla ${NAME_MAX} karakter ekranda)`),
-      el("input",{type:"text",id:"appName",maxlength:"24",value:a.name,oninput:e=>{a.name=e.target.value; $("#edTitle").textContent=a.name; quick();}}))));
-  // The desktop launch target is inserted before this fallback section by companion.js.
+  body.append(el("label",{class:"field"},el("span",{},`Ad (ekranda en fazla ${NAME_MAX} karakter görünür)`),
+    el("input",{type:"text",id:"appName",maxlength:"24",value:a.name,oninput:e=>{a.name=e.target.value; $("#edTitle").textContent=a.name; quick();}})));
+  // The desktop app puts "what to open" here (companion.js); the keyboard fallback stays in the advanced box below.
+  body.append(el("div",{id:"targetSlot",style:"display:grid;gap:8px"}));
   const fallbackBody=el("div",{}), fallback=window.deck?el("details",{class:"box",id:"launchAdvanced","data-app":a.id,open:advancedOpen||["key","taskbar"].includes(a.launch.method)},el("summary",{},"Gelişmiş: uygulama kapalıyken / Bluetooth'ta"),fallbackBody):fallbackBody;
   if(window.deck){ fallbackBody.append(el("p",{class:"hint"},"Masaüstü uygulaması kapalıyken veya Bluetooth'ta cihaz bu klavye yöntemini kullanır."));
     fallbackBody.addEventListener("input",()=>{a.fallbackCustom=true;save();}); fallbackBody.addEventListener("change",()=>{a.fallbackCustom=true;save();});
@@ -1146,21 +1268,23 @@ function renderEditor(){
   fallbackBody.append(el("div",{class:"field"},el("span",{},window.deck?"Klavye yöntemi":"Nasıl açılsın"),mbox));
   fallbackBody.append(el("div",{id:"fallbackFields"},methodFields(a, quick)));
   fallbackBody.append(el("div",{class:"summary"},el("span",{class:"eyebrow"},"Cihaz gönderir"),el("b",{id:"sumTxt"},launchSummary(a.launch))));
-  body.append(fallback);
+  if(!window.deck) body.append(fallback);
   // appearance
+  const look=el("div",{class:"edsec"},el("h3",{},"Görünüm"));
   const icons=el("div",{class:"icons"});
   Object.keys(ICONS).forEach(id=>icons.append(el("button",{"aria-pressed":a.icon===id?"true":"false","aria-label":id,title:id,onclick:()=>{a.icon=id; a.img=false; changed();}},svgIcon(id))));
   const iconIn=el("input",{type:"file",id:"iconFile",accept:window.deck?.platform==="darwin"?".ico,.png,.jpg,.webp":".exe,.ico,.png,.jpg,.webp",hidden:true,onchange:async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return;
     try{ const r=await iconFromFile(f); if(!r){ toast("Bu dosyada ikon bulunamadı"); return; } a.iconData=r.data; a.color=r.color; changed(); toast("İkon güncellendi"); }catch(err){ toast("İkon okunamadı: "+err.message); } }});
-  body.append(el("div",{class:"field"},el("span",{},"İkon"),
+  look.append(el("div",{class:"field"},el("span",{},"İkon"),
     el("div",{class:"iconrow"}, el("span",{class:"big",style:a.iconData?"":`background:${a.color}`}, a.iconData?el("img",{src:a.iconData,alt:""}):svgIcon(a.icon)),
       el("label",{class:"btn sm",for:"iconFile"},window.deck?.platform==="darwin"?"İkon dosyası seç…":"Programın ikonunu al (.exe / .ico / .png)"), iconIn,
       a.iconData?el("button",{class:"btn sm ghost",onclick:()=>{ delete a.iconData; a.img=false; changed(); }},"Çizgi ikon kullan"):null)));
-  if(!a.iconData) body.append(el("div",{class:"field"},el("span",{},"Çizgi ikon"),icons));
+  if(!a.iconData) look.append(el("div",{class:"field"},el("span",{},"Çizgi ikon"),icons));
   const sw=el("div",{class:"swatches"});
   COLORS.forEach(c=>sw.append(el("button",{style:`background:${c}`,"aria-label":c,"aria-pressed":a.color.toLowerCase()===c.toLowerCase()?"true":"false",onclick:()=>{a.color=c;changed();}})));
   sw.append(el("input",{type:"color",id:"appColor",value:a.color,"aria-label":"Özel renk",oninput:e=>{a.color=e.target.value; quick();}}));
-  body.append(el("div",{class:"field"},el("span",{},"Renk"),sw));
+  look.append(el("div",{class:"field"},el("span",{},a.iconData?"Kenar rengi":"Renk"),sw));
+  body.append(look);
   if (a.src&&(!window.deck||deck.platform==="win32")){
     const sb=el("div",{class:"srcbox"},el("span",{class:"eyebrow"},"Kaynak: "+a.src.file));
     if(a.src.target) sb.append(el("code",{},a.src.target+(a.src.args?" "+a.src.args:"")));
@@ -1174,17 +1298,23 @@ function renderEditor(){
     fallbackBody.append(sb);
   }
   // placement
-  body.append(el("label",{class:"row",style:"cursor:pointer"},el("input",{type:"checkbox",id:"inWheel",checked:a.inWheel,onchange:e=>{a.inWheel=e.target.checked; changed();}}),"Döndürgeç listesinde göster"));
-  body.append(el("div",{class:"row"},
-    el("button",{class:"btn sm","aria-pressed":cfg.quick.a===a.id?"true":"false",onclick:()=>{cfg.quick.a = cfg.quick.a===a.id?null:a.id; changed();}}, cfg.quick.a===a.id?"A'dan kaldır":"A tuşuna ata"),
-    el("button",{class:"btn sm","aria-pressed":cfg.quick.b===a.id?"true":"false",onclick:()=>{cfg.quick.b = cfg.quick.b===a.id?null:a.id; changed();}}, cfg.quick.b===a.id?"B'den kaldır":"B tuşuna ata")));
+  const place=el("div",{class:"edsec"},el("h3",{},"Yerleşim"));
+  place.append(el("label",{class:"sw"},el("span",{},"Döndürgeç listesinde göster",el("small",{},"Kapalıysa yalnız A / B tuşuyla açılır.")),el("input",{type:"checkbox",id:"inWheel",checked:a.inWheel,onchange:e=>{a.inWheel=e.target.checked; changed();}})));
+  place.append(el("div",{class:"field"},el("span",{},"Hızlı tuş"),el("div",{class:"slotbtns"},
+    ...["a","b"].map(k=>{ const on=cfg.quick[k]===a.id, other=appById(cfg.quick[k]);
+      return el("button",{class:"btn sm","aria-pressed":on?"true":"false",title:on?"":other?other.name+" yerine bu uygulama":"",onclick:()=>{cfg.quick[k] = on?null:a.id; changed();}}, k.toUpperCase()+" tuşu"+(on?" ✓":"")); })),
+    el("p",{class:"hint"},"A veya B'ye basınca bu uygulama hemen açılır; döndürgeçte nerede olduğun önemli değil.")));
   const i=cfg.apps.indexOf(a), n=cfg.apps.length;
-  body.append(el("div",{class:"row"},
+  place.append(el("div",{class:"row"},
     el("button",{class:"btn sm",disabled:i===0,onclick:()=>{[cfg.apps[i-1],cfg.apps[i]]=[cfg.apps[i],cfg.apps[i-1]]; selectApp(a.id); save();}},"↑ Yukarı"),
     el("button",{class:"btn sm",disabled:i===n-1,onclick:()=>{[cfg.apps[i+1],cfg.apps[i]]=[cfg.apps[i],cfg.apps[i+1]]; selectApp(a.id); save();}},"↓ Aşağı"),
-    el("button",{class:"btn sm danger",disabled:n<=1,onclick:()=>{confirmDelete=true;renderEditor();}},"Sil")));
+    el("span",{class:"hint"},"ya da soldaki listede sürükle")));
+  body.append(place);
+  if(window.deck) body.append(fallback);
+  body.append(el("div",{class:"row",style:"justify-content:flex-end"},
+    el("button",{class:"btn sm danger",disabled:n<=1,onclick:()=>{confirmDelete=true;renderEditor();}},"Uygulamayı sil")));
   if (confirmDelete) body.append(el("div",{class:"confirm"},el("span",{style:"flex:1"},`“${a.name}” silinsin mi?`),
-    el("button",{class:"btn sm danger",onclick:()=>{cfg.apps.splice(i,1); for(const k of ["a","b"]) if(cfg.quick[k]===a.id) cfg.quick[k]=null; confirmDelete=false; edit={kind:"app",id:cfg.apps[Math.max(0,i-1)].id}; changed(); toast("Silindi");}},"Sil"),
+    el("button",{class:"btn sm danger",onclick:()=>{cfg.apps.splice(i,1); for(const k of ["a","b"]) if(cfg.quick[k]===a.id) cfg.quick[k]=null; if(cfg.home.pressApp===a.id) cfg.home.pressApp=null; confirmDelete=false; edit={kind:"app",id:cfg.apps[Math.max(0,i-1)].id}; changed(); toast("Silindi");}},"Sil"),
     el("button",{class:"btn sm",onclick:()=>{confirmDelete=false;renderEditor();}},"Vazgeç")));
   $("#btnTest").disabled=!port;
 }
@@ -1230,12 +1360,36 @@ function codeToKey(code){
   return ({Escape:"ESC",Enter:"ENTER",Tab:"TAB",Space:"SPACE",Delete:"DELETE",Home:"HOME",End:"END",PrintScreen:"PRINT_SCREEN"})[code]||null;
 }
 function pageToggle(k){
-  return el("label",{class:"row",style:"cursor:pointer"},el("input",{type:"checkbox",id:"page_"+k,checked:cfg.pages[k].enabled,onchange:e=>{cfg.pages[k].enabled=e.target.checked; const i=wheel().findIndex(a=>a.page===k); sel=i>=0?i:0; changed();}}),"Döndürgeç listesinde göster");
+  return el("label",{class:"sw"},el("span",{},"Döndürgeç listesinde göster",el("small",{},"Kapalıysa bu ekran cihazda görünmez.")),el("input",{type:"checkbox",id:"page_"+k,checked:cfg.pages[k].enabled,onchange:e=>{cfg.pages[k].enabled=e.target.checked; const i=wheel().findIndex(a=>a.page===k); sel=i>=0?i:0; changed();}}));
+}
+/* ---------- Return to the home screen: one setting, summarised on every page editor ---------- */
+// The firmware returns after home.returnAfter idle seconds, except on Kartlar (always stays) and on Medya when pages.media.stay.
+const RETURN_TIMES=[[0,"Kapalı"],[15,"15 sn"],[30,"30 sn"],[60,"1 dk"],[120,"2 dk"],[180,"3 dk"],[300,"5 dk"],[600,"10 dk"]];
+const durText = v => !v ? "kapalı" : v%60===0 ? v/60+" dk" : v>60 ? Math.floor(v/60)+" dk "+(v%60)+" sn" : v+" sn";
+function staysOn(kind){ return kind==="widgets" || (kind==="media" && cfg.pages.media.stay); }
+function returnText(kind){
+  const H=cfg.home;
+  if(!H.enabled) return "Ana sayfa kapalı; cihaz bir ekrana dönmez.";
+  if(!H.returnAfter) return "Ana ekrana otomatik dönüş kapalı.";
+  if(kind==="home"){
+    const stay=[["widgets","Kartlar"],["media","Medya"]].filter(([k])=>cfg.pages[k].enabled&&staysOn(k)).map(x=>x[1]);
+    return "Dokunulmazsa "+durText(H.returnAfter)+" sonra buraya döner"+(stay.length?"; "+stay.join(" ve ")+" ekranında bekler.":".");
+  }
+  return staysOn(kind) ? "Bu ekrandayken cihaz ana ekrana dönmez." : "Dokunulmazsa "+durText(H.returnAfter)+" sonra ana ekrana döner.";
+}
+function returnSummary(kind){
+  return el("div",{class:"retsum"},el("span",{},returnText(kind)),el("button",{class:"btn sm",onclick:()=>openDeviceCard("cardReturn")},"Ana ekrana dönüş…"));
+}
+function openDeviceCard(id){
+  document.querySelector('nav.tabs button[data-view="device"]')?.click();
+  const c=document.getElementById(id); if(!c) return;
+  c.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"center"});
+  c.classList.remove("focus"); void c.offsetWidth; c.classList.add("focus");
 }
 function renderMediaEditor(body){
   const P=cfg.pages.media; $("#edTitle").textContent="Medya"; $("#btnTest").disabled=true;
   body.append(pageToggle("media"));
-  body.append(el("label",{class:"row",style:"cursor:pointer"},el("input",{type:"checkbox",id:"mediaStay",checked:P.stay,onchange:e=>{P.stay=e.target.checked; changed();}}),"Medya sayfasındayken ana sayfaya dönme"));
+  body.append(returnSummary("media"));
   const seg=el("div",{class:"seg"});
   [["auto","Otomatik"],...PLAYERS.map(p=>[p[0],p[1]])].forEach(([v,n])=>seg.append(el("button",{"aria-pressed":P.player===v?"true":"false",onclick:()=>{P.player=v; pageState.player=null; changed();}},n)));
   body.append(el("div",{class:"field"},el("span",{},"Tuşlar hangi oynatıcıyı kontrol etsin"),seg,
@@ -1255,6 +1409,7 @@ function renderWidgetsEditor(body){
   const P=cfg.pages.widgets; $("#edTitle").textContent="Kartlar"; $("#btnTest").disabled=true;
   const q=()=>{ save(); drawScreen(); renderList(); };
   body.append(pageToggle("widgets"));
+  body.append(returnSummary("widgets"));
   const box=el("div",{style:"display:grid;gap:10px"});
   for(let i=0;i<4;i++){
     const g=el("div",{class:"animkinds",role:"group","aria-label":"Kart "+(i+1)});
@@ -1269,6 +1424,7 @@ function renderWidgetsEditor(body){
 function renderSysEditor(body){
   $("#edTitle").textContent="Ses ve parlaklık"; $("#btnTest").disabled=true;
   body.append(pageToggle("system"));
+  body.append(returnSummary("system"));
   const sec=el("div",{class:"sec"},el("h3",{},"Nasıl çalışır"));
   sec.append(el("ul",{class:"hint",style:"margin:0;padding-left:18px;display:grid;gap:4px"},
     el("li",{},"Ses: bilgisayarın varsayılan ses çıkışı. Masaüstü uygulaması açıkken değer cihazda görünür ve tık başına %2 değişir."),
@@ -1282,7 +1438,7 @@ function renderHomeEditor(body){
   const H=cfg.home, A=H.anim; $("#edTitle").textContent="Ana sayfa";
   $("#btnTest").disabled=true;
   const q=()=>{ save(); drawScreen(); renderCtlMap(); };
-  body.append(el("label",{class:"row",style:"cursor:pointer"},el("input",{type:"checkbox",id:"homeOn",checked:H.enabled,onchange:e=>{H.enabled=e.target.checked; sel=0; changed();}}),"Döndürgeç listesinin başında göster"));
+  body.append(el("label",{class:"sw"},el("span",{},"Döndürgeç listesinin başında göster",el("small",{},"Kapalıysa cihaz ana ekrana hiç dönmez.")),el("input",{type:"checkbox",id:"homeOn",checked:H.enabled,onchange:e=>{H.enabled=e.target.checked; sel=0; changed();}})));
   // widget slots
   const sec1=el("div",{class:"sec"},el("h3",{},"Kartlar · animasyonun sağındaki iki alan"));
   ["Kart 1 · üst","Kart 2 · alt"].forEach((label,i)=>{
@@ -1302,7 +1458,7 @@ function renderHomeEditor(body){
     st.append(el("div",{class:"row"},num("cpuWarn","İşlemci sarı °C"),num("cpuCrit","İşlemci kırmızı °C")));
     st.append(el("div",{class:"row"},num("gpuWarn","Ekran kartı sarı °C"),num("gpuCrit","Ekran kartı kırmızı °C")));
     st.append(el("p",{class:"hint"},"Sıcaklık bu değerleri geçince rakam önce sarı, sonra kırmızı olur. Ad boşsa masaüstü uygulamasının bulduğu ad yazılır. Sıcaklık okunamazsa kartta büyük rakam olarak kullanım yüzdesi görünür."));
-    st.append(el("label",{class:"row",style:"cursor:pointer"},el("input",{type:"checkbox",id:"showLoad",checked:H.showLoad,onchange:e=>{H.showLoad=e.target.checked;q();}}),"Kullanım yüzdesini göster"));
+    st.append(el("label",{class:"sw"},el("span",{},"Kullanım yüzdesini göster"),el("input",{type:"checkbox",id:"showLoad",checked:H.showLoad,onchange:e=>{H.showLoad=e.target.checked;q();}})));
     body.append(st);
   }
   // animation
@@ -1348,9 +1504,7 @@ function renderHomeEditor(body){
   ps.append(el("option",{value:"",selected:!H.pressApp},"Hiçbir şey yapma"));
   cfg.apps.forEach(a=>ps.append(el("option",{value:a.id,selected:H.pressApp===a.id},a.name+" uygulamasını aç")));
   sec3.append(el("label",{class:"field"},el("span",{},"Ana sayfada döndürgece basınca"),ps));
-  const ro=el("span",{class:"mono"},H.returnAfter?H.returnAfter+" sn":"kapalı");
-  sec3.append(el("label",{class:"field"},el("span",{},"Boşta kalınca ana sayfaya dön · ",ro),el("input",{type:"range",id:"homeReturn",min:"0",max:"300",step:"15",value:H.returnAfter,oninput:e=>{H.returnAfter=Number(e.target.value); ro.textContent=H.returnAfter?H.returnAfter+" sn":"kapalı"; save();}})));
-  sec3.append(el("p",{class:"hint"},"Medya sayfasında kalma ayarı açıksa bu süre medya sayfasında uygulanmaz; karartma ve pilde otomatik kapanma devam eder."));
+  sec3.append(returnSummary("home"));
   body.append(sec3);
 }
 let weatherLocationStatus="", weatherLocationSource="", weatherLocationFailed=false;
@@ -1565,7 +1719,7 @@ $("#pickFiles").onchange=e=>{ importFiles(e.target.files); e.target.value=""; };
   pane.addEventListener("dragenter",e=>{ if(e.dataTransfer?.types?.includes("Files")){ n++; pane.classList.add("dropping"); } });
   pane.addEventListener("dragleave",()=>{ if(--n<=0){ n=0; pane.classList.remove("dropping"); } });
   pane.addEventListener("dragover",e=>{ if(e.dataTransfer?.types?.includes("Files")) e.preventDefault(); });
-  pane.addEventListener("drop",e=>{ e.preventDefault(); n=0; pane.classList.remove("dropping"); importFiles(e.dataTransfer.files); });
+  pane.addEventListener("drop",e=>{ e.preventDefault(); n=0; pane.classList.remove("dropping"); if(!dragId) importFiles(e.dataTransfer.files); });
 })();
 
 /* ---------- Firmware flasher (esptool-js) ---------- */
@@ -1595,7 +1749,7 @@ async function rebootAfterFlash(loader, transport){
   try{ await transport.setDTR(false); await transport.setRTS(true); await nap(120); await transport.setRTS(false); }catch(e){}
 }
 async function flashTo(fport){
-  const btn=$("#btnFlash"); btn.disabled=true; $("#btnFlash2").hidden=true; $("#fwBar").style.width="0%"; $("#fwLog").textContent="";
+  const btn=$("#btnFlash"); btn.disabled=true; $("#btnFlash2").hidden=true; $("#fwProg").hidden=false; $("#fwBar").style.width="0%"; $("#fwLog").textContent="";
   let transport=null;
   try{
     fwState("Yükleyici hazırlanıyor…");
@@ -1651,60 +1805,113 @@ if ("serial" in navigator){
 }
 
 /* ---------- Device settings ---------- */
+const CARD_ICONS={
+  device:"M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M8 7h8v5H8z M12 17h.01",
+  screen:"M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8z M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4",
+  power:"M3 8h15v8H3z M21 11v2 M6 11v2 M9 11v2",
+  knob:"M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z M12 7v5",
+  keyboard:"M3 7h18v10H3z M7 11h.01 M11 11h.01 M15 11h.01 M7 14h10"
+};
 function renderDeviceForm(){
-  const d=cfg.device, f=$("#devForm"), advancedOpen=$("#deviceAdvanced")?.open; f.replaceChildren();
-  const set=(k,v,re)=>{ d[k]=v; save(); drawScreen(); if(k==="name") $("#brandName").textContent=v||"Volkan Deck"; if(re) renderDeviceForm();
-    for(const [timer,level] of [["dimAfterUsb","dimLevelUsb"],["dimAfter","dimLevel"],["ecoAfterUsb","ecoFpsUsb"],["ecoAfter","ecoFps"]]) { const ctl=$("#"+level); if(ctl) ctl.disabled=!d[timer]; } };
-  f.append(el("label",{class:"field"},el("span",{},"Cihaz adı (Bluetooth'ta bu adla görünür)"),el("input",{type:"text",id:"devName",maxlength:"24",value:d.name,oninput:e=>set("name",e.target.value)})));
+  const d=cfg.device, H=cfg.home, f=$("#devForm"), advancedOpen=$("#deviceAdvanced")?.open; f.replaceChildren();
+  const syncIdle=()=>{ for(const [timer,level] of [["dimAfterUsb","dimLevelUsb"],["dimAfter","dimLevel"],["ecoAfterUsb","ecoFpsUsb"],["ecoAfter","ecoFps"]]) { const ctl=$("#"+level); if(ctl) ctl.disabled=!d[timer]; } };
+  const set=(k,v,re)=>{ d[k]=v; save(); drawScreen(); if(k==="name") $("#brandName").textContent=v||"Volkan Deck"; if(re) renderDeviceForm(); syncIdle(); };
+  const card=(id,icon,title,...kids)=>el("div",{class:"panel",id},el("div",{class:"panel-h"},el("span",{class:"ttl"},el("span",{class:"card-ico"},svgPath(CARD_ICONS[icon]||ICONS[icon])),el("h2",{},title))),el("div",{class:"panel-b"},...kids));
   const seg=(key,opts)=>{ const s=el("div",{class:"seg"}); opts.forEach(([v,n])=>s.append(el("button",{"aria-pressed":d[key]===v?"true":"false",onclick:()=>set(key,v,true)},n))); return s; };
-  f.append(el("div",{class:"field"},el("span",{},"Bağlantı"),seg("connection",[["auto","Otomatik"],["usb","Sadece USB"],["ble","Sadece Bluetooth"]]),el("p",{class:"hint"},"Otomatik: USB kablosu takılıysa USB, değilse Bluetooth.")));
-  const advancedBody=el("div",{}), advanced=window.deck?el("details",{class:"box",id:"deviceAdvanced",open:advancedOpen},el("summary",{},"Gelişmiş: klavye ile açma"),advancedBody):advancedBody;
-  d.host ||= "win";
   const range=(key,label,min,max,step,fmt)=>{ const out=el("span",{class:"mono"},fmt(d[key])); return el("label",{class:"field"},el("span",{},label," · ",out),el("input",{type:"range",id:"r_"+key,min,max,step,value:d[key],oninput:e=>{const v=Number(e.target.value); out.textContent=fmt(v); set(key,v);}})); };
-  if(!window.deck) advancedBody.append(el("div",{class:"field"},el("span",{},"Bilgisayar"),seg("host",[["win","Windows"],["mac","macOS"]]),el("p",{class:"hint"},"Masaüstü uygulaması cihaza yazarken kendi sistemini kullanır.")));
-  advancedBody.append(el("label",{class:"row",style:"cursor:pointer"},el("input",{type:"checkbox",id:"kbFallback",checked:!!d.kbFallback,onchange:e=>set("kbFallback",e.target.checked)}),"Masaüstü uygulaması kapalıyken klavyeyle aç"));
-  advancedBody.append(el("p",{class:"hint"},"Kapalıysa uygulamalar masaüstü uygulamasıyla açılır. Kısayol tuşları çalışmaya devam eder."));
-  advancedBody.append(el("div",{class:"field"},el("span",{},"Klavye düzeni"),seg("layout",[["tr_q","Türkçe Q"],["us","İngilizce (US)"]]),el("p",{class:"hint"},"Uygulama adları ve komutlar yazılarak açıldığı için bilgisayarındaki düzenle aynı olmalı.")));
+  const toggle=(key,label,sub,obj=d,after)=>el("label",{class:"sw"},el("span",{},label,sub?el("small",{},sub):null),el("input",{type:"checkbox",id:key,checked:!!obj[key],onchange:e=>{ obj[key]=e.target.checked; save(); drawScreen(); after?.(); }}));
+  const choose=(key,values,fmt,label,disabled,obj=d,onset,id=key)=>{ const opts=values.includes(obj[key])?values:[...values,obj[key]];
+    return el("select",{id,"aria-label":label,disabled,onchange:e=>{ const v=Number(e.target.value); if(onset) onset(v); else set(key,v); }},...opts.map(v=>el("option",{value:v,selected:obj[key]===v},fmt(v)))); };
 
-  advancedBody.append(range("launchDelay","Açarken bekleme",150,1500,50,v=>v+" ms"));
-  advancedBody.append(el("p",{class:"hint"},"Arama hazır olmadan yazmaya başlarsa harfler kaybolur. Bu süreyi artırabilirsin."));
-  f.append(advanced);
-  f.append(range("brightness","Ekran parlaklığı",10,100,5,v=>v+"%"));
-  const eco=(key,label)=>el("label",{class:"field"},el("span",{},label),el("select",{id:key,onchange:e=>set(key,Number(e.target.value))},...[[0,"Kapalı"],[15,"15 sn"],[30,"30 sn"],[60,"1 dk"],[120,"2 dk"],[300,"5 dk"]].map(([v,n])=>el("option",{value:v,selected:d[key]===v},n))));
-  const idleLevel=(key,timer,label,values,fmt)=>{
-    const opts=values.includes(d[key])?values:[...values,d[key]];
-    return el("label",{class:"field"},el("span",{},label),el("select",{id:key,disabled:!d[timer],onchange:e=>set(key,Number(e.target.value))},...opts.map(v=>el("option",{value:v,selected:d[key]===v},fmt(v)))));
-  };
-  const offS=v=>v?v+" sn":"kapalı", offM=v=>v?v/60+" dk":"kapalı";
-  f.append(el("h3",{style:"margin:10px 0 0;font-size:13px"},"Kabloyla bağlıyken (USB / şarj)"));
-  f.append(range("dimAfterUsb","Ekranı karart",0,120,5,offS));
-  f.append(idleLevel("dimLevelUsb","dimAfterUsb","Karartınca parlaklık (kabloda)",[75,50,30,20,10,5],v=>"%"+v));
-  f.append(range("sleepAfterUsb","Otomatik kapan",0,1800,60,offM));
-  f.append(eco("ecoAfterUsb","Boşta tasarruf (kabloda)"));
-  f.append(idleLevel("ecoFpsUsb","ecoAfterUsb","Tasarrufta animasyon (kabloda)",[8,4,2,1,0],v=>v?v+" kare/sn":"Durdur"));
-  f.append(el("h3",{style:"margin:10px 0 0;font-size:13px"},"Pille çalışırken"));
-  f.append(range("dimAfter","Ekranı karart",0,120,5,offS));
-  f.append(idleLevel("dimLevel","dimAfter","Karartınca parlaklık (pilde)",[75,50,30,20,10,5],v=>"%"+v));
-  f.append(range("sleepAfter","Otomatik kapan",0,1800,60,offM));
-  f.append(eco("ecoAfter","Boşta tasarruf (pilde)"));
-  f.append(idleLevel("ecoFps","ecoAfter","Tasarrufta animasyon (pilde)",[8,4,2,1,0],v=>v?v+" kare/sn":"Durdur"));
-  f.append(el("p",{class:"hint"},"Dokunulmayınca animasyon ve ekran yenileme yavaşlar, işlemci düşük hıza geçer. Ekran açık kalır; ilk dokunuşta anında normale döner."));
-  f.append(el("p",{class:"hint"},"Süre, son dokunuştan sonra sayılır. \"kapalı\" seçilirse ekran hiç kararmaz / cihaz hiç kendiliğinden kapanmaz. Kapanan cihaz güç tuşuyla açılır."));
-  f.append(range("encDetent","Döndürgeç: tık başına sinyal",1,4,1,v=>v+(v===4?" (KY-040 için tipik)":"")));
-  f.append(el("label",{class:"row",style:"cursor:pointer"},el("input",{type:"checkbox",id:"wrap",checked:d.wrap,onchange:e=>set("wrap",e.target.checked)}),"Listenin sonundan başa dön"));
-  f.append(el("label",{class:"row",style:"cursor:pointer"},el("input",{type:"checkbox",id:"encRev",checked:d.encReverse,onchange:e=>set("encReverse",e.target.checked)}),"Döndürgeç yönünü ters çevir"));
-  f.append(el("label",{class:"row",style:"cursor:pointer"},el("input",{type:"checkbox",id:"flip",checked:!!d.flip,onchange:e=>set("flip",e.target.checked)}),"Ekranı 180° çevir (kart kasaya ters oturursa)"));
-  f.append(el("div",{class:"field"},el("span",{},"Ekran teması"),seg("theme",[["auto","Otomatik (saate göre)"],["dark","Koyu"],["light","Açık"]])));
+  // Device: name, connection and a live summary (battery, link, firmware)
+  f.append(card("cardDevice","device","Cihaz",
+    el("div",{class:"statchips",id:"devSummary"}),
+    el("label",{class:"field"},el("span",{},"Cihaz adı (Bluetooth'ta bu adla görünür)"),el("input",{type:"text",id:"devName",maxlength:"24",value:d.name,oninput:e=>set("name",e.target.value)})),
+    el("div",{class:"field"},el("span",{},"Bağlantı"),seg("connection",[["auto","Otomatik"],["usb","Sadece USB"],["ble","Sadece Bluetooth"]]),el("p",{class:"hint"},"Otomatik: USB kablosu takılıysa USB, değilse Bluetooth."))));
+  fillDevSummary();
+
+  // Screen
+  const scr=[range("brightness","Parlaklık",10,100,5,v=>"%"+v),
+    el("div",{class:"field"},el("span",{},"Tema"),seg("theme",[["auto","Saate göre"],["dark","Koyu"],["light","Açık"]]))];
   if(d.theme==="auto"){
     const time=(key,label)=>{ const m=themeMinute(d[key],key==="lightFrom"?420:1140), value=String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
       return el("label",{class:"field"},el("span",{},label),el("input",{type:"time",id:key,value,step:60,onchange:e=>{ if(!e.target.value) return; const [h,m]=e.target.value.split(":").map(Number); set(key,themeMinute(h*60+m,0)); }})); };
-    f.append(time("lightFrom","Açık tema başlangıcı"),time("darkFrom","Koyu tema başlangıcı"));
-    f.append(el("p",{class:"hint"},"Cihaz bilgisayardan yerel saati alana kadar koyu kalır. Önizleme bilgisayarının yerel saatini kullanır; başlangıçlar aynıysa koyu tema uygulanır."));
+    scr.push(el("div",{class:"row"},time("lightFrom","Açık tema başlar"),time("darkFrom","Koyu tema başlar")),
+      el("p",{class:"hint"},"Cihaz bilgisayardan saati alana kadar koyu kalır. İki saat aynıysa hep koyu."));
   }
+  scr.push(toggle("flip","Ekranı 180° çevir","Kart kasaya ters oturduysa."));
+  f.append(card("cardScreen","screen","Ekran",...scr));
+
+  // Return to the home screen: the one place for this behaviour
+  const ret=[];
+  if(!H.enabled) ret.push(el("div",{class:"retsum"},el("span",{},"Ana sayfa kapalı, dönülecek ekran yok."),el("button",{class:"btn sm",onclick:()=>{ H.enabled=true; changed(); }},"Ana sayfayı aç")));
+  else {
+    ret.push(el("label",{class:"field"},el("span",{},"Dokunulmazsa ana ekrana dön"),choose("returnAfter",RETURN_TIMES.map(x=>x[0]),v=>RETURN_TIMES.find(x=>x[0]===v)?.[1]||durText(v),"Ana ekrana dönüş süresi",false,H,v=>{ H.returnAfter=v; changed(); },"homeReturn")));
+    const row=(P,name,what)=>el("li",{},el("span",{class:"pg-ico",style:`background:${P.color}`},svgIcon(P.icon)),el("span",{},name),what);
+    const stay=t=>el("span",{class:"what stay"},t), back=()=>el("span",{class:"what"},H.returnAfter?"Döner":"—");
+    const list=el("ul",{class:"retlist"});
+    if(cfg.pages.widgets.enabled) list.append(row(WIDGP,"Kartlar",stay("Her zaman bekler")));
+    if(cfg.pages.media.enabled) list.append(el("li",{},el("span",{class:"pg-ico",style:`background:${MEDIA.color}`},svgIcon(MEDIA.icon)),
+      el("label",{class:"sw"},el("span",{},"Medya",el("small",{},cfg.pages.media.stay?"Şarkı çalarken ekranda kalır":"Diğer ekranlar gibi döner")),el("input",{type:"checkbox",id:"mediaStay",checked:cfg.pages.media.stay,"aria-label":"Medya ekranında bekle",onchange:e=>{ cfg.pages.media.stay=e.target.checked; changed(); }})),el("span")));
+    if(cfg.pages.system.enabled) list.append(row(SYSP,"Ses ve parlaklık",back()));
+    list.append(row({color:"#64748B",icon:"star"},"Uygulamalar",back()));
+    ret.push(el("div",{class:"field"},el("span",{},"Bu ekranlardayken"),list));
+    ret.push(el("p",{class:"hint"},"Süre son dokunuştan sonra sayılır. Karartma ve otomatik kapanma her ekranda çalışır."));
+  }
+  f.append(card("cardReturn","home","Ana ekrana dönüş",...ret));
+
+  // Power: cable and battery side by side
+  const offS=v=>v?(v%60===0?v/60+" dk":v+" sn"):"Kapalı", offM=v=>v?v/60+" dk":"Kapalı";
+  const ROWS=[
+    ["dimAfter","Ekranı karart","",[0,10,15,30,45,60,120],offS],
+    ["dimLevel","Karartınca parlaklık","",[75,50,30,20,10,5],v=>"%"+v,"dimAfter"],
+    ["ecoAfter","Boşta tasarruf","animasyon yavaşlar",[0,15,30,60,120,300],offS],
+    ["ecoFps","Tasarrufta animasyon","",[8,4,2,1,0],v=>v?v+" kare/sn":"Durdur","ecoAfter"],
+    ["sleepAfter","Otomatik kapan","derin uyku",[0,60,120,300,600,900,1800],offM]
+  ];
+  const tb=el("tbody");
+  for(const [key,label,sub,values,fmt,timer] of ROWS) tb.append(el("tr",{},el("th",{scope:"row"},label,sub?el("small",{},sub):null),
+    ...[["Usb","kabloda"],["","pilde"]].map(([sfx,where])=>el("td",{},choose(key+sfx,values,fmt,label+" ("+where+")",timer?!d[timer+sfx]:false)))));
+  f.append(card("cardPower","power","Güç ve bekleme",
+    el("table",{class:"mtx"},el("thead",{},el("tr",{},el("th",{}),el("th",{scope:"col"},"Kabloda"),el("th",{scope:"col"},"Pilde"))),tb),
+    el("p",{class:"hint"},"Boşta tasarruf: dokunulmayınca animasyon ve ekran yenileme yavaşlar, işlemci düşük hıza geçer. Ekran açık kalır; ilk dokunuşta anında normale döner."),
+    el("p",{class:"hint"},"Süreler son dokunuştan sonra sayılır. Kapanan cihaz güç tuşuyla açılır.")));
+
+  // Knob
+  f.append(card("cardKnob","knob","Döndürgeç",
+    toggle("wrap","Listenin sonundan başa dön"),
+    toggle("encReverse","Yönü ters çevir"),
+    el("p",{class:"hint"},"Kartın güç tuşu: kısa bas ekranı kapatır / açar, 2 sn basılı tut cihazı kapatır.")));
+
+  // Advanced: keyboard fallback and encoder calibration
+  d.host ||= "win";
+  const adv=[];
+  if(!window.deck) adv.push(el("div",{class:"field"},el("span",{},"Bilgisayar"),seg("host",[["win","Windows"],["mac","macOS"]]),el("p",{class:"hint"},"Masaüstü uygulaması cihaza yazarken kendi sistemini kullanır.")));
+  adv.push(toggle("kbFallback","Masaüstü uygulaması kapalıyken klavyeyle aç","Kapalıysa uygulamalar yalnız masaüstü uygulamasıyla açılır. Kısayol tuşları çalışmaya devam eder."));
+  adv.push(el("div",{class:"field"},el("span",{},"Klavye düzeni"),seg("layout",[["tr_q","Türkçe Q"],["us","İngilizce (US)"]]),el("p",{class:"hint"},"Uygulama adları ve komutlar yazılarak açıldığı için bilgisayarındaki düzenle aynı olmalı.")));
+  adv.push(range("launchDelay","Açarken bekleme",150,1500,50,v=>v+" ms"),el("p",{class:"hint"},"Arama hazır olmadan yazmaya başlarsa harfler kaybolur. Bu süreyi artırabilirsin."));
+  adv.push(range("encDetent","Döndürgeç: tık başına sinyal",1,4,1,v=>v+(v===4?" (KY-040 için tipik)":"")));
+  if(window.deck) f.append(el("details",{class:"panel adv",id:"deviceAdvanced",open:advancedOpen},
+    el("summary",{class:"panel-h"},el("span",{class:"ttl"},el("span",{class:"card-ico"},svgPath(CARD_ICONS.keyboard)),el("h2",{},"Gelişmiş: klavye ile açma"))),el("div",{class:"panel-b"},...adv)));
+  else f.append(card("deviceAdvanced","keyboard","Klavye ile açma",...adv));
+}
+function fillDevSummary(){
+  const box=$("#devSummary"); if(!box) return;
+  const chip=(k,v,cls,click)=>el(click?"button":"span",{class:"statchip"+(cls?" "+cls:""),onclick:click||null,style:click?"cursor:pointer":null},el("span",{class:"muted"},k),el("b",{},v));
+  const fw=deviceInfo?.fw, old=fw&&!verGE(fw,FIRMWARE.version);
+  box.replaceChildren(
+    chip("Bağlantı",deviceInfo?(deviceInfo.link==="ble"||port?.isBle?"Bluetooth":"USB"):"Bağlı değil"),
+    chip("Pil",deviceInfo?.battery!=null?"%"+deviceInfo.battery+(deviceInfo.charging?" · şarj":""):"—"),
+    chip("Yazılım",fw?"v"+fw+(old?" · güncelle":""):"—",old?"warn":"",old?()=>openDeviceCard("fwPanel"):null));
+  const sum=$("#fwSummary");
+  if(sum) sum.textContent=old?"Kartta v"+fw+" var. v"+FIRMWARE.version+" yüklemek için “Firmware yükle”ye bas; ayarların ve ikonların silinmez."
+    :fw?"Kart güncel (v"+fw+"). Yeniden yüklemen gerekmez."
+    :"Kartın Volkan Deck gibi çalışması için bu yazılım bir kez yüklenir. Ayarların ve ikonların silinmez; güncellemelerde de aynı düğmeyi kullan.";
 }
 function renderStatus(){
   const t=$("#statusTbl"); t.replaceChildren();
-  [["Durum",port?"Bağlı (USB seri)":"Bağlı değil"],["Firmware",deviceInfo?.fw?("v"+deviceInfo.fw+(!verGE(deviceInfo.fw,FIRMWARE.version)?" · güncelleme var (v"+FIRMWARE.version+")":"")):"—"],["Cihaz adı",deviceInfo?.name||"—"],
+  fillDevSummary();
+  [["Durum",port?(port.isBle?"Bağlı (Bluetooth)":"Bağlı (USB seri)"):"Bağlı değil"],["Firmware",deviceInfo?.fw?("v"+deviceInfo.fw+(!verGE(deviceInfo.fw,FIRMWARE.version)?" · güncelleme var (v"+FIRMWARE.version+")":"")):"—"],["Cihaz adı",deviceInfo?.name||"—"],
    ["Pil",deviceInfo?.battery!=null?deviceInfo.battery+"%"+(deviceInfo.charging?" · şarj oluyor":""):"—"],["Aktif bağlantı",deviceInfo?.link?deviceInfo.link.toUpperCase():"—"]]
    .forEach(([k,v])=>t.append(el("tr",{},el("th",{},k),el("td",{class:"mono"},v))));
   const bytes=new TextEncoder().encode(JSON.stringify(forDevice())).length;
@@ -1729,7 +1936,7 @@ function sendRaw(obj,guard){ if(!writer) return Promise.resolve(false); const li
     if(window.deck?.debug&&b.length>2000) console.log("[Volkan süre] yazım",obj.cmd,b.length+" bayt",Math.round(performance.now()-t1)+" ms",Math.round(t1-t0)+" ms kuyruk",port?.isBle?"ble":"usb");
     return true; }).catch(()=>false); }
 function log(cls,msg){ const L=$("#log"); L.append(el("div",{class:cls},msg)); while(L.childNodes.length>200) L.firstChild.remove(); L.scrollTop=L.scrollHeight; }
-function serialNote(m){ $("#serialNoteText").textContent=m; $("#serialNote").hidden=!m; }
+function serialNote(m){ $("#serialNoteText").textContent=m; $("#serialNote").hidden=!m; $("#serialNoteFw").hidden=!/Firmware yükle/.test(m||""); }
 async function send(obj,timeout=2500,quiet=false){
   if(!writer) throw new Error("Bağlı değil");
   const id=++reqId, line=JSON.stringify({id,...obj});
@@ -1825,7 +2032,7 @@ async function connect(auto=false, ble=false){
     deviceInfo=h;
     if(port?.isBle && h.mtu>23) port.chunk=Math.min(h.mtu-3,240);
     if(h.fw && !verGE(h.fw,FIRMWARE.version)) serialNote("Kartta firmware v"+h.fw+" var; v"+FIRMWARE.version+" pakette var. Cihaz ayarları → Firmware yükle ile güncelleyebilirsin."); setConnUI(true,(h.name||"Cihaz")+(h.fw?" · v"+h.fw:"")); toast("Cihaza bağlanıldı");
-    try{ const g=await send({cmd:"get_config"},4000); deviceCfg=g.config; refreshConfigDiff(); }catch(e){}
+    try{ const g=await send({cmd:"get_config"},4000); deviceCfg=g.config; refreshConfigDiff(); markPending(); }catch(e){}
   }catch(e){ if(port?.isBle){ await disconnect(); return; }   // Bluetooth: just try again later
     setConnUI(true,"Bağlı · kart yanıt vermiyor");
     if(lastStatus){
@@ -1846,6 +2053,7 @@ function setConnUI(on,txt){
   $("#connPill").classList.toggle("on",on); $("#connText").textContent=on?txt+(port?.isBle?" · Bluetooth":""):"Bağlı değil";
   $("#btnConnect").textContent=on?"Bağlantıyı kes":"USB ile bağlan";
   for(const id of ["#btnWrite","#btnRead"]){ $(id).disabled=!on; $(id).title=on?"":"Önce cihaza bağlan"; }
+  if(!on) deviceCfg=null; markPending();
 }
 $("#btnConnect").onclick=()=>port?disconnect():connect();
 function forDevice(c=cfg){ const d=clone(c); delete d.sensors; if(window.deck) d.device.host=window.deck.platform==="darwin"?"mac":"win"; if(d.home?.weather) delete d.home.weather.auto; if(d.home?.anim) delete d.home.anim.delays; for(const a of d.apps){ if(a.targets&&a.launch){ a.launch.path=a.targets.win||""; a.launch.mac=a.targets.mac||""; } delete a.targets; delete a.fallbackCustom; delete a.bg; a.img=!!(a.iconData||a.img); delete a.iconData; delete a.src; } return d; }
@@ -1880,7 +2088,7 @@ async function sendIcons(b){
   return list.length;
 }
 $("#btnWrite").onclick=async()=>{ const b=$("#btnWrite"); b.disabled=true; b.textContent="Yazılıyor…";
-  try{ const r=await send({cmd:"set_config",config:forDevice()},5000); const n=await sendIcons(b); deviceCfg=forDevice(); $("#diffNote").hidden=true; toast("Cihaza yazıldı"+(r.bytes?` (${(r.bytes/1024).toFixed(1)} KB`+(n?`, ${n} ikon)`:")"):"")); }
+  try{ const r=await send({cmd:"set_config",config:forDevice()},5000); const n=await sendIcons(b); deviceCfg=forDevice(); markPending(); $("#diffNote").hidden=true; toast("Cihaza yazıldı"+(r.bytes?` (${(r.bytes/1024).toFixed(1)} KB`+(n?`, ${n} ikon)`:")"):"")); }
   catch(e){ toast("Yazılamadı: "+e.message); } finally{ b.disabled=!port; b.textContent="Cihaza yaz"; } };
 $("#btnTest").onclick=async()=>{ const a = edit.kind==="slot"?appById(cfg.quick[edit.slot]):appById(edit.id); if(!a) return;
   try{ await send({cmd:"launch",launch:a.launch},5000); toast(a.name+" açma komutu gönderildi"); }catch(e){ toast("Denenemedi: "+e.message); } };
@@ -1907,9 +2115,18 @@ $("#clearLog").onclick=()=>$("#log").replaceChildren();
 document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>{
   document.querySelectorAll("nav.tabs button").forEach(x=>x.setAttribute("aria-selected",x===b?"true":"false"));
   document.querySelectorAll(".view").forEach(v=>v.hidden=v.id!=="view-"+b.dataset.view);
-  if(b.dataset.view==="json") renderJson(); if(b.dataset.view==="device") renderStatus();
+  if(b.dataset.view==="device"||b.dataset.view==="dev") renderStatus(); if(b.dataset.view==="dev") renderJson();
   try{ localStorage.setItem("volkandeck.tab",b.dataset.view); }catch(e){}
 }));
+// Developer page: connection log, backup, wiring and protocol as sub-sections
+function showSub(k){
+  document.querySelectorAll(".subtabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.sub===k?"true":"false"));
+  document.querySelectorAll("#view-dev .sub").forEach(v=>v.hidden=v.id!=="sub-"+k);
+  if(k==="json") renderJson();
+  try{ localStorage.setItem("volkandeck.sub",k); }catch(e){}
+}
+document.querySelectorAll(".subtabs button").forEach(b=>b.addEventListener("click",()=>showSub(b.dataset.sub)));
+$("#serialNoteFw").onclick=()=>openDeviceCard("fwPanel");
 document.querySelectorAll("#device [data-ctl]").forEach(b=>b.addEventListener("click",()=>{
   const c=b.dataset.ctl, W=wheel(), n=W.length;
   if(c==="cw"||c==="ccw"){ if(!n) return; let d=c==="cw"?1:-1; let i=sel+d; i = cfg.device.wrap ? (i+n)%n : Math.max(0,Math.min(n-1,i)); sel=i; pageState.adjust=0; edit=editFor(W[i]); confirmDelete=false; renderAll(); }
@@ -1924,7 +2141,10 @@ function updateLiveTag(){ const t=$("#liveTag"); if(!t) return; t.classList.togg
 renderTplMenu(); renderAll(); updateLiveTag(); requestAnimationFrame(tick);
 idbGet("anim").then(async list=>{ if(Array.isArray(list)&&list.length){ await setFrames(list); if(edit.kind==="home") renderEditor(); } });
 document.fonts?.ready.then(drawScreen);
-try{ const t=localStorage.getItem("volkandeck.tab"); if(t) document.querySelector(`nav.tabs button[data-view="${t}"]`)?.click(); }catch(e){}
+try{ let t=localStorage.getItem("volkandeck.tab"), sub=localStorage.getItem("volkandeck.sub");
+  if(["json","wiring","proto"].includes(t)){ sub=t; t="dev"; }
+  if(["conn","json","wiring","proto"].includes(sub)) showSub(sub);
+  if(t) document.querySelector(`nav.tabs button[data-view="${t}"]`)?.click(); }catch(e){}
 if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; ayarları düzenleyebilirsin. Cihaza yazmak için bilgisayarındaki StreamDeck-Ayar.html dosyasını Chrome veya Edge ile aç.");
 })();
 </script>
