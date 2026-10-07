@@ -12,7 +12,10 @@
 #   * each bar end is locked in its post by a pin cut from 1.75 mm filament (no screws). Pins go in from the
 #     board-centre side and stop in a blind hole. The bar hole sits 0.1 mm further back than the pin, so the
 #     bar is preloaded against the board.
-#   * a notch in the USB-C duct for the battery plug (it plugs into the JST socket from the board's end).
+#   * USB-C: plain rounded-rectangle opening and tunnel (was 14 x 9 with a 45 deg peak), closed all the way
+#     to the socket so the inside of the case can't be seen; a notch under the tunnel for the battery plug
+#     (it plugs into the JST socket from the board's end).
+#   * feet: recesses for 15 mm round self-adhesive pads (were 10 mm), moved slightly inward.
 # Everything outside is unchanged: the v5 back cover, knob and key plungers still fit.
 # Board frame (from v4): x along the board (0 = USB end), y across, z = face normal (0 = glass front on the
 # face's inner surface, PCB back at -6.38, more negative = deeper into the case).
@@ -25,6 +28,9 @@ from manifold3d import Manifold, CrossSection, OpType
 
 PCB_BACK = D.PCB_BACK                 # -6.38
 # ---------------- parameters (mm) ----------------
+USB_W, USB_H, USB_R = 12.4, 7.2, 1.2   # USB-C opening (plug overmold up to ~12 x 7)
+FOOT_D, FOOT_DEPTH = 15.6, 1.0         # 15 mm pads + 0.3 per side
+FEET = [(sx * 37.0, fy) for sx in (1, -1) for fy in (15.0, 72.6)]
 POST_Y   = (13.10, 17.90)   # |y| of the posts (board edge at 12.98)
 PRONG    = 3.0              # prong thickness along x
 SLOT_C   = 0.15             # bar-to-prong clearance per side (x)
@@ -83,9 +89,21 @@ def post_pair(bar, outer_left):
 posts = post_pair(LBAR, True) + post_pair(RBAR, False)
 body = body + U(posts) - U(pin_holes)
 body = max(body.decompose(), key=lambda m: m.volume())      # drop a zero-volume sliver left by the clip cut
-# battery plug notch in the USB-C duct end (JST socket opens toward the board end)
-plug = bb(-6.0, 0.4, 4.9, 12.1, -9.6, -6.5)
-body -= plug
+# ---- USB-C: refill the v4 hole / duct (peaked) and cut a plain rounded rectangle, closed up to the socket
+from manifold3d import JoinType
+x_out = -D.W / 2 - 2 - D.X_B0                                     # beyond the outer wall (board x)
+old_duct = D.prism_b(list(map(tuple, D.duct_cs.to_polygons()[0])), x_out, D.duct_end) ^ D.solid
+body += old_duct
+yc, zc = D.USB['yc'], D.USB['zc']
+usb_cs = CrossSection.square((USB_W - 2 * USB_R, USB_H - 2 * USB_R), center=True).offset(USB_R, JoinType.Round, circular_segments=24).translate((yc, zc))
+body -= D.prism_b(list(map(tuple, usb_cs.to_polygons()[0])), x_out - 1, D.duct_end + 0.01)
+# battery plug notch under the tunnel (JST socket opens toward the board end)
+body -= bb(-6.0, 0.4, 5.2, 12.1, -9.6, zc - USB_H / 2) + bb(-6.0, 0.4, 5.2, 12.1, -9.6, -6.6)
+# ---- feet: 15 mm pads
+for fx, fy in [(sx * (D.W / 2 - 12), fy) for sx in (1, -1) for fy in (14.0, D.F3[0] - 12.0)]:
+    body += Manifold.cylinder(1.0, 5.2, circular_segments=48).translate((fx, fy, -0.01)) ^ D.solid   # fill the v4 10 mm recesses
+for fx, fy in FEET:
+    body -= Manifold.cylinder(FOOT_DEPTH + 0.01, FOOT_D / 2, circular_segments=96).translate((fx, fy, -0.01))
 
 # ---------------- clamp bars (board frame, in place) ----------------
 def bar_holes(bar):
@@ -127,5 +145,7 @@ if __name__ == '__main__':
         'bars ∩ jst': bars ^ jst, 'bars ∩ jst plug': bars ^ jst_plug, 'body ∩ jst plug': body ^ jst_plug,
         'body ∩ battery': body ^ D.ghost_bat, 'bars ∩ battery': bars ^ D.ghost_bat, 'body ∩ ky040': body ^ D.ky040,
         'body ∩ switches': body ^ D.switches,
+        'USB plug 12x6.8 sweep ∩ body': body ^ D.prism_b(list(map(tuple, CrossSection.square((9.0, 3.8), center=True).offset(1.5, JoinType.Round, circular_segments=24).translate((yc, zc)).to_polygons()[0])), -25, -1.6),
+        'feet recess ∩ inner': U([Manifold.cylinder(FOOT_DEPTH + 0.5, FOOT_D / 2 + 0.5).translate((fx, fy, 0)) for fx, fy in FEET]) ^ D.inner,
     }
     for k, v in chk.items(): print(f"  {k:28s} {v.volume():.3f}")
