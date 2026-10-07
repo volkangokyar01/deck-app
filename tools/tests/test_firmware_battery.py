@@ -25,7 +25,7 @@ using std::min; using std::max;
 template<class T> T constrain(T n,T lo,T hi){return max(lo,min(n,hi));}
 uint32_t ms=1000; uint32_t millis(){return ms;}
 int mv=1925; int analogReadMilliVolts(int){return mv;}
-bool usbMounted=false,charging=false,extPower=false; uint8_t batPct=0;
+bool usbMounted=false,usbSuspended=false,charging=false,extPower=false; uint8_t batPct=0;
 ''' + defs + '\n' + code + r'''
 void run(int seconds){for(int i=0;i<seconds/2;i++){ms+=2000;readBattery();}}
 int main(){
@@ -36,6 +36,16 @@ int main(){
  run(3600); assert(batPct>=before+15 && batPct<=before+30 && charging);   // ~25 %/h at 500 mA / 2000 mAh
  run(6*3600); assert(batPct==100 && !charging);                    // eventually full
  usbMounted=false; mv=2080; run(60); assert(!extPower && batPct>=95);    // unplugged, full cell 4.16 V
+ // cable pulled from a computer: no VBUS sense, only a USB suspend; "mounted" stays set
+ mv=1900; run(600); int mid=batPct;                                  // back on battery, ~3.80 V
+ usbMounted=true; mv=1990; run(60); assert(extPower && charging);   // plugged into the computer
+ usbSuspended=true; mv=1925; run(4); assert(!extPower && !charging && batPct>=mid);
+ run(60); assert(!extPower && !charging);
+ // wall charger (no USB data): found from the voltage step, released by the step down
+ usbMounted=false; usbSuspended=false; mv=1900; run(600);
+ mv=1990; run(4); assert(extPower && charging);
+ run(120); assert(extPower && charging);
+ mv=1905; run(4); assert(!extPower && !charging);
  return 0;
 }
 '''

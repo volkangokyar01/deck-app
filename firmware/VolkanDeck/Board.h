@@ -1,6 +1,6 @@
 #pragma once
 // LilyGO T-Display-S3 + KY-040 + 2 buttons
-#define FW_VERSION "1.8.3"
+#define FW_VERSION "1.8.4"
 
 // CPU scaling (240 <-> 80 MHz) is off since 1.8.1: the switch back to 240 MHz happened right before the
 // config write and the board restarted ("Cihaza yaz" on Windows). Idle redraw saving stays enabled.
@@ -13,6 +13,7 @@
 #define PIN_BAT       4
 #define BAT_MAH       2000     // Efcell 2000 mAh Li-Po
 #define BAT_CHARGE_MA 500      // TP4065, R_PROG (R13) 2 kOhm -> 1000 V / 2 kOhm = 0.5 A (LilyGO: 500 mA)
+#define BAT_STEP_V    0.06f    // voltage step that marks a charger plugged in / pulled out
 #define BAT_IR_V      0.10f    // voltage lift while charging (charge current x cell/wiring resistance)
 
 #define PIN_ENC_CLK   1

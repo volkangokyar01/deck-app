@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.8.3)
+## Firmware (v1.8.4)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -194,3 +194,8 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Kablo = USB host bağlı ya da gerilim >4,22 V (duvar şarjı). Seviye RTC belleğinde tutulur; güncelleme/yeniden başlatma sonrası sıfırdan tahmin edilmez. Soğuk açılış kabloda ise ilk değer gerilimden tahmin edilir.
 - Durum çubuğunda "şarj" yazısı yerine yüzde + pil simgesinde şimşek.
 - Şarj akımı: kartta TP4065 doğrusal şarj entegresi, programlama direnci R13 = 2 kΩ → 1000 V / 2 kΩ ≈ 500 mA (LilyGO wiki: varsayılan 500 mA; GitHub T-Display-S3 #230: en kötü durumda ≈ 520 mA). Kartta akım sensörü yok; firmware akımı ölçemez, yalnız pil gerilimini (GPIO4, ×2 bölücü) görür. Gerçek akım ısınmayla (doğrusal entegre, ~0,6 W) ve kart yükünden dolayı biraz düşük olabilir; USB-C ölçerle ya da pil kablosuna seri multimetreyle doğrulanmalı.
+
+## 2026-10-07 — Kablo çıkınca "şarj" kalıyordu (firmware 1.8.4)
+- Kartta VBUS algılama hattı yok: kablo bilgisayardan çekilince TinyUSB yalnız "suspend" verir, "mounted" bayrağı açık kalır. 1.8.3 bunu kablo sayıyordu.
+- Artık kablo = USB host bağlı ve uykuda değil, ya da şarj cihazı. Şarj cihazı gerilim sıçramasından bulunur: hızlı ortalama yavaş ortalamanın 0,06 V (BAT_STEP_V) üstüne çıkınca takıldı, altına inince çekildi sayılır; USB suspend de şarj cihazı bayrağını siler. Açılışta gerilim >4,25 V ise şarj cihazıyla açıldı sayılır.
+- Bilinen sınır: bilgisayar uykudayken (USB suspend) kablo takılı olsa da "şarj" görünmez, seviye pil hesabıyla devam eder.

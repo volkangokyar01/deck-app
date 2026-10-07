@@ -4,6 +4,7 @@ Her push'tan önce en üste bir satır eklenir. Kurallar `GUNCELLEME.md` → 5. 
 
 | Tarih / saat (TSİ) | İmza | Tür | Güncelleme | Özet |
 |---|---|---|---|---|
+| 2026-10-07 16:00 | volkangokyar01 | firmware | Evet | Firmware 1.8.4: kablo çıkınca "şarj" ibaresi kalkıyor, pil yüzdesine dönülüyor (kartta VBUS algılama yok; USB suspend ve gerilim sıçraması kullanılıyor). Derlendi ve gömüldü; pil testine bilgisayardan ve duvar şarjından çıkarma senaryoları eklendi; 161 Node / 27 Python testi geçti; donanımda denenmedi |
 | 2026-10-07 15:15 | volkangokyar01 | belge | Hayır | Şarj akımı kaynağı belgelendi: TP4065, R13 = 2 kΩ → ≈500 mA (LilyGO wiki ve GitHub #230); 1.8.3 hesabındaki 500 mA / 2000 mAh doğrulandı. Yalnız yorum ve belge, ikili değişmedi; kartta ölçülmedi |
 | 2026-10-07 15:10 | volkangokyar01 | firmware | Evet | Firmware 1.8.3: kablo takılıyken pil %100 görünmüyor; seviye takılmadan önceki değerden şarj hızıyla artar, gerilim sınırlarıyla düzeltilir; pilde Li-Po eğrisi. Durum çubuğunda yüzde + şimşek. Derlendi ve gömüldü; yeni pil testi dahil 161 Node / 27 Python testi geçti; donanımda denenmedi |
 | 2026-10-07 13:15 | volkangokyar01 | kasa | Hayır | Kasa v6: döndürgeç düğmesi Ø30 → Ø24 × 18 (mil kesmeden); 60 ince tırtıl, V halkası, çanak üst yüz, işaret çizgisi; iç boşluk 45° basamaklı, dik desteksiz baskı. 3MF'e eklendi; baskıda denenmedi |

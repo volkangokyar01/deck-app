@@ -144,11 +144,24 @@ static void readBattery() {
   static uint32_t tLast = 0, tPlug = 0, tUnplug = 0;
   static bool wasExt = false;
   uint32_t now = millis();
+  static float vf = 0;               // fast average: sees the step when a charger starts or stops
+  static bool charger = false;       // charger-only cable, found from that step
+  static bool wasSusp = false;
   float raw = analogReadMilliVolts(PIN_BAT) * 2 / 1000.0f;
+  float vfPrev = vf;
   v = v == 0 ? raw : v * 0.9f + raw * 0.1f;
+  vf = vf == 0 ? raw : vf * 0.5f + raw * 0.5f;
   float dt = tLast ? (now - tLast) / 1000.0f : 0; tLast = now;
-  // cable: USB host enumerated, or a charger lifting the cell above what a resting Li-Po can show
-  extPower = usbMounted || v > 4.22f;
+  // The board has no VBUS sense: pulling the cable from a computer only gives a USB "suspend", the
+  // "mounted" flag stays set. So a suspended host does not count as cable, and the voltage step
+  // (charge current x cell resistance) marks a charger being plugged in or pulled out.
+  bool hostUsb = usbMounted && !usbSuspended;
+  if (vfPrev == 0 && vf > 4.25f) charger = true;   // booted on a charger: cell above a resting Li-Po
+  if (vfPrev > 0 && vf - v > BAT_STEP_V) charger = true;    // fast average jumped above the slow one
+  if (vfPrev > 0 && v - vf > BAT_STEP_V) charger = false;
+  if (usbSuspended && !wasSusp) charger = false;    // cable pulled from the computer
+  wasSusp = usbSuspended;
+  extPower = hostUsb || charger;
   if (soc < 0) {   // first reading after boot
     if (socMagic == SOC_MAGIC && socKept >= 0 && socKept <= 100) soc = socKept;
     else soc = extPower ? ocvPct(v - BAT_IR_V) : ocvPct(v);
