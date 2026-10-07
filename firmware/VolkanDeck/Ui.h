@@ -100,6 +100,16 @@ std::vector<Item> items;
 // Medya, Ses ve parlaklık and Bağlantılar live in one "Menü" item (1.9.4): the wheel holds home, cards and
 // apps; the menu sits last, one step back from home. subPage = the page open inside the menu (0 = the list).
 uint8_t subPage = 0;
+// One knob step from item i (dir +1 right, -1 left). The menu (always the last item) is reached only by
+// turning left on the first item (home); turning right past the last app goes back to home, not the menu.
+static int wheelStep(int i, int dir) {
+  int n = items.size(); if (n < 2) return i;
+  bool hasMenu = items[n - 1].kind == K_MENU;
+  int last = hasMenu ? n - 2 : n - 1;              // last item of the normal ring
+  if (hasMenu && i == n - 1) return dir > 0 ? 0 : (S.wrap ? last : i);
+  if (dir < 0) return i > 0 ? i - 1 : (hasMenu ? n - 1 : (S.wrap ? last : i));
+  return i < last ? i + 1 : (S.wrap ? 0 : i);
+}
 
 static void buildItems() {
   items.clear();
@@ -207,8 +217,9 @@ static void drawAppView() {
   Item& it = items[sel];
   Item* prev = nullptr; Item* next = nullptr;
   if (n > 1) {
-    prev = sel > 0 ? &items[sel - 1] : (S.wrap ? &items[n - 1] : nullptr);
-    next = sel < n - 1 ? &items[sel + 1] : (S.wrap ? &items[0] : nullptr);
+    int p = wheelStep(sel, -1), q = wheelStep(sel, 1);
+    prev = p != sel ? &items[p] : nullptr;
+    next = q != sel ? &items[q] : nullptr;
   }
   auto nm = [](Item* i) { return itemName(*i); };
   if (prev && prev != &it) { bubble(prev->home, prev->app, 52, 58, 21, .42f, prev->kind); text(fit(nm(prev), 92, FM10), 52, 92, FM10, SC_DIM, textdatum_t::middle_center); text("‹", 10, 58, FM16, SC_SUB, textdatum_t::middle_center); }
@@ -857,34 +868,32 @@ static std::vector<uint8_t> menuPages() {
   if (S.connOn) v.push_back(K_CONN);
   return v;
 }
-// key 0 = A, 1 = press, 2 = B → page index (3 pages: A / press / B, 2: A / B, 1: press), -1 = none
-static int menuIndexForKey(int n, int key) {
-  if (n >= 3) return key;
-  if (n == 2) return key == 0 ? 0 : key == 2 ? 1 : -1;
-  return n == 1 && key == 1 ? 0 : -1;
-}
+// Menü list: press → pick mode (cursor), turn → move, press → open, hold or 15 s idle → leave pick mode
+bool menuPick = false; int menuCur = 0; uint32_t menuAt = 0;
 static void drawMenu() {
   auto pages = menuPages(); int n = pages.size();
-  const char* keyName[3] = { "A", "bas", "B" };
-  int h = n >= 3 ? 48 : 60, y = 15;
-  for (int i = 0; i < n; i++, y += h + 3) {
+  if (menuCur >= n) menuCur = n - 1; if (menuCur < 0) menuCur = 0;
+  const int h = 44, gap = 3, vis = 3;
+  int first = menuPick && menuCur >= vis ? menuCur - vis + 1 : 0;
+  for (int r = 0; r < vis && first + r < n; r++) {
+    int i = first + r, y = 15 + r * (h + gap), cy = y + h / 2;
     uint8_t k = pages[i];
-    spr.fillRoundRect(2, y, 316, h, 8, SC_PANEL);
-    int cy = y + h / 2;
+    bool focus = menuPick && i == menuCur;
+    spr.fillRoundRect(2, y, 316, h, 8, focus ? mix(SC_HL, SC_PANEL, .16f) : SC_PANEL);   // focused row: amber tint
     bubble(false, nullptr, 24, cy, 15, 1, k);
     String title = k == K_MEDIA ? "Medya" : k == K_SYS ? "Ses ve parlaklık" : "Bağlantılar", sub;
     if (k == K_MEDIA) sub = mediaLive() && media.title.length() ? media.title : String("Çalan müzik ve medya tuşları");
     else if (k == K_SYS) sub = sysLive() && sysSt.vol >= 0 ? "Ses %" + String(sysSt.vol) + (sysSt.bright >= 0 ? "  ·  Parlaklık %" + String(sysSt.bright) : String("")) : String("Ses, parlaklık, mikrofon");
     else { uint16_t act = activeHostConn(); sub = bt.off ? String("Bluetooth kapalı") : act != BLE_HS_CONN_HANDLE_NONE ? "Aktif: " + hostName(act) : String("Bluetooth bilgisayarları"); }
-    text(title, 48, cy - 8, FSB12, SC_TEXT);
-    text(fit(sub, 200, FM9), 48, cy + 9, FM9, SC_DIM);
-    int ki = -1; for (int key = 0; key < 3; key++) if (menuIndexForKey(n, key) == i) ki = key;
-    if (ki >= 0) {                              // which key opens it
-      int w = ki == 1 ? 34 : 24;
-      spr.fillRoundRect(306 - w, cy - 10, w, 20, 6, mix(SC_HL, SC_PANEL, .18f));
-      text(keyName[ki], 306 - w / 2, cy, FB11, SC_HL, textdatum_t::middle_center);
-    }
+    text(title, 48, cy - 8, FSB12, focus ? SC_HL : SC_TEXT);
+    text(fit(sub, 240, FM9), 48, cy + 9, FM9, SC_DIM);
+    text("›", 306, cy, FM16, focus ? SC_HL : SC_DIM, textdatum_t::middle_center);
   }
+  if (n > vis) {                              // scroll mark
+    int th = 141 * vis / n, ty = 15 + (141 - th) * first / max(1, n - vis);
+    spr.fillRoundRect(316, ty, 2, th, 1, SC_DIM);
+  }
+  text(menuPick ? "çevir: seç  ·  bas: aç  ·  basılı tut: çık" : "bas: seç  ·  çevir: gez", 160, 161, FM9, menuPick ? SC_HL : SC_SUB, textdatum_t::middle_center);
 }
 
 /* ---------- new mail note (1.8.0): full screen, A / B / press opens Outlook on the computer ---------- */

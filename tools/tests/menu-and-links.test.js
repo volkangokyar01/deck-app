@@ -13,26 +13,22 @@ test('wheel: home, cards and apps; the three pages sit in one Menü item at the 
   assert.ok(!/K_MEDIA \}|K_SYS \}|K_CONN \}/.test(build), 'pages are not wheel items any more');
   assert.ok(build.indexOf('K_APP') < build.indexOf('K_MENU'), 'menu after the apps');
   assert.match(ino, /return it->kind == K_MENU && subPage \? subPage : it->kind;/);
-  assert.match(ino, /case K_MENU: menuKey\(1\); break;/);
-  assert.match(ino, /k == K_MENU && menuKey\(0\)/);
-  assert.match(ino, /k == K_MENU && menuKey\(2\)/);
+  assert.match(ino, /case K_MENU: menuPress\(\); break;/);
   assert.match(ino, /openPage\(K_MEDIA\);/, 'launching a music app still opens Medya');
   assert.match(web, /\.\.\.cfg\.apps\.filter\(a=>a\.inWheel\), \.\.\.\(menuPages\(\)\.length\?\[MENUP\]:\[\]\)\]/);
 });
 
-test('menu keys: 3 pages → A / press / B, 2 → A / B, 1 → press', () => {
-  const ui = read('firmware/VolkanDeck/Ui.h'), web = read('web/body.html');
-  const fw = ui.slice(ui.indexOf('static int menuIndexForKey('), ui.indexOf('static void drawMenu()'));
-  const c = fw.replace('static int menuIndexForKey(int n, int key)', 'function f(n, key)');
-  const f = vm.runInNewContext(c + ';f');
-  assert.deepStrictEqual([0, 1, 2].map(k => f(3, k)), [0, 1, 2]);
-  assert.deepStrictEqual([0, 1, 2].map(k => f(2, k)), [0, -1, 1]);
-  assert.deepStrictEqual([0, 1, 2].map(k => f(1, k)), [-1, 0, -1]);
-  const line = web.match(/const menuKeyIndex = [^\n]+/)[0];
-  const g = vm.runInNewContext(line.replace('const menuKeyIndex =', '(').replace(/;\s*$/, '') + ')');
-  assert.deepStrictEqual(['a', 'press', 'b'].map(k => g(3, k)), [0, 1, 2]);
-  assert.deepStrictEqual(['a', 'press', 'b'].map(k => g(2, k)), [0, -1, 1]);
-  assert.deepStrictEqual(['a', 'press', 'b'].map(k => g(1, k)), [-1, 0, -1]);
+test('menu: press shows a cursor, turning moves it, press opens; A / B stay quick apps', () => {
+  const ino = read('firmware/VolkanDeck/VolkanDeck.ino'), ui = read('firmware/VolkanDeck/Ui.h'), web = read('web/body.html');
+  const press = ino.slice(ino.indexOf('static void menuPress()'), ino.indexOf('static void onPress()'));
+  assert.match(press, /if \(!menuPick\) \{ menuPick = true; return; \}/);
+  assert.match(press, /openPage\(pages\[constrain\(menuCur/);
+  assert.match(ino, /else if \(menuPick && k == K_MENU\) \{/, 'turning moves the cursor in pick mode');
+  assert.ok(!/menuKey|menuIndexForKey/.test(ino + ui), 'no A / B shortcuts');
+  assert.match(ino, /if \(menuPick && now - menuAt > 15000\)/);
+  assert.match(ui, /menuPick = false; int menuCur = 0;/);
+  assert.ok(!/menuKeyIndex|openMenuPage/.test(web));
+  assert.match(web, /function menuPress\(\)/);
 });
 
 test('web site shortcut: addresses are normalised, only http(s) is accepted, the name comes from the domain', () => {
@@ -49,4 +45,24 @@ test('web site shortcut: addresses are normalised, only http(s) is accepted, the
   assert.strictEqual(ctx.siteName('https://music.youtube.com/'), 'Youtube');
   assert.strictEqual(ctx.siteName('https://www.hepsiburada.com.tr/'), 'Hepsiburada');
   assert.match(web, /launch:\{method:"run",value:url\}, targets:\{win:url,mac:url\}/);
+});
+
+test('knob: the menu opens only by turning left on home; right past the last app goes home', () => {
+  const ui = read('firmware/VolkanDeck/Ui.h'), web = read('web/body.html');
+  const fw = ui.slice(ui.indexOf('static int wheelStep('), ui.indexOf('static void buildItems()'));
+  const js = fw.replace('static int wheelStep(int i, int dir)', 'function step(i, dir)').replace(/int n = /, 'let n = ')
+    .replace('bool hasMenu', 'let hasMenu').replace('int last', 'let last');
+  for (const wrap of [true, false]) {
+    // items: 0 home, 1 cards, 2..4 apps, 5 menu
+    const items = [{kind:0},{kind:4},{kind:3},{kind:3},{kind:3},{kind:6}]; items.size = () => items.length;
+    const ctx = { S: { wrap }, items, K_MENU: 6 };
+    const step = vm.runInNewContext(js + ';step', ctx);
+    assert.strictEqual(step(0, -1), 5, 'left on home → menu');
+    assert.strictEqual(step(5, 1), 0, 'right on menu → home');
+    assert.strictEqual(step(4, 1), wrap ? 0 : 4, 'right on the last app never enters the menu');
+    assert.strictEqual(step(5, -1), wrap ? 4 : 5);
+    assert.strictEqual(step(2, 1), 3); assert.strictEqual(step(2, -1), 1);
+  }
+  assert.match(read('firmware/VolkanDeck/VolkanDeck.ino'), /i = wheelStep\(i, steps > 0 \? 1 : -1\)/);
+  assert.match(web, /const i=wheelStep\(sel,c==="cw"\?1:-1\)/);
 });

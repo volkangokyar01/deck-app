@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.9.4)
+## Firmware (v1.9.5)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -243,3 +243,8 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Açılan sayfa (subPage) eskisi gibi çalışır (curKind sayfanın türünü döndürür); çevirince listede komşuya geçilir ve sayfa kapanır; basılı tutma, sayfanın kendi işi yoksa Menü listesine döner (Medya'da basılı tutma ses modu olarak kaldı). Müzik uygulaması açılınca Medya yine kendiliğinden açılır. select olayı açık sayfanın kimliğini (media / system / connections) gönderir.
 - Ayar sayfası: Menü önizlemesi ve düzenleyicisi; sayfa düzenleyicilerinde "Menüde göster".
 - Uygulama listesinde "Web sitesi ekle": adres (https'siz de yazılabilir; yalnız http/https kabul edilir) ve isteğe bağlı ad. Uygulama "Çalıştır" yöntemiyle adresi açar (masaüstü uygulaması varsayılan tarayıcıda; yoksa Win+R). Ad alan adından gelir; ikon Google favicon hizmetinden, internet yoksa küre.
+
+## 2026-10-08 — Menü seçimi döndürgeçle; Menü yalnız ana sayfadan sola (firmware 1.9.5)
+- A / bas / B kısayolları kaldırıldı (sayfa eklendikçe ölçeklenmiyordu). Menü'de bas → imleç (son açılan sayfada), çevir → seç, bas → aç; basılı tut ya da 15 sn → seçimden çık. Liste kaydırılır (3 satır görünür), ileride eklenen sayfalar sığar. A / B Menü'de de hızlı uygulamalarını açar.
+- Açık sayfadan basılı tutunca (sayfanın kendi işi yoksa) Menü listesine imleç o sayfadayken dönülür.
+- Döndürgeç adımı (wheelStep): Menü listenin sonunda durur ama yalnız ilk öğede (ana sayfa) sola çevirince gelir. Son uygulamadan sağa → ana sayfa (sarma kapalıysa durur); Menü'den sağa → ana sayfa, sola → son uygulama. Ayar sayfası önizlemesi aynı kuralı kullanır.

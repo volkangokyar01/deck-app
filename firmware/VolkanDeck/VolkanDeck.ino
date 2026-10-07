@@ -205,7 +205,7 @@ static void goSleep() {
 static void selectIndex(int i) {
   int n = items.size(); if (!n) return;
   if (S.wrap) i = (i % n + n) % n; else i = constrain(i, 0, n - 1);
-  if (i != sel) { sel = i; adjust = 0; subPage = 0; connEdit = false; dirty = true; evtSelect(); }
+  if (i != sel) { sel = i; adjust = 0; subPage = 0; connEdit = false; menuPick = false; dirty = true; evtSelect(); }
 }
 static Item* curItem() { return items.empty() ? nullptr : &items[sel]; }
 // the page on screen: a page opened inside the menu counts as that page
@@ -214,15 +214,16 @@ static int menuItemIndex() { for (int i = 0; i < (int)items.size(); i++) if (ite
 static void openPage(uint8_t k) {                // open Medya / Ses ve parlaklık / Bağlantılar inside the menu
   int i = menuItemIndex(); if (i < 0) return;
   if (sel != i) selectIndex(i);
-  if (subPage != k) { subPage = k; adjust = 0; connEdit = false; dirty = true; evtSelect(); }
+  if (subPage != k) { subPage = k; adjust = 0; connEdit = false; menuPick = false; dirty = true; evtSelect(); }
+  auto pages = menuPages();                      // the cursor waits on this page when you come back
+  for (int j = 0; j < (int)pages.size(); j++) if (pages[j] == k) menuCur = j;
 }
-// A / press / B on the menu list; false = the key has no page here (A / B then open their quick app)
-static bool menuKey(int key) {
-  auto pages = menuPages();
-  int i = menuIndexForKey(pages.size(), key);
-  if (i < 0) return false;
-  openPage(pages[i]);
-  return true;
+// press on the menu list: first press shows the cursor, the next one opens the page under it
+static void menuPress() {
+  auto pages = menuPages(); if (pages.empty()) return;
+  menuAt = millis(); dirty = true;
+  if (!menuPick) { menuPick = true; return; }
+  openPage(pages[constrain(menuCur, 0, (int)pages.size() - 1)]);
 }
 
 /* ---------- media & system pages ---------- */
@@ -343,6 +344,7 @@ static void connPoll() {
   uint32_t now = millis();
   if (bt.pairUntil && !btPairing()) { btPairStop(); toast("Eşleştirme süresi doldu"); dirty = true; }
   if (connEdit && now - connAt > 20000) { connEdit = false; connConfirmAt = 0; dirty = true; }
+  if (menuPick && now - menuAt > 15000) { menuPick = false; dirty = true; }
   uint8_t e = bt.evt;
   if (e) {
     bt.evt = BTE_NONE;
@@ -390,7 +392,7 @@ static void onPress() {
     case K_SYS: adjust = adjust == 1 ? 2 : 1; adjustAt = millis(); dirty = true; break;   // volume ↔ brightness
     case K_WIDGETS: break;
     case K_CONN: connPress(); break;
-    case K_MENU: menuKey(1); break;
+    case K_MENU: menuPress(); break;
     default: doLaunch(it.app);
   }
 }
@@ -404,10 +406,13 @@ static void handleInput() {
       uint8_t k = curKind();
       if (adjust && k == K_MEDIA) levelStep(true, steps);           // volume mode on the media page
       else if (adjust && k == K_SYS) levelStep(adjust == 1, steps);
+      else if (menuPick && k == K_MENU) {
+        int n = menuPages().size(); menuCur = constrain(menuCur + steps, 0, max(0, n - 1)); menuAt = millis(); dirty = true;
+      }
       else if (connEdit && k == K_CONN) {
         int n = connRows().size(); connCur = constrain(connCur + steps, 0, n - 1); connAt = millis(); connConfirmAt = 0; dirty = true;
       }
-      else selectIndex(sel + steps);
+      else { int i = sel; for (int s = 0; s < abs(steps); s++) i = wheelStep(i, steps > 0 ? 1 : -1); selectIndex(i); }
       evtInput(steps > 0 ? "cw" : "ccw");
     }
   }
@@ -429,7 +434,8 @@ static void handleInput() {
     if (k == K_MEDIA) { adjust = adjust ? 0 : 1; adjustAt = now; dirty = true; }
     else if (k == K_SYS && adjust) { adjust = 0; dirty = true; }
     else if (k == K_CONN && (connEdit || btPairing())) { connEdit = false; connConfirmAt = 0; if (btPairing()) btPairStop(); dirty = true; }
-    else if (subPage) { subPage = 0; adjust = 0; dirty = true; evtSelect(); }     // back to the menu list
+    else if (subPage) { subPage = 0; adjust = 0; menuPick = true; menuAt = now; dirty = true; evtSelect(); }   // back to the menu list
+    else if (k == K_MENU && menuPick) { menuPick = false; dirty = true; }
     else if (S.homeOn) selectIndex(0);
   }
   if (pressPendingAt && now - pressPendingAt >= 330) { pressPendingAt = 0; onPress(); }
@@ -440,7 +446,6 @@ static void handleInput() {
     if (k == K_MEDIA) mediaAction("prev", CC_PREV);
     else if (k == K_SYS) { toggleMute(); adjustAt = now; }
     else if (k == K_CONN && bleStarted) { btSetOff(!bt.off); connEdit = false; toast(bt.off ? "Bluetooth kapandı" : "Bluetooth açıldı"); dirty = true; }
-    else if (k == K_MENU && menuKey(0)) {}
     else doLaunch(appById(S.quickA));
   }
   int b = bB.poll(0);
@@ -448,7 +453,6 @@ static void handleInput() {
     evtInput("b"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("next", CC_NEXT);
     else if (k == K_SYS) { toggleMic(); if (adjust) adjustAt = now; }
-    else if (k == K_MENU && menuKey(2)) {}
     else doLaunch(appById(S.quickB));
   }
 
