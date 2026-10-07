@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.8.4)
+## Firmware (v1.8.5)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -199,3 +199,10 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Kartta VBUS algılama hattı yok: kablo bilgisayardan çekilince TinyUSB yalnız "suspend" verir, "mounted" bayrağı açık kalır. 1.8.3 bunu kablo sayıyordu.
 - Artık kablo = USB host bağlı ve uykuda değil, ya da şarj cihazı. Şarj cihazı gerilim sıçramasından bulunur: hızlı ortalama yavaş ortalamanın 0,06 V (BAT_STEP_V) üstüne çıkınca takıldı, altına inince çekildi sayılır; USB suspend de şarj cihazı bayrağını siler. Açılışta gerilim >4,25 V ise şarj cihazıyla açıldı sayılır.
 - Bilinen sınır: bilgisayar uykudayken (USB suspend) kablo takılı olsa da "şarj" görünmez, seviye pil hesabıyla devam eder.
+
+## 2026-10-07 — Windows'ta "Cihazınızı yeniden bağlamayı deneyin" (firmware 1.8.5)
+- Belirti: Windows'ta Bluetooth ayarları sürekli "yeniden bağlamayı deneyin" uyarısı veriyordu; cihaz yalnız Mac mini ile eşleşmişti.
+- Neden (büyük olasılıkla): kablo Windows'a takılı değilken masaüstü uygulaması 12 sn'de bir Web Bluetooth ile cihaza bağlanıyordu. Cihaz Windows'la eşleşmemişken her bağlantı Windows'un kendi eşleştirmesini başlatıyor, bağlantı kapanınca eşleştirme yarıda kalıyor ve uyarı tekrar tekrar çıkıyordu; Ayarlar'dan elle eşleştirme de bu denemelerle çakışıyordu.
+- Uygulama: Windows'ta Bluetooth ancak cihaz Windows'ta eşleşmiş görünüyorsa (Get-PnpDevice, sınıf Bluetooth, BTHLE\DEV_*, ad = cihaz adı; 60 sn önbellek) denenir; değilse kayda bir kez "Windows Ayarlar → Bluetooth ve cihazlar → Cihaz ekle" notu düşer. Başarısız denemelerden sonra bekleme 12 sn → 30 sn → 1 dk → 5 dk. Windows sorgulanamazsa engellenmez. macOS'ta değişiklik yok.
+- Firmware: `{"cmd":"ble_forget"}` bütün Bluetooth eşleşmelerini siler, bağlı bilgisayarları düşürür (yalnız USB'den). hello yanıtında `bonds` (eşleşme sayısı). Ayar sayfasında Cihaz kartında "Bluetooth eşleşmelerini sil" düğmesi (USB'de, 1.8.5+).
+- NimBLE en fazla 3 eşleşme tutar (CONFIG_BT_NIMBLE_MAX_BONDS 3); dördüncü bilgisayar en eskisini siler.

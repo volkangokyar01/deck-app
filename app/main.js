@@ -162,6 +162,22 @@ function setupBluetooth(wc) {
   session.defaultSession.setBluetoothPairingHandler?.((details, callback) => callback({ confirmed: details.pairingKind === 'confirm' || details.pairingKind === 'confirmPin' }));
 }
 ipcMain.handle('ble-ready', () => bluetoothReady());
+// Windows: connecting to a deck that is not paired in Windows makes Windows try to pair on its own and show
+// "Try connecting your device again" each time; the app only uses Bluetooth once Windows lists the deck.
+let blePairedCache = { name: '', at: 0, value: false };
+async function blePaired(name) {
+  if (!IS_WIN) return true;
+  name = String(name || 'Volkan Deck').slice(0, 40);
+  if (blePairedCache.name === name && Date.now() - blePairedCache.at < 60e3) return blePairedCache.value;
+  const q = name.replace(/'/g, "''");
+  const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
+    `[Console]::OutputEncoding=[Text.Encoding]::UTF8; @(Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'BTHLE\\DEV_*' -and $_.FriendlyName -eq '${q}' }).Count`], 15000);
+  const n = parseInt(r.stdout.trim(), 10);
+  const value = r.code !== 0 || isNaN(n) ? true : n > 0;    // if Windows can't be asked, don't block Bluetooth
+  blePairedCache = { name, at: Date.now(), value };
+  return value;
+}
+ipcMain.handle('ble-paired', (e, name) => blePaired(name));
 
 /* ---------------- Web Serial: auto-pick the deck, no chooser ---------------- */
 function isEsp(p) {

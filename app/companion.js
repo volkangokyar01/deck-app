@@ -74,7 +74,7 @@
 
   /* ---- automatic connection (main process picks the deck's port, no chooser) ---- */
   // USB first; with no cable to this computer, the deck's Bluetooth data channel (firmware 1.6.0+)
-  let bleReady = null, bleTriedAt = 0;
+  let bleReady = null, bleTriedAt = 0, bleFails = 0, bleUnpairedNote = false;
   // Is the deck plugged into this computer? getPorts() may be empty until a port was picked once,
   // so ask the main process too (it answers requestPort without a chooser).
   const usbDeck = async () => {
@@ -91,7 +91,9 @@
       }
       await connect(true);                                      // USB always first
       // No cable to this computer: the deck's Bluetooth data channel
-      const bleDue = !port && cfg.device.connection !== 'usb' && Date.now() - bleTriedAt > 12000;
+      // after failed tries wait longer (12 s, 30 s, 1 min, then 5 min) so Windows isn't asked to pair over and over
+      const bleWait = [12e3, 30e3, 60e3][bleFails] || 300e3;
+      const bleDue = !port && cfg.device.connection !== 'usb' && Date.now() - bleTriedAt > bleWait;
       if (bleDue) {
         if (!('bluetooth' in navigator)) { if (bleReady !== false) log('er', '  Bluetooth: bu pencerede Web Bluetooth yok'); bleReady = false; }
         if (bleReady === null) {
@@ -102,7 +104,14 @@
           bleTriedAt = Date.now();
           const avail = await navigator.bluetooth.getAvailability?.().catch(() => true);
           if (avail === false) log('er', '  Bluetooth: bilgisayarın Bluetooth\'u kapalı ya da uygulamanın izni yok');
-          else await connect(true, true);
+          else if (!(await deck.blePaired?.(cfg.device.name || 'Volkan Deck').catch(() => true) ?? true)) {
+            if (!bleUnpairedNote) log('', '  Bluetooth: cihaz bu bilgisayarla eşleşmemiş. Windows Ayarlar → Bluetooth ve cihazlar → Cihaz ekle → Bluetooth ile bir kez eşleştir.');
+            bleUnpairedNote = true;
+          } else {
+            bleUnpairedNote = false;
+            await connect(true, true);
+            bleFails = port ? 0 : bleFails + 1;
+          }
         }
       }
     } catch (e) { log('er', '  Bağlantı: ' + (e && e.message || e)); } finally { connecting = false; }

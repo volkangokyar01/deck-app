@@ -157,6 +157,7 @@ static void handleLine(char* buf, size_t len) {
     r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleMtuOf(replyConn);
     r["anim"] = anim.frames; r["animLight"] = animLight.frames;   // frames stored per theme (0: none)
     r["reset"] = bootReset; if (bootCrash.length()) r["crash"] = bootCrash;
+    r["bonds"] = bleBondCount();
     r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); r["block"] = (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024);
     sendJson(r);
   }
@@ -306,6 +307,10 @@ static void handleLine(char* buf, size_t len) {
     if (replySrc == SRC_BLE) { replyErr(id, "usb_only"); return; }
     replyOk(id); Serial.flush(); delay(200);
     usb_persist_restart(RESTART_BOOTLOADER);
+  }
+  else if (!strcmp(cmd, "ble_forget")) {         // drop every Bluetooth pairing; computers pair again from scratch
+    if (replySrc == SRC_BLE) { replyErr(id, "usb_only"); return; }
+    bleForget(); replyOk(id);
   }
   else if (!strcmp(cmd, "restart")) { replyOk(id); delay(200); ESP.restart(); }
   else replyErr(id, "unknown_cmd");

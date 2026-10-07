@@ -125,6 +125,14 @@ static void bleRename(const String& name) {
   adv->stop(); bleAdvData(name); adv->start();
 }
 
+static int bleBondCount() { return bleStarted ? NimBLEDevice::getNumBonds() : 0; }
+static void bleForget() {
+  if (!bleStarted) return;
+  for (uint16_t h : bleServer->getPeerDevices()) bleServer->disconnect(h);   // the links use the old keys
+  NimBLEDevice::deleteAllBonds();
+  NimBLEDevice::startAdvertising();
+}
+
 static void bleBattery(uint8_t pct) { if (bleHid) bleHid->setBatteryLevel(pct, bleConnected); }
 
 static void hidBegin() {
