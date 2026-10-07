@@ -17,12 +17,13 @@ parts = {
     'v6_baski_cubugu_sol': on_bed(C.lbar if False else to_b(C.lbar)),   # board frame: back face is the lowest -> on the bed
     'v6_baski_cubugu_sag': on_bed(to_b(C.rbar)),
     'v6_pim': on_bed(C.pin_part),
+    'v6_dugme': on_bed(C.knob),
 }
 for k, m in parts.items():
     v, t = tris(m); save_stl(os.path.join(HERE, k + '.stl'), v[t]); b = m.bounding_box()
     print(f"{k:22s} bodies={len(m.decompose())} ext=({b[3]-b[0]:.1f},{b[4]-b[1]:.1f},{b[5]-b[2]:.1f}) vol={m.volume()/1000:.2f}cm3 zmin={b[2]:.2f}")
 # plate (P2S 256 x 256)
-place = {'v6_govde': (8, 8), 'v6_baski_cubugu_sol': (130, 10), 'v6_baski_cubugu_sag': (145, 10), **{f'v6_pim_{i+1}': (165, 10 + 6 * i) for i in range(6)}}
+place = {'v6_govde': (8, 8), 'v6_baski_cubugu_sol': (130, 10), 'v6_baski_cubugu_sag': (145, 10), 'v6_dugme': (190, 10), **{f'v6_pim_{i+1}': (165, 10 + 6 * i) for i in range(6)}}
 def part_of(nm): return parts['v6_pim' if nm.startswith('v6_pim') else nm]
 def P(nm): return part_of(nm).translate((place[nm][0], place[nm][1], 0))
 for nm in place:

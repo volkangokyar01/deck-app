@@ -15,6 +15,7 @@
 #   * USB-C: plain rounded-rectangle opening and tunnel (was 14 x 9 with a 45 deg peak), closed all the way
 #     to the socket so the inside of the case can't be seen; a notch under the tunnel for the battery plug
 #     (it plugs into the JST socket from the board's end).
+#   * knob: 24 mm instead of 30 (same height and shaft fit), fine knurl, V ring, dished top, indicator groove.
 #   * feet: recesses for 15 mm round self-adhesive pads (were 10 mm), moved slightly inward.
 # Everything outside is unchanged: the v5 back cover, knob and key plungers still fit.
 # Board frame (from v4): x along the board (0 = USB end), y across, z = face normal (0 = glass front on the
@@ -134,6 +135,40 @@ def printed_pin():
     head = Manifold.cube((1.6, 3.0, 1.2)).translate((-1.6, -1.5, 0))
     return shaft + tip + head
 pin_part = printed_pin()
+
+# ---------------- knob v6: smaller (30 -> 24 mm), same shaft interface ----------------
+# Printed upright (bottom on the bed): no supports, the top dish and the indicator come out clean.
+# Inside (same as v4): nut + bushing clearance, then a D hole (flat toward the indicator) up to 1.5 mm below
+# the top. The cavity roof is stepped with 45 deg cones so nothing bridges.
+KN_D, KN_H = 24.0, 18.0
+def make_knob():
+    r = KN_D / 2
+    seg = 160
+    cyl = lambda h, rr, z=0.0: Manifold.cylinder(h, rr, circular_segments=seg).translate((0, 0, z))
+    # body: 0.6 chamfer at the foot, 1.4 chamfer at the top edge
+    kn = Manifold.batch_hull([cyl(0.01, r - 0.6), cyl(KN_H - 1.4 - 0.6, r, 0.6), cyl(0.01, r - 1.4, KN_H - 0.01)])
+    # fine knurl on the grip band (z 1.2 .. 12.0): 60 shallow round flutes
+    n = 60
+    flutes = [Manifold.cylinder(10.8, 0.6, circular_segments=12).translate((r * math.cos(t), r * math.sin(t), 1.2)) for t in np.linspace(0, 2 * math.pi, n, endpoint=False)]
+    kn -= U(flutes)
+    # V ring between grip and the smooth cap (45 deg flanks, printable)
+    ring = CrossSection([[(r + 1, 12.6), (r + 1, 14.0), (r - 0.7, 13.3)]]).revolve(seg)
+    kn -= ring
+    # top: shallow dish, 0.6 deep in the middle, 18 mm across
+    dish = Manifold.batch_hull([cyl(0.01, 9.0, KN_H - 0.01), cyl(0.01, 0.01, KN_H - 0.6), cyl(1, 9.0, KN_H)])
+    kn -= dish
+    # indicator: radial groove from the dish edge over the top chamfer (flat of the D faces it)
+    ind = Manifold.cube((1.0, 5.0, 1.2)).translate((-0.5, r - 4.6, KN_H - 0.7))
+    kn -= ind
+    # inside: nut (13.6) -> 45 deg -> bushing (7.6) -> 45 deg -> D hole
+    cav = Manifold.batch_hull([cyl(2.6, 6.8, -0.1), cyl(0.01, 3.8, 5.6)])
+    cav += cyl(6.4, 3.8, -0.1)
+    cav += Manifold.batch_hull([cyl(0.01, 3.8, 6.2), cyl(0.01, 3.1, 6.9)])
+    kn -= cav
+    dhole = CrossSection.circle(3.1, 48) ^ CrossSection.square((10, 10), True).translate((0, -5 + 1.6))
+    kn -= dhole.extrude(16.5 - 6.0).translate((0, 0, 6.0))
+    return kn
+knob = make_knob()
 
 # ---------------- ghosts / checks ----------------
 board = D.board_proxy()
