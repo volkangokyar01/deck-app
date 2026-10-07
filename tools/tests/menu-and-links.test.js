@@ -66,3 +66,15 @@ test('knob: the menu opens only by turning left on home; right past the last app
   assert.match(read('firmware/VolkanDeck/VolkanDeck.ino'), /i = wheelStep\(i, steps > 0 \? 1 : -1\)/);
   assert.match(web, /const i=wheelStep\(sel,c==="cw"\?1:-1\)/);
 });
+
+test('A / B can open a menu page; config keeps the page ids', () => {
+  const ino = read('firmware/VolkanDeck/VolkanDeck.ino'), ui = read('firmware/VolkanDeck/Ui.h'), web = read('web/body.html');
+  assert.match(ui, /id == "__media" \? K_MEDIA : id == "__system" \? K_SYS : id == "__connections" \? K_CONN : 0/);
+  assert.match(ino, /else quickAct\(S\.quickA\);/);
+  assert.match(ino, /else quickAct\(S\.quickB\);/);
+  const q = ino.slice(ino.indexOf('static void quickAct('), ino.indexOf('// press on the menu list'));
+  assert.match(q, /if \(!pg\) \{ doLaunch\(appById\(id\)\); return; \}/);
+  assert.match(q, /openPage\(pg\);/);
+  assert.match(web, /qref=v=>\["__media","__system","__connections"\]\.includes\(v\)\?v:ref\(v\)/, 'device projection keeps page ids');
+  assert.match(web, /!\["__media","__system","__connections"\]\.includes\(c\.quick\[k\]\) && !c\.apps\.some/, 'migration keeps page ids');
+});

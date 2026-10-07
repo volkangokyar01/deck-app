@@ -69,7 +69,7 @@ void selectIndex(int n){act();sel=n;} void levelStep(bool,int){act();}
 void evtInput(const char*){assert(mhz==240);} bool companionOn(){return false;}
 void cyclePlayer(){act();} void onPress(){act();}
 void mediaAction(const char*,int){act();} void toggleMute(){act();} void toggleMic(){act();}
-const char* appById(const char* a){return a;} void doLaunch(const char*){act();} void goSleep(){act();}
+const char* appById(const char* a){return a;} void doLaunch(const char*){act();} void quickAct(const char*){act();} void goSleep(){act();}
 const int CC_PREV=1,CC_NEXT=2,SC_BG=0,FB18=0,SC_SUB=0;
 namespace textdatum_t{const int middle_center=0;}
 void text(const char*,int,int,int,int,int){} void delay(int){}

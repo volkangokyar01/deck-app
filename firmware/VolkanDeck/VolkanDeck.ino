@@ -218,6 +218,15 @@ static void openPage(uint8_t k) {                // open Medya / Ses ve parlakl�
   auto pages = menuPages();                      // the cursor waits on this page when you come back
   for (int j = 0; j < (int)pages.size(); j++) if (pages[j] == k) menuCur = j;
 }
+// A / B: an app, or a page of the menu
+static void doLaunch(App* a);
+static void quickAct(const String& id) {
+  uint8_t pg = quickPage(id);
+  if (!pg) { doLaunch(appById(id)); return; }
+  bool on = pg == K_MEDIA ? S.mediaOn : pg == K_SYS ? S.sysOn : S.connOn;
+  if (!on || menuItemIndex() < 0) { toast(quickPageName(pg) + " ekranı kapalı"); dirty = true; return; }
+  openPage(pg);
+}
 // press on the menu list: first press shows the cursor, the next one opens the page under it
 static void menuPress() {
   auto pages = menuPages(); if (pages.empty()) return;
@@ -446,14 +455,14 @@ static void handleInput() {
     if (k == K_MEDIA) mediaAction("prev", CC_PREV);
     else if (k == K_SYS) { toggleMute(); adjustAt = now; }
     else if (k == K_CONN && bleStarted) { btSetOff(!bt.off); connEdit = false; toast(bt.off ? "Bluetooth kapandı" : "Bluetooth açıldı"); dirty = true; }
-    else doLaunch(appById(S.quickA));
+    else quickAct(S.quickA);
   }
   int b = bB.poll(0);
   if (b == 1 && !wakeUp()) {
     evtInput("b"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("next", CC_NEXT);
     else if (k == K_SYS) { toggleMic(); if (adjust) adjustAt = now; }
-    else doLaunch(appById(S.quickB));
+    else quickAct(S.quickB);
   }
 
   int p = bPwr.poll(2000);

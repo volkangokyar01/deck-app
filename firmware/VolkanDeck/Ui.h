@@ -197,14 +197,20 @@ static void drawStatus(uint16_t dot, const char* link, int x0 = 2) {
   text(String(batPct) + "%", 318, 7, FM9, SC_SUB, textdatum_t::middle_right);
 }
 
+// A / B can open an app or a menu page (1.9.6): "__media", "__system", "__connections"
+static uint8_t quickPage(const String& id) {
+  return id == "__media" ? K_MEDIA : id == "__system" ? K_SYS : id == "__connections" ? K_CONN : 0;
+}
+static String quickPageName(uint8_t k) { return k == K_MEDIA ? "Medya" : k == K_SYS ? "Ses ve parlaklık" : "Bağlantılar"; }
 static void drawQuickSlots() {
   const String* q[2] = { &S.quickA, &S.quickB };
   for (int i = 0; i < 2; i++) {
     int x = i ? 161 : 2;
     spr.fillRoundRect(x, 142, 157, 26, 6, SC_PANEL);
     text(i ? "B" : "A", x + 8, 155, FB11, SC_DIM);
-    App* a = appById(*q[i]);
+    App* a = appById(*q[i]); uint8_t pg = quickPage(*q[i]);
     if (a) { bubble(false, a, x + 28, 155, 10, 1); text(fit(a->name, 108, FSB12), x + 43, 155, FSB12, SC_TEXT); }
+    else if (pg) { bubble(false, nullptr, x + 28, 155, 10, 1, pg); text(fit(quickPageName(pg), 108, FSB12), x + 43, 155, FSB12, SC_TEXT); }
     else text("Atanmadı", x + 24, 155, FSB12, SC_DIM);
   }
 }
@@ -550,10 +556,11 @@ static void drawHome() {
   // A / B under the animation, one row each (A on top): letter, the app's icon, name
   const String* q[2] = { &S.quickA, &S.quickB };
   for (int i = 0; i < 2; i++) {
-    int y = i ? 151 : 132; App* a = appById(*q[i]);
+    int y = i ? 151 : 132; App* a = appById(*q[i]); uint8_t pg = quickPage(*q[i]);
     spr.fillRoundRect(2, y, 128, 17, 4, SC_PANEL);
     text(i ? "B" : "A", 7, y + 8, FB10, SC_DIM);
     if (a) { miniIcon(a, 22, y + 8); text(fit(a->name, 94, FSB11), 32, y + 8, FSB11, SC_SUB); }
+    else if (pg) { bubble(false, nullptr, 22, y + 8, 7, 1, pg); text(fit(quickPageName(pg), 94, FSB11), 32, y + 8, FSB11, SC_SUB); }
     else text("-", 18, y + 8, FSB11, SC_DIM);
   }
 }
