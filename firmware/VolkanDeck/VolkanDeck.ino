@@ -295,6 +295,59 @@ static void doLaunch(App* a) {
   dirty = true;
 }
 
+/* ---------- Bağlantılar page ---------- */
+static void connAct() {
+  auto rows = connRows();
+  if (connCur < 0 || connCur >= (int)rows.size()) return;
+  const ConnRow& r = rows[connCur];
+  if (r.type != CR_FORGET) connConfirmAt = 0;
+  switch (r.type) {
+    case CR_ALL: btSelectAll(); toast("Eşleşmiş bütün bilgisayarlar bağlanabilir"); connEdit = false; break;
+    case CR_HOST: btSelect(r.a); toast(btName(r.a) + " seçildi"); connEdit = false; break;
+    case CR_PAIR: btPairStart(); connEdit = false; break;
+    case CR_FORGET:
+      if (connConfirmAt && millis() - connConfirmAt < 4000) { connConfirmAt = 0; bleForget(); connCur = 0; connEdit = false; toast("Eşleşmeler silindi"); }
+      else connConfirmAt = millis() | 1;
+      break;
+  }
+  dirty = true;
+}
+static void connPress() {
+  if (!bleStarted) { toast("Bluetooth kapalı: uygulamada Bağlantı → Otomatik"); dirty = true; return; }
+  if (bt.off) { toast("A: Bluetooth'u aç"); dirty = true; return; }
+  if (btPairing()) { btPairStop(); toast("Eşleştirme iptal"); dirty = true; return; }
+  if (!connEdit) { auto rows = connRows(); connEdit = true; connCur = connActiveRow(rows); connConfirmAt = 0; connAt = millis(); dirty = true; return; }
+  connAt = millis(); connAct();
+}
+// Bluetooth events from the NimBLE task: toasts, pairing end, names
+static void connPoll() {
+  uint32_t now = millis();
+  if (bt.pairUntil && !btPairing()) { btPairStop(); toast("Eşleştirme süresi doldu"); dirty = true; }
+  if (connEdit && now - connAt > 20000) { connEdit = false; connConfirmAt = 0; dirty = true; }
+  uint8_t e = bt.evt;
+  if (e) {
+    bt.evt = BTE_NONE;
+    uint8_t a[6]; memcpy(a, bt.evtAddr, 6);
+    static uint32_t rejAt = 0;
+    switch (e) {
+      case BTE_PAIRED:
+        btPairStop();
+        if (bt.hasSel) btSelect(a);          // "only this computer" moves to the new one
+        toast("Eşleşti: " + btName(a), 3000); break;
+      case BTE_PAIR_FAIL: toast(btPairing() ? "Eşleşme başarısız, tekrar dene" : "Eşleştirme kapalı: Bağlantılar → Yeni cihaz", 3500); break;
+      case BTE_UNPAIRED: toast("Eşleştirme kapalı: Bağlantılar → Yeni cihaz", 3500); break;
+      case BTE_REJECT: if (now - rejAt > 30000) { rejAt = now; toast(btName(a) + " seçili değil"); } break;
+      case BTE_CONN: toast(btName(a) + " bağlandı"); break;
+      default: break;
+    }
+    if (curKind() == K_CONN || e != BTE_DISC) dirty = true;
+  }
+  static uint32_t tName = 0;
+  if (now - tName > 3000) { tName = now; btLearnNames(); }
+  static uint32_t tPair = 0;
+  if (btPairing() && curKind() == K_CONN && now - tPair > 1000) { tPair = now; dirty = true; }   // countdown
+}
+
 static void onPress() {
   ecoExit();
   if (items.empty()) return;
@@ -304,6 +357,7 @@ static void onPress() {
     case K_MEDIA: mediaAction("play_pause", CC_PLAY); break;
     case K_SYS: adjust = adjust == 1 ? 2 : 1; adjustAt = millis(); dirty = true; break;   // volume ↔ brightness
     case K_WIDGETS: break;
+    case K_CONN: connPress(); break;
     default: doLaunch(it.app);
   }
 }
@@ -317,6 +371,9 @@ static void handleInput() {
       uint8_t k = curKind();
       if (adjust && k == K_MEDIA) levelStep(true, steps);           // volume mode on the media page
       else if (adjust && k == K_SYS) levelStep(adjust == 1, steps);
+      else if (connEdit && k == K_CONN) {
+        int n = connRows().size(); connCur = constrain(connCur + steps, 0, n - 1); connAt = millis(); connConfirmAt = 0; dirty = true;
+      }
       else selectIndex(sel + steps);
       evtInput(steps > 0 ? "cw" : "ccw");
     }
@@ -338,6 +395,7 @@ static void handleInput() {
     uint8_t k = curKind();
     if (k == K_MEDIA) { adjust = adjust ? 0 : 1; adjustAt = now; dirty = true; }
     else if (k == K_SYS && adjust) { adjust = 0; dirty = true; }
+    else if (k == K_CONN && (connEdit || btPairing())) { connEdit = false; connConfirmAt = 0; if (btPairing()) btPairStop(); dirty = true; }
     else if (S.homeOn) selectIndex(0);
   }
   if (pressPendingAt && now - pressPendingAt >= 330) { pressPendingAt = 0; onPress(); }
@@ -347,6 +405,7 @@ static void handleInput() {
     evtInput("a"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("prev", CC_PREV);
     else if (k == K_SYS) { toggleMute(); adjustAt = now; }
+    else if (k == K_CONN && bleStarted) { btSetOff(!bt.off); connEdit = false; toast(bt.off ? "Bluetooth kapandı" : "Bluetooth açıldı"); dirty = true; }
     else doLaunch(appById(S.quickA));
   }
   int b = bB.poll(0);
@@ -450,6 +509,7 @@ void loop() {
   if (mailNew) { mailNew = false; mailWake(); }
   if (mailActive() && !screenOff) mailInput();
   crumbSet("input"); handleInput(); crumbClear();
+  connPoll();
 
   uint32_t now = millis();
   static uint32_t tBat = 0, tStatus = 0, tFrame = 0, tTheme = 0;

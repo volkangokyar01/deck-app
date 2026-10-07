@@ -25,3 +25,22 @@ test('firmware clears Bluetooth pairings only over USB and reports the bond coun
   assert.match(proto, /r\["bonds"\] = bleBondCount\(\);/);
   assert.match(hid, /NimBLEDevice::deleteAllBonds\(\);/);
 });
+
+test('Bağlantılar page: new computers pair only in pairing mode, the chosen one is enforced', () => {
+  const hid = read('firmware/VolkanDeck/Hid.h'), ui = read('firmware/VolkanDeck/Ui.h'), ino = read('firmware/VolkanDeck/VolkanDeck.ino');
+  const store = read('firmware/VolkanDeck/Store.h'), web = read('web/body.html');
+  const begin = hid.slice(hid.indexOf('static void bleBegin('), hid.indexOf('static void bleRename('));
+  assert.match(begin, /setSecurityAuth\(false, false, true\)/, 'bonding off outside pairing mode');
+  const start = hid.slice(hid.indexOf('static void btPairStart('), hid.indexOf('static void btPairStop('));
+  assert.match(start, /setSecurityAuth\(true, false, true\)/);
+  assert.match(hid, /bt\.hasSel && memcmp\(id, bt\.sel, 6\)/, 'other computers are dropped when one is chosen');
+  assert.match(hid, /if \(bt\.off\) \{ s->disconnect/);
+  assert.match(ui, /if \(S\.connOn\) items\.push_back\(\{ false, nullptr, K_CONN \}\)/);
+  assert.match(ui, /WI-FI/);
+  assert.match(ino, /case K_CONN: connPress\(\); break;/);
+  assert.match(ino, /connPoll\(\);/);
+  assert.match(store, /"connections":\{"enabled":true\}/);
+  assert.match(store, /N\.connOn = pg\["connections"\]\["enabled"\] \| true;/);
+  assert.match(web, /connections:\{enabled:true\}/);
+  assert.match(web, /function drawConnPage\(\)/);
+});

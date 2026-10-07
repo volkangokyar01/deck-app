@@ -105,7 +105,7 @@
           const avail = await navigator.bluetooth.getAvailability?.().catch(() => true);
           if (avail === false) log('er', '  Bluetooth: bilgisayarın Bluetooth\'u kapalı ya da uygulamanın izni yok');
           else if (!(await deck.blePaired?.(cfg.device.name || 'Volkan Deck').catch(() => true) ?? true)) {
-            if (!bleUnpairedNote) log('', '  Bluetooth: cihaz bu bilgisayarla eşleşmemiş. Windows Ayarlar → Bluetooth ve cihazlar → Cihaz ekle → Bluetooth ile bir kez eşleştir.');
+            if (!bleUnpairedNote) log('', '  Bluetooth: cihaz bu bilgisayarla eşleşmemiş. Cihazda Bağlantılar → Yeni cihaz eşleştir, sonra Windows Ayarlar → Bluetooth ve cihazlar → Cihaz ekle → Bluetooth.');
             bleUnpairedNote = true;
           } else {
             bleUnpairedNote = false;
@@ -124,7 +124,7 @@
       serialNote('Uygulamaları doğrudan açmak için kartta firmware v' + MIN_FW + ' gerekiyor (kartta v' + (deviceInfo.fw || '?') + ' var). Cihaz ayarları → Firmware yükle ile güncelle; o zamana kadar cihaz eski klavye yöntemiyle açar.');
       fwNeeded = true; renderStatus(); renderEditor();
     } else {
-      try { await send({ cmd: 'companion', os: HOST, mediaLaunch: true, ack: true }, 2500, true); direct = true; } catch (e) {}
+      try { const host = port?.isBle ? await deck.hostName?.().catch(() => '') : ''; await send({ cmd: 'companion', os: HOST, mediaLaunch: true, ack: true, ...(host ? { host } : {}) }, 2500, true); direct = true; } catch (e) {}
     }
     pushStatus();
     await pollStats(true);

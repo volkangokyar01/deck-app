@@ -157,7 +157,7 @@ static void handleLine(char* buf, size_t len) {
     r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleMtuOf(replyConn);
     r["anim"] = anim.frames; r["animLight"] = animLight.frames;   // frames stored per theme (0: none)
     r["reset"] = bootReset; if (bootCrash.length()) r["crash"] = bootCrash;
-    r["bonds"] = bleBondCount();
+    r["bonds"] = bleBondCount(); r["btOff"] = bt.off;
     r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); r["block"] = (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024);
     sendJson(r);
   }
@@ -258,6 +258,7 @@ static void handleLine(char* buf, size_t len) {
     if (replySrc == SRC_BLE) { companionBleAt = companionAt; bleHostConn = replyConn; } else companionUsbAt = companionAt;
     const char* os = doc["os"] | "";
     if (*os) S.hostMac = !strcmp(os, "mac");
+    if (replySrc == SRC_BLE && doc["host"].is<const char*>()) btNameFromConn(replyConn, doc["host"]);
     if (doc["ack"] | false) { JsonDocument r; r["id"] = id; r["ok"] = true; r["fw"] = FW_VERSION; sendJson(r); }
   }
   else if (!strcmp(cmd, "stats")) parseStats(doc.as<JsonObjectConst>());   // home-screen widgets, pushed by the desktop app (no reply)

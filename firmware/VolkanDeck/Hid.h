@@ -50,17 +50,57 @@ static const uint8_t HID_MAP[] = {
   0xC0
 };
 
+/* ---------- Bluetooth computers (1.9.0): chosen on the device, Bağlantılar page ----------
+   Pairing only in pairing mode (bonding is off otherwise, so a stray "Add device" can't pair).
+   Mode "all": every paired computer may connect. Mode "one": only the chosen one; others are
+   dropped as soon as their link is encrypted (that is when their identity address is known).
+   Callbacks run on the NimBLE task: they only set plain fields, the main loop does the rest. */
+struct BtHost { uint8_t a[6]; };
+struct BtState {
+  bool off = false;                    // Bluetooth switched off on the device (saved)
+  bool hasSel = false; uint8_t sel[6]; // chosen computer (saved), else every paired one
+  volatile uint32_t pairUntil = 0;     // pairing mode end (millis), 0 = off
+  volatile uint8_t evt = 0;            // last event for the main loop (BTE_*)
+  volatile int evtCode = 0;
+  uint8_t evtAddr[6];
+  volatile bool newBond = false;
+  uint8_t old[4][6]; uint8_t oldN = 0;  // computers paired before pairing mode started
+};
+enum : uint8_t { BTE_NONE = 0, BTE_CONN, BTE_DISC, BTE_PAIRED, BTE_PAIR_FAIL, BTE_REJECT, BTE_UNPAIRED };
+BtState bt;
+static void btEvt(uint8_t e, int code, const uint8_t* a) { if (a) memcpy(bt.evtAddr, a, 6); bt.evtCode = code; bt.evt = e; }
+static bool btPairing() { return bt.pairUntil && (int32_t)(millis() - bt.pairUntil) < 0; }
+static void btAdvertise() { if (bleStarted && !bt.off) NimBLEDevice::startAdvertising(); }
+
 class BleCb : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, NimBLEConnInfo& ci) override {
     bleConns++; bleConnected = true;
-    if (bleConns < 2) NimBLEDevice::startAdvertising();   // stay visible so the desktop app can find us while the OS holds the keyboard link
+    if (bt.off) { s->disconnect(ci.getConnHandle()); return; }
+    if (bleConns < 2) btAdvertise();   // stay visible so the desktop app can find us while the OS holds the keyboard link
   }
   void onDisconnect(NimBLEServer* s, NimBLEConnInfo& ci, int reason) override {
     if (bleConns > 0) bleConns--;
     bleConnected = bleConns > 0;
     if (ci.getConnHandle() == bleHostConn) bleHostConn = BLE_HS_CONN_HANDLE_NONE;
     if (bleDropHook) bleDropHook(ci.getConnHandle());
-    NimBLEDevice::startAdvertising();
+    btEvt(BTE_DISC, reason, ci.getIdAddress().getVal());
+    btAdvertise();
+  }
+  void onAuthenticationComplete(NimBLEConnInfo& ci) override {
+    const uint8_t* id = ci.getIdAddress().getVal();
+    if (!ci.isEncrypted()) { btEvt(BTE_PAIR_FAIL, 0, id); return; }
+    if (!ci.isBonded()) {             // encrypted but not bonded: paired outside pairing mode
+      btEvt(BTE_UNPAIRED, 0, id); bleServer->disconnect(ci.getConnHandle()); return;
+    }
+    if (btPairing()) {
+      bool known = false;
+      for (uint8_t i = 0; i < bt.oldN; i++) if (!memcmp(bt.old[i], id, 6)) known = true;
+      if (!known) { bt.newBond = true; btEvt(BTE_PAIRED, 0, id); return; }
+    }
+    if (bt.hasSel && memcmp(id, bt.sel, 6) && !btPairing()) {
+      btEvt(BTE_REJECT, 0, id); bleServer->disconnect(ci.getConnHandle()); return;
+    }
+    btEvt(BTE_CONN, 0, id);
   }
 };
 
@@ -88,10 +128,12 @@ static void bleAdvData(const String& name) {
   adv->enableScanResponse(true);
 }
 
+static void btLoad();
 static void bleBegin(const String& name) {
   if (bleStarted) return;
+  btLoad();
   NimBLEDevice::init(name.c_str());
-  NimBLEDevice::setSecurityAuth(true, false, true);
+  NimBLEDevice::setSecurityAuth(false, false, true);   // bonding only in pairing mode (btPairStart)
   NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
   bleServer = NimBLEDevice::createServer();
   bleServer->setCallbacks(new BleCb());
@@ -114,23 +156,127 @@ static void bleBegin(const String& name) {
   // (sent now to connected ones, on reconnect to the others). Once per firmware version.
   { Preferences pr; if (pr.begin("vdble", false)) { if (pr.getString("fw", "") != FW_VERSION) { bleServer->sendServiceChangedIndication(); pr.putString("fw", FW_VERSION); } pr.end(); } }
   bleAdvData(name);
-  NimBLEDevice::getAdvertising()->start();
   bleStarted = true;
+  btAdvertise();
 }
 
 static void bleRename(const String& name) {
   if (!bleStarted) return;
   NimBLEDevice::setDeviceName(name.c_str());
   NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
-  adv->stop(); bleAdvData(name); adv->start();
+  adv->stop(); bleAdvData(name); btAdvertise();
 }
 
 static int bleBondCount() { return bleStarted ? NimBLEDevice::getNumBonds() : 0; }
+static void btDropAll() { if (bleStarted) for (uint16_t h : bleServer->getPeerDevices()) bleServer->disconnect(h); }
+
+// names of paired computers: NVS "vdbt", key "n" + 12 hex digits of the identity address
+static String btKey(const uint8_t* a) { char k[14]; snprintf(k, sizeof k, "n%02x%02x%02x%02x%02x%02x", a[5], a[4], a[3], a[2], a[1], a[0]); return k; }
+static String btName(const uint8_t* a) {
+  Preferences pr; String n;
+  if (pr.begin("vdbt", true)) { n = pr.getString(btKey(a).c_str(), ""); pr.end(); }
+  if (!n.length()) { char d[24]; snprintf(d, sizeof d, "Bilgisayar %02X%02X", a[1], a[0]); n = d; }
+  return n;
+}
+static bool btHasName(const uint8_t* a) { Preferences pr; bool h = false; if (pr.begin("vdbt", true)) { h = pr.isKey(btKey(a).c_str()); pr.end(); } return h; }
+static void btSetName(const uint8_t* a, const String& name) {
+  String n = name; n.trim(); if (!n.length()) return;
+  if (n.length() > 28) n = n.substring(0, 28);
+  Preferences pr; if (pr.begin("vdbt", false)) { if (pr.getString(btKey(a).c_str(), "") != n) pr.putString(btKey(a).c_str(), n); pr.end(); }
+}
+static void btSave() {
+  Preferences pr;
+  if (pr.begin("vdbt", false)) { pr.putBool("off", bt.off); if (bt.hasSel) pr.putBytes("sel", bt.sel, 6); else pr.remove("sel"); pr.end(); }
+}
+static void btLoad() {
+  Preferences pr;
+  if (pr.begin("vdbt", true)) { bt.off = pr.getBool("off", false); bt.hasSel = pr.getBytes("sel", bt.sel, 6) == 6; pr.end(); }
+}
+// paired computers (identity addresses), oldest first
+static std::vector<BtHost> btHosts() {
+  std::vector<BtHost> v; if (!bleStarted) return v;
+  int n = NimBLEDevice::getNumBonds();
+  for (int i = 0; i < n; i++) { BtHost h; memcpy(h.a, NimBLEDevice::getBondedAddress(i).getVal(), 6); v.push_back(h); }
+  return v;
+}
+// connection handle of a paired computer, or NONE
+static uint16_t btConnOf(const uint8_t* a) {
+  if (!bleStarted) return BLE_HS_CONN_HANDLE_NONE;
+  for (uint16_t h : bleServer->getPeerDevices()) {
+    NimBLEConnInfo ci = bleServer->getPeerInfoByHandle(h);
+    if (ci.isEncrypted() && !memcmp(ci.getIdAddress().getVal(), a, 6)) return h;
+  }
+  return BLE_HS_CONN_HANDLE_NONE;
+}
+static void btSelectAll() { bt.hasSel = false; btSave(); }
+static void btSelect(const uint8_t* a) {
+  memcpy(bt.sel, a, 6); bt.hasSel = true; btSave();
+  if (!bleStarted) return;
+  for (uint16_t h : bleServer->getPeerDevices()) {   // drop the other computers now
+    NimBLEConnInfo ci = bleServer->getPeerInfoByHandle(h);
+    if (memcmp(ci.getIdAddress().getVal(), a, 6)) bleServer->disconnect(h);
+  }
+}
+static void btPairStart(uint32_t ms = 90000) {
+  if (!bleStarted || bt.off) return;
+  bt.newBond = false; bt.oldN = 0;
+  for (auto& h : btHosts()) if (bt.oldN < 4) memcpy(bt.old[bt.oldN++], h.a, 6);
+  NimBLEDevice::setSecurityAuth(true, false, true);
+  bt.pairUntil = (millis() + ms) | 1;
+  btAdvertise();
+}
+static void btPairStop() { bt.pairUntil = 0; if (bleStarted) NimBLEDevice::setSecurityAuth(false, false, true); }
+static void btSetOff(bool off) {
+  bt.off = off; btSave();
+  if (!bleStarted) return;
+  if (off) { btPairStop(); NimBLEDevice::stopAdvertising(); btDropAll(); } else btAdvertise();
+}
 static void bleForget() {
   if (!bleStarted) return;
-  for (uint16_t h : bleServer->getPeerDevices()) bleServer->disconnect(h);   // the links use the old keys
+  btPairStop(); btDropAll();   // the links use the old keys
   NimBLEDevice::deleteAllBonds();
-  NimBLEDevice::startAdvertising();
+  Preferences pr; if (pr.begin("vdbt", false)) { pr.clear(); pr.putBool("off", bt.off); pr.end(); }
+  bt.hasSel = false;
+  btAdvertise();
+}
+// computer name over GATT (Generic Access → Device Name) for a paired computer without a saved name.
+// Runs on its own short task: discovery waits for the computer's answer.
+static volatile bool btNameBusy = false;
+static uint16_t btNameConn = BLE_HS_CONN_HANDLE_NONE;
+static void btNameTask(void*) {
+  NimBLEConnInfo ci = bleServer->getPeerInfoByHandle(btNameConn);
+  if (ci.isEncrypted()) {
+    uint8_t a[6]; memcpy(a, ci.getIdAddress().getVal(), 6);
+    NimBLEClient* c = bleServer->getClient(ci);
+    NimBLERemoteService* gap = c ? c->getService(NimBLEUUID((uint16_t)0x1800)) : nullptr;
+    NimBLERemoteCharacteristic* dn = gap ? gap->getCharacteristic(NimBLEUUID((uint16_t)0x2A00)) : nullptr;
+    if (dn && dn->canRead()) { std::string v = dn->readValue(); if (v.size()) btSetName(a, String(v.c_str())); }
+  }
+  btNameBusy = false;
+  vTaskDelete(nullptr);
+}
+static void btLearnNames() {
+  static uint32_t tried[4] = {0}; static uint8_t ti = 0;
+  if (!bleStarted || btNameBusy) return;
+  for (uint16_t h : bleServer->getPeerDevices()) {
+    NimBLEConnInfo ci = bleServer->getPeerInfoByHandle(h);
+    if (!ci.isEncrypted() || !ci.isBonded()) continue;
+    const uint8_t* a = ci.getIdAddress().getVal();
+    if (btHasName(a)) continue;
+    uint32_t tag = (uint32_t)a[0] | (a[1] << 8) | (a[2] << 16) | ((uint32_t)a[3] << 24);
+    bool done = false; for (uint32_t t : tried) if (t == tag) done = true;
+    if (done) continue;
+    tried[ti++ & 3] = tag;             // once per computer per boot
+    btNameConn = h; btNameBusy = true;
+    if (xTaskCreate(btNameTask, "btname", 4096, nullptr, 1, nullptr) != pdPASS) btNameBusy = false;
+    return;
+  }
+}
+// desktop app on Bluetooth told us the computer name
+static void btNameFromConn(uint16_t conn, const char* name) {
+  if (!bleStarted || !name || !*name) return;
+  NimBLEConnInfo ci = bleServer->getPeerInfoByHandle(conn);
+  if (ci.isBonded()) btSetName(ci.getIdAddress().getVal(), name);
 }
 
 static void bleBattery(uint8_t pct) { if (bleHid) bleHid->setBatteryLevel(pct, bleConnected); }

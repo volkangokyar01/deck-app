@@ -94,7 +94,7 @@ static void drawPix(const uint16_t* pix, int cx, int cy, int size, float alpha, 
   }
 }
 
-enum ItemKind : uint8_t { K_HOME = 0, K_MEDIA, K_SYS, K_APP, K_WIDGETS };
+enum ItemKind : uint8_t { K_HOME = 0, K_MEDIA, K_SYS, K_APP, K_WIDGETS, K_CONN };
 struct Item { bool home; App* app; uint8_t kind; };
 std::vector<Item> items;
 
@@ -104,14 +104,32 @@ static void buildItems() {
   if (S.widgetsOn) items.push_back({ false, nullptr, K_WIDGETS });
   if (S.mediaOn) items.push_back({ false, nullptr, K_MEDIA });
   if (S.sysOn) items.push_back({ false, nullptr, K_SYS });
+  if (S.connOn) items.push_back({ false, nullptr, K_CONN });
   for (auto& a : S.apps) if (a.inWheel) items.push_back({ false, &a, K_APP });
 }
 static String itemId(const Item& it) {
-  switch (it.kind) { case K_HOME: return "home"; case K_MEDIA: return "media"; case K_SYS: return "system"; case K_WIDGETS: return "widgets"; default: return it.app->id; }
+  switch (it.kind) { case K_HOME: return "home"; case K_MEDIA: return "media"; case K_SYS: return "system"; case K_WIDGETS: return "widgets"; case K_CONN: return "connections"; default: return it.app->id; }
 }
 
-const uint16_t MEDIA_COL = C(0xE0457B), SYS_COL = C(0x0EA5A4), WIDG_COL = C(0x8B5CF6);
+const uint16_t MEDIA_COL = C(0xE0457B), SYS_COL = C(0x0EA5A4), WIDG_COL = C(0x8B5CF6), CONN_COL = C(0x2563EB);
+// Bluetooth rune, h = height
+static void gBt(int cx, int cy, int h, uint16_t c, float w = 1.6f) {
+  int t = h / 2, q = h / 4;
+  spr.drawWideLine(cx - q, cy - q, cx + q, cy + q, w, c); spr.drawWideLine(cx + q, cy + q, cx, cy + t, w, c);
+  spr.drawWideLine(cx, cy + t, cx, cy - t, w, c);         spr.drawWideLine(cx, cy - t, cx + q, cy - q, w, c);
+  spr.drawWideLine(cx + q, cy - q, cx - q, cy + q, w, c);
+}
+// Wi-Fi fan, about 18 x 13
+static void gWifi(int cx, int cy, uint16_t c) {
+  spr.drawArc(cx, cy + 6, 13, 11, 225, 315, c); spr.drawArc(cx, cy + 6, 8, 6, 225, 315, c); spr.fillSmoothCircle(cx, cy + 5, 2, c);
+}
 static void bubble(bool home, App* a, int x, int y, int r, float alpha, uint8_t kind = 255) {
+  if (kind == K_CONN) {
+    uint16_t fill = mix(CONN_COL, SC_BG, alpha);
+    spr.fillSmoothCircle(x, y, r, fill);
+    gBt(x, y, r >= 25 ? 30 : r >= 15 ? 18 : 10, mix(onColor(CONN_COL), SC_BG, alpha), r >= 25 ? 2.4f : r >= 15 ? 1.6f : 1.0f);
+    return;
+  }
   if (kind == K_MEDIA || kind == K_SYS || kind == K_WIDGETS) {      // page bubbles use a line icon on their own colour
     uint16_t col = kind == K_MEDIA ? MEDIA_COL : kind == K_SYS ? SYS_COL : WIDG_COL, fill = mix(col, SC_BG, alpha);
     spr.fillSmoothCircle(x, y, r, fill);
@@ -173,7 +191,7 @@ static void drawQuickSlots() {
 }
 
 static String itemName(const Item& i) {
-  switch (i.kind) { case K_HOME: return "Ana sayfa"; case K_MEDIA: return "Medya"; case K_SYS: return "Ses ve parlaklık"; case K_WIDGETS: return "Widgetlar"; default: return i.app->name; }
+  switch (i.kind) { case K_HOME: return "Ana sayfa"; case K_MEDIA: return "Medya"; case K_SYS: return "Ses ve parlaklık"; case K_WIDGETS: return "Widgetlar"; case K_CONN: return "Bağlantılar"; default: return i.app->name; }
 }
 static void drawAppView() {
   int n = items.size();
@@ -570,6 +588,7 @@ static uint16_t itemColor(const Item& it) {
     case K_MEDIA: return mediaLive() && media.player.length() ? playerColor(media.player) : MEDIA_COL;
     case K_SYS: return SYS_COL;
     case K_WIDGETS: return WIDG_COL;
+    case K_CONN: return CONN_COL;
     default: return it.app->color;
   }
 }
@@ -714,6 +733,96 @@ static void drawSystem() {
   micRow(131, 37);
 }
 
+/* ---------- Bağlantılar (1.9.0): Bluetooth computers chosen on the device; Wi-Fi row reserved ---------- */
+enum : uint8_t { CR_ALL = 0, CR_HOST, CR_PAIR, CR_FORGET };
+struct ConnRow { uint8_t type; uint8_t a[6]; };
+bool connEdit = false; int connCur = 0; uint32_t connAt = 0, connConfirmAt = 0;
+static std::vector<ConnRow> connRows() {
+  std::vector<ConnRow> v;
+  v.push_back({ CR_ALL, {0} });
+  for (auto& h : btHosts()) { ConnRow r{ CR_HOST, {0} }; memcpy(r.a, h.a, 6); v.push_back(r); }
+  v.push_back({ CR_PAIR, {0} });
+  v.push_back({ CR_FORGET, {0} });
+  return v;
+}
+static int connActiveRow(const std::vector<ConnRow>& rows) {
+  if (!bt.hasSel) return 0;
+  for (int i = 0; i < (int)rows.size(); i++) if (rows[i].type == CR_HOST && !memcmp(rows[i].a, bt.sel, 6)) return i;
+  return 0;
+}
+static void connRow(int y, const ConnRow& r, bool focus, bool active) {
+  const int h = 20;
+  spr.fillRoundRect(2, y, 316, h, 6, focus ? mix(SC_HL, SC_PANEL, .16f) : SC_PANEL);
+  int cy = y + h / 2;
+  uint16_t ic = focus ? SC_HL : SC_SUB;
+  String label, right; uint16_t rc = SC_DIM;
+  if (r.type == CR_ALL || r.type == CR_HOST) {      // radio: which computers may connect
+    if (active) { spr.fillSmoothCircle(14, cy, 5, focus ? SC_HL : CONN_COL); spr.fillSmoothCircle(14, cy, 2, SC_PANEL); }
+    else spr.drawCircle(14, cy, 5, SC_DIM);
+  }
+  if (r.type == CR_ALL) { label = "Otomatik · eşleşmiş hepsi"; right = String(btHosts().size()) + " cihaz"; }
+  else if (r.type == CR_HOST) {
+    label = btName(r.a);
+    if (btConnOf(r.a) != BLE_HS_CONN_HANDLE_NONE) { right = "bağlı"; rc = SC_GREEN; }
+  } else if (r.type == CR_PAIR) {
+    spr.drawWideLine(9, cy, 19, cy, 1.6f, ic); spr.drawWideLine(14, cy - 5, 14, cy + 5, 1.6f, ic);
+    label = "Yeni cihaz eşleştir";
+  } else {
+    spr.drawWideLine(10, cy - 4, 18, cy + 4, 1.6f, focus ? SC_RED : SC_SUB); spr.drawWideLine(18, cy - 4, 10, cy + 4, 1.6f, focus ? SC_RED : SC_SUB);
+    bool confirm = connConfirmAt && millis() - connConfirmAt < 4000;
+    label = confirm ? "Silmek için tekrar bas" : "Eşleşmeleri sil";
+    if (confirm) rc = SC_RED;
+  }
+  text(fit(label, right.length() ? 230 : 280, FSB11), 26, cy, FSB11, r.type == CR_FORGET && focus ? SC_RED : SC_TEXT);
+  if (right.length()) text(right, 310, cy, FM9, rc, textdatum_t::middle_right);
+}
+static void drawConn() {
+  // header: Bluetooth state
+  spr.fillRoundRect(2, 15, 316, 24, 8, SC_PANEL);
+  gBt(16, 27, 14, bt.off ? SC_DIM : CONN_COL);
+  text("BLUETOOTH", 28, 27, FB10, SC_SUB);
+  String st; uint16_t sc = SC_TEXT;
+  if (!bleStarted) { st = "kapalı (Sadece USB)"; sc = SC_DIM; }
+  else if (bt.off) { st = "Kapalı"; sc = SC_DIM; }
+  else if (btPairing()) { uint32_t left = (bt.pairUntil - millis()) / 1000; st = "Eşleştirme " + String(left / 60) + ":" + (left % 60 < 10 ? "0" : "") + String(left % 60); sc = SC_HL; }
+  else st = bt.hasSel ? "Yalnız seçili" : "Açık";
+  text(st, 104, 27, FSB11, sc);
+  text(!bleStarted ? "" : connEdit ? "basılı tut: çık" : (bt.off ? "A: aç" : "A: kapat · bas: seç"), 310, 27, FM9, SC_DIM, textdatum_t::middle_right);
+
+  if (bleStarted && btPairing()) {           // pairing mode: what to do on the computer
+    spr.fillRoundRect(2, 41, 316, 102, 8, mix(CONN_COL, SC_PANEL, .12f));
+    text("Bilgisayarda:", 14, 56, FSB11, SC_SUB);
+    text("Bluetooth → Cihaz ekle", 14, 76, FSB12, SC_TEXT);
+    text(fit("Listeden \"" + S.name + "\" seç", 292, FSB12), 14, 98, FSB12, SC_TEXT);
+    text("bas: iptal", 14, 124, FM9, SC_DIM);
+    uint32_t left = bt.pairUntil - millis();
+    spr.fillRoundRect(100, 121, 206, 4, 2, SC_LINE);
+    spr.fillRoundRect(100, 121, max(4, (int)(206.0f * min(1.0f, left / 90000.0f))), 4, 2, CONN_COL);
+  } else if (bleStarted && !bt.off) {
+    auto rows = connRows();
+    int act = connActiveRow(rows);
+    if (connCur >= (int)rows.size()) connCur = rows.size() - 1;
+    int first = 0; const int vis = 5;
+    int focusRow = connEdit ? connCur : act;
+    if (focusRow >= vis) first = focusRow - vis + 1;
+    for (int i = 0; i < vis && first + i < (int)rows.size(); i++)
+      connRow(41 + i * 21, rows[first + i], connEdit && first + i == connCur, first + i == act);
+    if ((int)rows.size() > vis) {           // scroll mark
+      int th = 100 * vis / rows.size(), ty = 42 + (100 - th) * first / max(1, (int)rows.size() - vis);
+      spr.fillRoundRect(316, ty, 2, th, 1, SC_DIM);
+    }
+  } else {
+    spr.fillRoundRect(2, 41, 316, 102, 8, SC_PANEL);
+    text(bleStarted ? "Bluetooth kapalı" : "Bluetooth bu ayarda kapalı", 160, 80, FSB12, SC_SUB, textdatum_t::middle_center);
+    text(bleStarted ? "A: aç" : "Uygulama → Cihaz → Bağlantı: Otomatik", 160, 104, FM9, SC_DIM, textdatum_t::middle_center);
+  }
+  // Wi-Fi: reserved row (the device does not use Wi-Fi yet)
+  spr.fillRoundRect(2, 145, 316, 23, 8, SC_PANEL);
+  gWifi(16, 155, SC_DIM);
+  text("WI-FI", 28, 157, FB10, SC_DIM);
+  text("Kapalı · yakında", 310, 157, FM9, SC_DIM, textdatum_t::middle_right);
+}
+
 /* ---------- new mail note (1.8.0): full screen, A / B / press opens Outlook on the computer ---------- */
 const uint16_t OUTLOOK_COL = C(0x0F6CBD);
 // two lines at most, broken between words; a word wider than a line is cut, the rest ends with …
@@ -782,7 +891,7 @@ static void render(const char* link) {
     if (sel >= (int)items.size()) sel = items.size() - 1;
     Item& it = items[sel];
     drawStatus(itemColor(it), link, it.kind == K_HOME ? 134 : 2);
-    switch (it.kind) { case K_HOME: drawHome(); break; case K_MEDIA: drawMedia(); break; case K_SYS: drawSystem(); break; case K_WIDGETS: drawWidgets(); break; default: drawAppView(); }
+    switch (it.kind) { case K_HOME: drawHome(); break; case K_MEDIA: drawMedia(); break; case K_SYS: drawSystem(); break; case K_WIDGETS: drawWidgets(); break; case K_CONN: drawConn(); break; default: drawAppView(); }
   }
   drawToast();
   if (ecoActive && ecoAnimFps == 0 && homeFrameShown && !items.empty() && items[sel].home) {

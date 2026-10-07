@@ -56,7 +56,7 @@ struct Settings {
   std::vector<App> apps;
   String quickA, quickB;
   // extra pages in the knob list
-  bool mediaOn = true, mediaStay = true, sysOn = true;
+  bool mediaOn = true, mediaStay = true, sysOn = true, connOn = true;
   bool widgetsOn = true;                                           // widgets page: 1–4 cards
   uint8_t wcards[4] = { W_CPU, W_GPU, W_CLOCK, W_WEATHER }, wcount = 4;
   String mediaLaunch = "none";   // desktop-only launch choice; old configs retain HID behaviour
@@ -77,7 +77,7 @@ static const char DEFAULT_CONFIG[] PROGMEM = R"JSON({
  {"id":"steam","name":"Steam","icon":"game","color":"#1B6FD1","inWheel":true,"launch":{"method":"run","value":"steam://open/main"}}
 ],
 "quick":{"a":"discord","b":"cs2"},
-"pages":{"widgets":{"enabled":true,"cards":["cpu","gpu","clock","weather"]},"media":{"enabled":true,"player":"auto","stay":true},"system":{"enabled":true}}
+"pages":{"widgets":{"enabled":true,"cards":["cpu","gpu","clock","weather"]},"media":{"enabled":true,"player":"auto","stay":true},"system":{"enabled":true},"connections":{"enabled":true}}
 })JSON";
 
 static uint16_t parseColor(const char* s, uint16_t def) {
@@ -210,6 +210,7 @@ static void applyConfig(JsonObjectConst c) {
     if (!N.wcount) { N.wcards[0] = W_CPU; N.wcount = 1; }
   }
   N.mediaOn = pg["media"]["enabled"] | true; N.sysOn = pg["system"]["enabled"] | true;
+  N.connOn = pg["connections"]["enabled"] | true;
   N.mediaPlayer = (const char*)(pg["media"]["player"] | "auto");
   N.mediaStay = pg["media"]["stay"] | true;
   N.mediaLaunch = (const char*)(pg["media"]["launch"] | "none");

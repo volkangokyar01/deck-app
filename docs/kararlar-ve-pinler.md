@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.8.5)
+## Firmware (v1.9.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -206,3 +206,13 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Uygulama: Windows'ta Bluetooth ancak cihaz Windows'ta eşleşmiş görünüyorsa (Get-PnpDevice, sınıf Bluetooth, BTHLE\DEV_*, ad = cihaz adı; 60 sn önbellek) denenir; değilse kayda bir kez "Windows Ayarlar → Bluetooth ve cihazlar → Cihaz ekle" notu düşer. Başarısız denemelerden sonra bekleme 12 sn → 30 sn → 1 dk → 5 dk. Windows sorgulanamazsa engellenmez. macOS'ta değişiklik yok.
 - Firmware: `{"cmd":"ble_forget"}` bütün Bluetooth eşleşmelerini siler, bağlı bilgisayarları düşürür (yalnız USB'den). hello yanıtında `bonds` (eşleşme sayısı). Ayar sayfasında Cihaz kartında "Bluetooth eşleşmelerini sil" düğmesi (USB'de, 1.8.5+).
 - NimBLE en fazla 3 eşleşme tutar (CONFIG_BT_NIMBLE_MAX_BONDS 3); dördüncü bilgisayar en eskisini siler.
+
+## 2026-10-07 — Bağlantılar sayfası: Bluetooth bilgisayarı cihazdan seçilir (firmware 1.9.0)
+- Kullanıcı isteği: eşleştirme ve bilgisayar seçimi cihazdan, elle yapılsın; Bluetooth ve Wi-Fi aynı sayfada olsun (ayrı ekran yok).
+- Döndürgeç listesinde yeni sayfa "Bağlantılar" (pages.connections.enabled, varsayılan açık; Ses ve parlaklık'tan sonra). Üstte Bluetooth durumu, ortada liste, altta Wi-Fi satırı.
+- Liste: "Otomatik · eşleşmiş hepsi", eşleşmiş her bilgisayar (ad + "bağlı"), "Yeni cihaz eşleştir", "Eşleşmeleri sil". Bas → seçim modu, çevir → satır, bas → uygula; basılı tut veya 20 sn → çık. A: Bluetooth aç / kapat (NVS vdbt/off). B: hızlı uygulama.
+- Eşleştirme yalnız eşleştirme modunda (90 sn): açılışta NimBLE bonding kapalı, modda açılır. Mod dışında eşleşmeye çalışan bilgisayar düşürülür ve cihazda "Eşleştirme kapalı" yazar. Yeni bilgisayar eşleşince mod kapanır; bir bilgisayar seçiliyse seçim yenisine geçer.
+- Bilgisayar seçilince (NVS vdbt/sel, kimlik adresi) diğer bağlantılar düşürülür; diğer eşleşmiş bilgisayarlar bağlanınca şifreleme biter bitmez (kimlik adresi o an belli) düşürülür. Yayın sürer (Windows Web Bluetooth taraması için).
+- Bilgisayar adı: masaüstü uygulaması Bluetooth'ta ilk companion mesajında `host` gönderir (Mac: ComputerName, Windows: COMPUTERNAME); yoksa cihaz kendi görevinde bilgisayarın GATT Device Name (0x1800/0x2A00) değerini okur; o da yoksa "Bilgisayar XXXX". NVS vdbt/n<adres>.
+- Wi-Fi satırı yalnız yer tutucu ("Kapalı · yakında"): cihaz Wi-Fi kullanmıyor (PSRAM yok, ~50–70 KB RAM gerekir). Wi-Fi gelirse ağ adı ve şifre masaüstü uygulamasından USB ile gönderilecek (kullanıcı tercihi).
+- hello: `btOff`.

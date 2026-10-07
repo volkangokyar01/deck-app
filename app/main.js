@@ -178,6 +178,14 @@ async function blePaired(name) {
   return value;
 }
 ipcMain.handle('ble-paired', (e, name) => blePaired(name));
+// computer name shown on the deck's Bağlantılar page (sent over Bluetooth with the first companion message)
+let hostName = null;
+ipcMain.handle('host-name', async () => {
+  if (hostName) return hostName;
+  if (IS_MAC) { const r = await run('scutil', ['--get', 'ComputerName'], 3000); hostName = r.stdout.trim(); }
+  if (!hostName) hostName = (process.env.COMPUTERNAME || require('os').hostname() || '').replace(/\.local$/, '');
+  return hostName;
+});
 
 /* ---------------- Web Serial: auto-pick the deck, no chooser ---------------- */
 function isEsp(p) {

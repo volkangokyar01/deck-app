@@ -15,7 +15,7 @@ class FirmwareMediaTest(unittest.TestCase):
         if not compiler:
             self.skipTest('C++ compiler unavailable')
         source = (ROOT / 'firmware/VolkanDeck/VolkanDeck.ino').read_text()
-        launch = source[source.index('static String musicPlayerForApp('):source.index('static void onPress()')]
+        launch = source[source.index('static String musicPlayerForApp('):source.index('/* ---------- Bağlantılar page ---------- */')]
         action = source[source.index('static void mediaAction('):source.index('static void cyclePlayer()')]
         harness = r'''
 #include <string>
