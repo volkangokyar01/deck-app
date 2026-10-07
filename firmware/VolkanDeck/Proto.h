@@ -111,7 +111,10 @@ static void replyErr(JsonVariantConst id, const char* e) { JsonDocument r; r["id
 static void evtInput(const char* ctl) { if (!hostListening()) return; JsonDocument d; d["evt"] = "input"; d["control"] = ctl; sendJson(d); }
 static void evtSelect() {
   if (!hostListening() || items.empty()) return;
-  JsonDocument d; d["evt"] = "select"; d["app"] = itemId(items[sel]); sendJson(d);
+  JsonDocument d; d["evt"] = "select";
+  // a page opened inside the menu reports its own id (the desktop app feeds media / system pages faster)
+  d["app"] = items[sel].kind == K_MENU && subPage ? (subPage == K_MEDIA ? "media" : subPage == K_SYS ? "system" : "connections") : itemId(items[sel]);
+  sendJson(d);
 }
 static void evtStatus() {
   if (!hostListening()) return;

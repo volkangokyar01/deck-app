@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.9.3)
+## Firmware (v1.9.4)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -235,3 +235,11 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 ## 2026-10-08 — "Eşleşmeleri sil" eşleşmeleri silmiyordu (firmware 1.9.3)
 - NimBLE ble_gap_unpair: eş kimlik anahtarı (IRK) dağıtmışsa ve yayın ya da tarama sürüyorsa BLE_HS_EBUSY döner, hiçbir şey silmez. Mac ve Windows her zaman IRK gönderir; cihaz da hep yayında olduğu için deleteAllBonds ilk eşte başarısız oluyordu.
 - bleForget artık: eşleştirme modunu kapatır, bt.hold ile yayını kilitler (bağlantı geri çağrıları yeniden başlatamaz, gelen bağlantı düşürülür), bağlantıları kapatıp en çok 1,5 sn bekler, deleteAllBonds çalıştırır; eşleşme kalırsa ble_store_clear ile depoyu tamamen siler. Sonucu döndürür: cihaz "Eşleşmeler silindi" ya da "Silinemedi" gösterir, ble_forget komutu ok / "busy" yanıtlar.
+
+## 2026-10-08 — Menü: sayfalar döndürgeç listesinden çıktı; web sitesi kısayolu (firmware 1.9.4)
+- Kullanıcı isteği: uygulamalara ulaşmak için fazla adım vardı; Medya, Ses ve parlaklık ve Bağlantılar yalnız seçilince açılan sayfalar olsun.
+- Döndürgeç listesi: Ana sayfa, Kartlar, uygulamalar, en sonda "Menü" (en az bir sayfa açıksa). Liste başa sardığı için Menü ana sayfadan bir tık geride.
+- Menü ekranı açık sayfaları listeler; her biri bir tuşla açılır: 3 sayfa → A / bas / B, 2 → A / B, 1 → bas. Eşleşmeyen A / B hızlı uygulamasını açar.
+- Açılan sayfa (subPage) eskisi gibi çalışır (curKind sayfanın türünü döndürür); çevirince listede komşuya geçilir ve sayfa kapanır; basılı tutma, sayfanın kendi işi yoksa Menü listesine döner (Medya'da basılı tutma ses modu olarak kaldı). Müzik uygulaması açılınca Medya yine kendiliğinden açılır. select olayı açık sayfanın kimliğini (media / system / connections) gönderir.
+- Ayar sayfası: Menü önizlemesi ve düzenleyicisi; sayfa düzenleyicilerinde "Menüde göster".
+- Uygulama listesinde "Web sitesi ekle": adres (https'siz de yazılabilir; yalnız http/https kabul edilir) ve isteğe bağlı ad. Uygulama "Çalıştır" yöntemiyle adresi açar (masaüstü uygulaması varsayılan tarayıcıda; yoksa Win+R). Ad alan adından gelir; ikon Google favicon hizmetinden, internet yoksa küre.

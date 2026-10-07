@@ -94,24 +94,26 @@ static void drawPix(const uint16_t* pix, int cx, int cy, int size, float alpha, 
   }
 }
 
-enum ItemKind : uint8_t { K_HOME = 0, K_MEDIA, K_SYS, K_APP, K_WIDGETS, K_CONN };
+enum ItemKind : uint8_t { K_HOME = 0, K_MEDIA, K_SYS, K_APP, K_WIDGETS, K_CONN, K_MENU };
 struct Item { bool home; App* app; uint8_t kind; };
 std::vector<Item> items;
+// Medya, Ses ve parlaklık and Bağlantılar live in one "Menü" item (1.9.4): the wheel holds home, cards and
+// apps; the menu sits last, one step back from home. subPage = the page open inside the menu (0 = the list).
+uint8_t subPage = 0;
 
 static void buildItems() {
   items.clear();
   if (S.homeOn) items.push_back({ true, nullptr, K_HOME });
   if (S.widgetsOn) items.push_back({ false, nullptr, K_WIDGETS });
-  if (S.mediaOn) items.push_back({ false, nullptr, K_MEDIA });
-  if (S.sysOn) items.push_back({ false, nullptr, K_SYS });
-  if (S.connOn) items.push_back({ false, nullptr, K_CONN });
   for (auto& a : S.apps) if (a.inWheel) items.push_back({ false, &a, K_APP });
+  if (S.mediaOn || S.sysOn || S.connOn) items.push_back({ false, nullptr, K_MENU });
+  subPage = 0;
 }
 static String itemId(const Item& it) {
-  switch (it.kind) { case K_HOME: return "home"; case K_MEDIA: return "media"; case K_SYS: return "system"; case K_WIDGETS: return "widgets"; case K_CONN: return "connections"; default: return it.app->id; }
+  switch (it.kind) { case K_HOME: return "home"; case K_MEDIA: return "media"; case K_SYS: return "system"; case K_WIDGETS: return "widgets"; case K_CONN: return "connections"; case K_MENU: return "menu"; default: return it.app->id; }
 }
 
-const uint16_t MEDIA_COL = C(0xE0457B), SYS_COL = C(0x0EA5A4), WIDG_COL = C(0x8B5CF6), CONN_COL = C(0x2563EB);
+const uint16_t MEDIA_COL = C(0xE0457B), SYS_COL = C(0x0EA5A4), WIDG_COL = C(0x8B5CF6), CONN_COL = C(0x2563EB), MENU_COL = C(0x475569);
 // Bluetooth rune, h = height
 static void gBt(int cx, int cy, int h, uint16_t c, float w = 1.6f) {
   int t = h / 2, q = h / 4;
@@ -124,6 +126,13 @@ static void gWifi(int cx, int cy, uint16_t c) {
   spr.drawArc(cx, cy + 6, 13, 11, 225, 315, c); spr.drawArc(cx, cy + 6, 8, 6, 225, 315, c); spr.fillSmoothCircle(cx, cy + 5, 2, c);
 }
 static void bubble(bool home, App* a, int x, int y, int r, float alpha, uint8_t kind = 255) {
+  if (kind == K_MENU) {                      // 2 x 2 tiles
+    uint16_t fill = mix(MENU_COL, SC_BG, alpha), fg = mix(onColor(MENU_COL), SC_BG, alpha);
+    spr.fillSmoothCircle(x, y, r, fill);
+    int t = r >= 25 ? 9 : r >= 15 ? 6 : 3, g = r >= 25 ? 3 : 2;
+    for (int i = 0; i < 4; i++) spr.fillRoundRect(x - t - g / 2 + (i & 1) * (t + g), y - t - g / 2 + (i >> 1) * (t + g), t, t, t > 4 ? 2 : 1, fg);
+    return;
+  }
   if (kind == K_CONN) {
     uint16_t fill = mix(CONN_COL, SC_BG, alpha);
     spr.fillSmoothCircle(x, y, r, fill);
@@ -191,7 +200,7 @@ static void drawQuickSlots() {
 }
 
 static String itemName(const Item& i) {
-  switch (i.kind) { case K_HOME: return "Ana sayfa"; case K_MEDIA: return "Medya"; case K_SYS: return "Ses ve parlaklık"; case K_WIDGETS: return "Widgetlar"; case K_CONN: return "Bağlantılar"; default: return i.app->name; }
+  switch (i.kind) { case K_HOME: return "Ana sayfa"; case K_MEDIA: return "Medya"; case K_SYS: return "Ses ve parlaklık"; case K_WIDGETS: return "Widgetlar"; case K_CONN: return "Bağlantılar"; case K_MENU: return "Menü"; default: return i.app->name; }
 }
 static void drawAppView() {
   int n = items.size();
@@ -589,6 +598,8 @@ static uint16_t itemColor(const Item& it) {
     case K_SYS: return SYS_COL;
     case K_WIDGETS: return WIDG_COL;
     case K_CONN: return CONN_COL;
+    case K_MENU: return subPage == K_MEDIA ? (mediaLive() && media.player.length() ? playerColor(media.player) : MEDIA_COL)
+                      : subPage == K_SYS ? SYS_COL : subPage == K_CONN ? CONN_COL : MENU_COL;
     default: return it.app->color;
   }
 }
@@ -838,6 +849,44 @@ static void drawConn() {
   text("Kapalı · yakında", 310, 157, FM9, SC_DIM, textdatum_t::middle_right);
 }
 
+/* ---------- Menü: the pages, each one key away ---------- */
+static std::vector<uint8_t> menuPages() {
+  std::vector<uint8_t> v;
+  if (S.mediaOn) v.push_back(K_MEDIA);
+  if (S.sysOn) v.push_back(K_SYS);
+  if (S.connOn) v.push_back(K_CONN);
+  return v;
+}
+// key 0 = A, 1 = press, 2 = B → page index (3 pages: A / press / B, 2: A / B, 1: press), -1 = none
+static int menuIndexForKey(int n, int key) {
+  if (n >= 3) return key;
+  if (n == 2) return key == 0 ? 0 : key == 2 ? 1 : -1;
+  return n == 1 && key == 1 ? 0 : -1;
+}
+static void drawMenu() {
+  auto pages = menuPages(); int n = pages.size();
+  const char* keyName[3] = { "A", "bas", "B" };
+  int h = n >= 3 ? 48 : 60, y = 15;
+  for (int i = 0; i < n; i++, y += h + 3) {
+    uint8_t k = pages[i];
+    spr.fillRoundRect(2, y, 316, h, 8, SC_PANEL);
+    int cy = y + h / 2;
+    bubble(false, nullptr, 24, cy, 15, 1, k);
+    String title = k == K_MEDIA ? "Medya" : k == K_SYS ? "Ses ve parlaklık" : "Bağlantılar", sub;
+    if (k == K_MEDIA) sub = mediaLive() && media.title.length() ? media.title : String("Çalan müzik ve medya tuşları");
+    else if (k == K_SYS) sub = sysLive() && sysSt.vol >= 0 ? "Ses %" + String(sysSt.vol) + (sysSt.bright >= 0 ? "  ·  Parlaklık %" + String(sysSt.bright) : String("")) : String("Ses, parlaklık, mikrofon");
+    else { uint16_t act = activeHostConn(); sub = bt.off ? String("Bluetooth kapalı") : act != BLE_HS_CONN_HANDLE_NONE ? "Aktif: " + hostName(act) : String("Bluetooth bilgisayarları"); }
+    text(title, 48, cy - 8, FSB12, SC_TEXT);
+    text(fit(sub, 200, FM9), 48, cy + 9, FM9, SC_DIM);
+    int ki = -1; for (int key = 0; key < 3; key++) if (menuIndexForKey(n, key) == i) ki = key;
+    if (ki >= 0) {                              // which key opens it
+      int w = ki == 1 ? 34 : 24;
+      spr.fillRoundRect(306 - w, cy - 10, w, 20, 6, mix(SC_HL, SC_PANEL, .18f));
+      text(keyName[ki], 306 - w / 2, cy, FB11, SC_HL, textdatum_t::middle_center);
+    }
+  }
+}
+
 /* ---------- new mail note (1.8.0): full screen, A / B / press opens Outlook on the computer ---------- */
 const uint16_t OUTLOOK_COL = C(0x0F6CBD);
 // two lines at most, broken between words; a word wider than a line is cut, the rest ends with …
@@ -906,7 +955,8 @@ static void render(const char* link) {
     if (sel >= (int)items.size()) sel = items.size() - 1;
     Item& it = items[sel];
     drawStatus(itemColor(it), link, it.kind == K_HOME ? 134 : 2);
-    switch (it.kind) { case K_HOME: drawHome(); break; case K_MEDIA: drawMedia(); break; case K_SYS: drawSystem(); break; case K_WIDGETS: drawWidgets(); break; case K_CONN: drawConn(); break; default: drawAppView(); }
+    uint8_t k = it.kind == K_MENU && subPage ? subPage : it.kind;
+    switch (k) { case K_HOME: drawHome(); break; case K_MEDIA: drawMedia(); break; case K_SYS: drawSystem(); break; case K_WIDGETS: drawWidgets(); break; case K_CONN: drawConn(); break; case K_MENU: drawMenu(); break; default: drawAppView(); }
   }
   drawToast();
   if (ecoActive && ecoAnimFps == 0 && homeFrameShown && !items.empty() && items[sel].home) {

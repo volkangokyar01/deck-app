@@ -51,6 +51,7 @@ const char* linkName(){return "usb";} int activeLink(){return link?0:L_NONE;}
 bool runLaunch(const Launch&,String){return launchOK;}
 void evtLaunch(App*){events.push_back("launch");} void evtMedia(const char*){events.push_back("media");}
 void selectIndex(int i){sel=i;adjust=0;events.push_back("select");}
+void openPage(int k){for(int i=0;i<(int)items.size();i++) if(items[i].kind==k){selectIndex(i);break;}}
 '''
         cases = r'''
 int main(){

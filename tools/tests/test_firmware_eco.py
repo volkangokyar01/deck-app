@@ -54,7 +54,8 @@ struct {int brightness=80;bool encRev=false,homeOn=true;const char* quickA="a";c
 void setBright(int){assert(mhz==240);}
 void noInterrupts(){} void interrupts(){}
 int encSteps=0,sel=0,adjust=0;unsigned adjustAt=0;
-enum{K_MEDIA,K_SYS,K_APP,K_CONN};int kind=K_APP;int curKind(){return kind;}
+enum{K_MEDIA,K_SYS,K_APP,K_CONN,K_MENU};int kind=K_APP;int curKind(){return kind;}
+int subPage=0; void evtSelect(){} bool menuKey(int){return false;}
 bool connEdit=false,bleStarted=false;int connCur=0;unsigned connAt=0,connConfirmAt=0;
 struct {bool off=false;} bt; bool btPairing(){return false;} void btPairStop(){} void btSetOff(bool){}
 std::vector<int> connRows(){return {0};} void toast(const char*){}

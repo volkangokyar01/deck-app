@@ -205,10 +205,25 @@ static void goSleep() {
 static void selectIndex(int i) {
   int n = items.size(); if (!n) return;
   if (S.wrap) i = (i % n + n) % n; else i = constrain(i, 0, n - 1);
-  if (i != sel) { sel = i; adjust = 0; dirty = true; evtSelect(); }
+  if (i != sel) { sel = i; adjust = 0; subPage = 0; connEdit = false; dirty = true; evtSelect(); }
 }
 static Item* curItem() { return items.empty() ? nullptr : &items[sel]; }
-static uint8_t curKind() { Item* it = curItem(); return it ? it->kind : K_APP; }
+// the page on screen: a page opened inside the menu counts as that page
+static uint8_t curKind() { Item* it = curItem(); if (!it) return K_APP; return it->kind == K_MENU && subPage ? subPage : it->kind; }
+static int menuItemIndex() { for (int i = 0; i < (int)items.size(); i++) if (items[i].kind == K_MENU) return i; return -1; }
+static void openPage(uint8_t k) {                // open Medya / Ses ve parlaklık / Bağlantılar inside the menu
+  int i = menuItemIndex(); if (i < 0) return;
+  if (sel != i) selectIndex(i);
+  if (subPage != k) { subPage = k; adjust = 0; connEdit = false; dirty = true; evtSelect(); }
+}
+// A / press / B on the menu list; false = the key has no page here (A / B then open their quick app)
+static bool menuKey(int key) {
+  auto pages = menuPages();
+  int i = menuIndexForKey(pages.size(), key);
+  if (i < 0) return false;
+  openPage(pages[i]);
+  return true;
+}
 
 /* ---------- media & system pages ---------- */
 bool volPending = false, brightPending = false;
@@ -289,7 +304,7 @@ static void doLaunch(App* a) {
     if (player.length()) {
       mediaTarget = player;                    // session pin, never change S.mediaPlayer / saved config
       media.stamp = 0; evtMedia("select");
-      for (int i = 0; i < (int)items.size(); i++) if (items[i].kind == K_MEDIA) { selectIndex(i); break; }
+      openPage(K_MEDIA);
     }
   }
   dirty = true;
@@ -369,12 +384,13 @@ static void onPress() {
   ecoExit();
   if (items.empty()) return;
   Item& it = items[sel];
-  switch (it.kind) {
+  switch (curKind()) {
     case K_HOME: { App* a = appById(S.pressApp); if (a) doLaunch(a); break; }
     case K_MEDIA: mediaAction("play_pause", CC_PLAY); break;
     case K_SYS: adjust = adjust == 1 ? 2 : 1; adjustAt = millis(); dirty = true; break;   // volume ↔ brightness
     case K_WIDGETS: break;
     case K_CONN: connPress(); break;
+    case K_MENU: menuKey(1); break;
     default: doLaunch(it.app);
   }
 }
@@ -413,6 +429,7 @@ static void handleInput() {
     if (k == K_MEDIA) { adjust = adjust ? 0 : 1; adjustAt = now; dirty = true; }
     else if (k == K_SYS && adjust) { adjust = 0; dirty = true; }
     else if (k == K_CONN && (connEdit || btPairing())) { connEdit = false; connConfirmAt = 0; if (btPairing()) btPairStop(); dirty = true; }
+    else if (subPage) { subPage = 0; adjust = 0; dirty = true; evtSelect(); }     // back to the menu list
     else if (S.homeOn) selectIndex(0);
   }
   if (pressPendingAt && now - pressPendingAt >= 330) { pressPendingAt = 0; onPress(); }
@@ -423,6 +440,7 @@ static void handleInput() {
     if (k == K_MEDIA) mediaAction("prev", CC_PREV);
     else if (k == K_SYS) { toggleMute(); adjustAt = now; }
     else if (k == K_CONN && bleStarted) { btSetOff(!bt.off); connEdit = false; toast(bt.off ? "Bluetooth kapandı" : "Bluetooth açıldı"); dirty = true; }
+    else if (k == K_MENU && menuKey(0)) {}
     else doLaunch(appById(S.quickA));
   }
   int b = bB.poll(0);
@@ -430,6 +448,7 @@ static void handleInput() {
     evtInput("b"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("next", CC_NEXT);
     else if (k == K_SYS) { toggleMic(); if (adjust) adjustAt = now; }
+    else if (k == K_MENU && menuKey(2)) {}
     else doLaunch(appById(S.quickB));
   }
 
@@ -551,7 +570,7 @@ void loop() {
 
   // idle handling
   uint32_t idle = (now - lastActivity) / 1000;
-  if (S.homeOn && !(S.mediaStay && curKind() == K_MEDIA) && curKind() != K_WIDGETS && S.returnAfter > 0 && idle >= (uint32_t)S.returnAfter && sel != 0 && !items.empty() && items[0].home) { sel = 0; dirty = true; evtSelect(); }
+  if (S.homeOn && !(S.mediaStay && curKind() == K_MEDIA) && curKind() != K_WIDGETS && S.returnAfter > 0 && idle >= (uint32_t)S.returnAfter && sel != 0 && !items.empty() && items[0].home) { selectIndex(0); }
   // dimming / auto power-off: separate settings on cable (USB host or charger) and on battery, 0 = off
   bool onCable = extPower;
   int dimLimit = onCable ? S.dimAfterUsb : S.dimAfter, sleepLimit = onCable ? S.sleepAfterUsb : S.sleepAfter;
