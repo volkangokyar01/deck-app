@@ -4,6 +4,7 @@ Her push'tan önce en üste bir satır eklenir. Kurallar `GUNCELLEME.md` → 5. 
 
 | Tarih / saat (TSİ) | İmza | Tür | Güncelleme | Özet |
 |---|---|---|---|---|
+| 2026-10-07 15:10 | volkangokyar01 | firmware | Evet | Firmware 1.8.3: kablo takılıyken pil %100 görünmüyor; seviye takılmadan önceki değerden şarj hızıyla artar, gerilim sınırlarıyla düzeltilir; pilde Li-Po eğrisi. Durum çubuğunda yüzde + şimşek. Derlendi ve gömüldü; yeni pil testi dahil 161 Node / 27 Python testi geçti; donanımda denenmedi |
 | 2026-10-07 13:15 | volkangokyar01 | kasa | Hayır | Kasa v6: döndürgeç düğmesi Ø30 → Ø24 × 18 (mil kesmeden); 60 ince tırtıl, V halkası, çanak üst yüz, işaret çizgisi; iç boşluk 45° basamaklı, dik desteksiz baskı. 3MF'e eklendi; baskıda denenmedi |
 | 2026-10-07 12:50 | volkangokyar01 | kasa | Hayır | Kasa v6: ayak yuvaları yeniden Ø15 mm pedlere göre (Ø15,6 × 1 mm, x ±37 / y 15, 72,6). Kontroller 0; baskıda denenmedi |
 | 2026-10-07 12:05 | volkangokyar01 | kasa | Hayır | Kasa v6: ayak yuvaları 2 cm (0,75 inç) pedler için Ø20,6 × 1 mm, x ±36 / y 16, 70; basılabilir pimler (sekizgen 1,7 × 1,2, başlıklı, 6 adet) 3MF'e eklendi. Kontroller 0; baskıda denenmedi |

@@ -121,13 +121,59 @@ static bool wakeUp() {   // returns true if the input should be swallowed
   return was;
 }
 
+// Battery level. On battery the cell voltage is read through a Li-Po discharge curve. On cable the charger
+// lifts the measured voltage (charge current x internal resistance, then 4.2 V hold), so the voltage alone
+// would say ~100%. There the level starts from the last battery reading and grows at the charge rate,
+// kept between what the measured voltage allows (upper) and its IR-corrected value (lower, CC phase only).
+RTC_NOINIT_ATTR static uint32_t socMagic;
+RTC_NOINIT_ATTR static float socKept;          // survives software resets (update, crash) while on cable
+static const uint32_t SOC_MAGIC = 0x56445343;  // VDSC
+
+static float ocvPct(float v) {
+  static const float T[][2] = { {3.30f, 0}, {3.50f, 3}, {3.60f, 8}, {3.68f, 15}, {3.73f, 25}, {3.77f, 35},
+    {3.80f, 45}, {3.84f, 55}, {3.88f, 63}, {3.93f, 72}, {3.98f, 80}, {4.04f, 88}, {4.10f, 95}, {4.16f, 100} };
+  const int n = sizeof(T) / sizeof(T[0]);
+  if (v <= T[0][0]) return 0;
+  for (int i = 1; i < n; i++)
+    if (v < T[i][0]) return T[i - 1][1] + (v - T[i - 1][0]) / (T[i][0] - T[i - 1][0]) * (T[i][1] - T[i - 1][1]);
+  return 100;
+}
+
 static void readBattery() {
-  static float v = 0;
-  float now = analogReadMilliVolts(PIN_BAT) * 2 / 1000.0f;
-  v = v == 0 ? now : v * 0.9f + now * 0.1f;
-  charging = v > 4.25f;
-  batPct = constrain((int)((v - 3.3f) / (4.15f - 3.3f) * 100), 0, 100);
-  if (charging) batPct = 100;
+  static float v = 0, soc = -1;
+  static uint32_t tLast = 0, tPlug = 0, tUnplug = 0;
+  static bool wasExt = false;
+  uint32_t now = millis();
+  float raw = analogReadMilliVolts(PIN_BAT) * 2 / 1000.0f;
+  v = v == 0 ? raw : v * 0.9f + raw * 0.1f;
+  float dt = tLast ? (now - tLast) / 1000.0f : 0; tLast = now;
+  // cable: USB host enumerated, or a charger lifting the cell above what a resting Li-Po can show
+  extPower = usbMounted || v > 4.22f;
+  if (soc < 0) {   // first reading after boot
+    if (socMagic == SOC_MAGIC && socKept >= 0 && socKept <= 100) soc = socKept;
+    else soc = extPower ? ocvPct(v - BAT_IR_V) : ocvPct(v);
+  }
+  if (extPower) {
+    if (!wasExt) tPlug = now;
+    float rate = BAT_CHARGE_MA * 100.0f / BAT_MAH / 3600.0f;          // %/s in the constant-current phase
+    if (soc > 80) rate *= max(0.15f, (100 - soc) / 20.0f);           // tapering constant-voltage phase
+    soc += rate * dt;
+    float hi = v < 4.12f ? ocvPct(v) : 100;                            // terminal voltage >= rest voltage
+    float lo = v < 4.12f && now - tPlug > 60000 ? ocvPct(v - BAT_IR_V) : 0;
+    soc = constrain(soc, lo, hi);
+    if (soc > 99.5f) soc = 100;
+  } else {
+    if (wasExt) tUnplug = now;
+    float s = ocvPct(v);
+    // after unplugging the cell relaxes for a few minutes: only let the level fall, slowly
+    if (now - tUnplug < 180000 && tUnplug) { if (s < soc) soc = max(s, soc - 0.05f * dt); }
+    else if (s < soc) soc = max(s, soc - 0.2f * dt);                    // follow drops, smooth load dips
+    else if (s > soc + 8) soc = s;                                       // re-sync (e.g. other battery)
+  }
+  wasExt = extPower;
+  socKept = soc; socMagic = SOC_MAGIC;
+  batPct = (uint8_t)constrain((int)(soc + 0.5f), 0, 100);
+  charging = extPower && batPct < 100;
 }
 
 static void goSleep() {
@@ -417,7 +463,7 @@ void loop() {
   uint32_t idle = (now - lastActivity) / 1000;
   if (S.homeOn && !(S.mediaStay && curKind() == K_MEDIA) && curKind() != K_WIDGETS && S.returnAfter > 0 && idle >= (uint32_t)S.returnAfter && sel != 0 && !items.empty() && items[0].home) { sel = 0; dirty = true; evtSelect(); }
   // dimming / auto power-off: separate settings on cable (USB host or charger) and on battery, 0 = off
-  bool onCable = usbMounted || charging;
+  bool onCable = extPower;
   int dimLimit = onCable ? S.dimAfterUsb : S.dimAfter, sleepLimit = onCable ? S.sleepAfterUsb : S.sleepAfter;
   int dimLevel = onCable ? S.dimLevelUsb : S.dimLevel;
   ecoAnimFps = min(S.animFps, onCable ? S.ecoFpsUsb : S.ecoFps);

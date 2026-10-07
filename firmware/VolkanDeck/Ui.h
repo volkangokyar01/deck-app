@@ -141,7 +141,7 @@ static void bubble(bool home, App* a, int x, int y, int r, float alpha, uint8_t 
 int sel = 0;
 float launchP = -1;           // 0..1 while launching
 String toastMsg; uint32_t toastUntil = 0;
-uint8_t batPct = 0; bool charging = false;
+uint8_t batPct = 0; bool charging = false, extPower = false;
 
 static void toast(const String& m, uint32_t ms = 1800) { toastMsg = m; toastUntil = millis() + ms; }
 
@@ -152,8 +152,12 @@ static void drawStatus(uint16_t dot, const char* link, int x0 = 2) {
   text(items.size() ? String(sel + 1) + "/" + String(items.size()) : String("0/0"), x0 + 12, 7, FSB11, SC_SUB);
   text(link, 254, 7, FSB11, SC_SUB, textdatum_t::middle_right);
   spr.drawRoundRect(260, 2, 22, 10, 2, SC_SUB); spr.fillRect(282, 5, 2, 4, SC_SUB);
-  spr.fillRect(262, 4, max(1, 18 * batPct / 100), 6, batPct < 20 ? SC_RED : SC_TEXT);
-  text(charging ? String("şarj") : String(batPct) + "%", 318, 7, FM9, SC_SUB, textdatum_t::middle_right);
+  spr.fillRect(262, 4, max(1, 18 * batPct / 100), 6, batPct < 20 && !charging ? SC_RED : SC_TEXT);
+  if (charging) {   // lightning bolt across the cell while charging; the level stays visible
+    spr.fillTriangle(273, 2, 266, 8, 271, 8, SC_BG); spr.fillTriangle(270, 6, 276, 6, 269, 12, SC_BG);
+    spr.fillTriangle(272, 3, 268, 7, 271, 7, SC_TEXT); spr.fillTriangle(271, 7, 274, 7, 270, 11, SC_TEXT);
+  }
+  text(String(batPct) + "%", 318, 7, FM9, SC_SUB, textdatum_t::middle_right);
 }
 
 static void drawQuickSlots() {

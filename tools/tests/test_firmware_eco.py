@@ -39,7 +39,7 @@ class FirmwareEcoTest(unittest.TestCase):
             self.skipTest('C++ compiler unavailable')
         ino = (ROOT / 'firmware/VolkanDeck/VolkanDeck.ino').read_text()
         eco = ino[ino.index('static void ecoSuspend()'):ino.index('int curBright')]
-        wake = ino[ino.index('static bool wakeUp()'):ino.index('static void readBattery()')]
+        wake = ino[ino.index('static bool wakeUp()'):ino.index('// Battery level.')]
         inputs = ino[ino.index('static void handleInput()'):ino.index('static void applySideEffects()')]
         harness = r'''
 #include <cassert>
@@ -117,7 +117,7 @@ struct Value {bool exists; int n; int operator|(int def){return exists?n:def;}};
 struct Device {std::map<std::string,int> values; Value operator[](std::string k){return {values.count(k)!=0,values[k]};}} d;
 struct Settings {int dimLevelUsb=17,dimLevel=17,ecoFpsUsb=4,ecoFps=4;
  int brightness=80,dimAfterUsb=10,dimAfter=10,sleepAfterUsb=0,sleepAfter=0,ecoAfterUsb=10,ecoAfter=10,animFps=15;} S,N;
-bool usbMounted=false,charging=false,dimmed=false,screenOff=false,ecoActive=false;
+bool usbMounted=false,charging=false,extPower=false,dimmed=false,screenOff=false,ecoActive=false;
 int ecoAnimFps=4,adjust=0,bright=0,frames=0; unsigned toastUntil=0,now=20000,tFrame=0,idle=20;
 bool protoTransferBusy(){return false;} void ecoSuspend(){ecoActive=false;}
 bool mail=false; bool mailActive(){return mail;}
@@ -126,6 +126,7 @@ void renderEcoAnim(unsigned){frames++;}
 void parse(){
 ''' + '\n'.join(assignments) + r'''}
 void update(){
+ extPower=usbMounted||charging;   // readBattery(): host USB or charger lift
 ''' + idle + r'''}
 void redraw(bool animate){
 ''' + periodic + r'''}

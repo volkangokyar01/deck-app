@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.8.2)
+## Firmware (v1.8.3)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -186,3 +186,10 @@ Değişiklikler: `applyConfig` ikonları en başta bırakır ve `S = std::move(N
 ## 2026-10-06 — Komut dosyaları
 
 Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygulaması yapar (cihaz yalnız launch olayı gönderir). Windows: `.ps1` → `powershell -NoProfile -ExecutionPolicy Bypass -File` ("Arka planda aç" ile gizli pencere), `.bat` / `.cmd` → `cmd start` (klasörü çalışma dizini), `.vbs` → `wscript`. macOS: `.sh` / `.bash` → bash, `.zsh` → zsh, `.py` → `/usr/bin/python3`, `.scpt` / `.applescript` → osascript, hepsi Terminal açmadan; `.command` Finder gibi Terminal'de açılır. Klavye yedeğinde Windows komut dosyası Çalıştır kutusuna tam yolla yazılır.
+
+## 2026-10-07 — Pil seviyesi kablodayken de gerçek (firmware 1.8.3)
+- Sorun: kabloda şarj devresi pil ucundaki gerilimi yükseltiyor (şarj akımı × iç direnç, sonra 4,2 V sabit), ölçüm >4,25 V olunca seviye doğrudan %100 yazılıyordu.
+- Pilde: filtrelenmiş gerilim doğrusal değil Li-Po deşarj eğrisiyle yüzdeye çevrilir (3,30 V = %0, 4,16 V = %100); düşüşler yumuşak izlenir, kablo çıkınca 3 dk gevşeme süresince seviye yükselmez.
+- Kabloda: seviye takılmadan önceki değerden başlar, şarj hızıyla artar (BAT_CHARGE_MA 500 mA / BAT_MAH 2000 mAh ≈ %25/saat, %80 üstünde yavaşlar). Üst sınır ölçülen gerilimin eğrideki karşılığı, alt sınır 0,10 V (BAT_IR_V) düşülmüş karşılığı (yalnız 4,12 V altında). %100'e varınca "şarj" biter.
+- Kablo = USB host bağlı ya da gerilim >4,22 V (duvar şarjı). Seviye RTC belleğinde tutulur; güncelleme/yeniden başlatma sonrası sıfırdan tahmin edilmez. Soğuk açılış kabloda ise ilk değer gerilimden tahmin edilir.
+- Durum çubuğunda "şarj" yazısı yerine yüzde + pil simgesinde şimşek. Şarj akımı kartta ölçülmedi; sapma görülürse Board.h'deki sabitler ayarlanır.
