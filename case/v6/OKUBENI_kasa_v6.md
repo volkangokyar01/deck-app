@@ -18,7 +18,7 @@ v4'te kart, ön yüze dik duran 4 ince (1,2 mm) tırnakla tutuluyordu. Gövde y�
 Eski 14 × 9 mm'lik, üstü üçgen tepeli delik yerine **12,4 × 7,2 mm, köşeleri R1,2 düz bir dikdörtgen** açıldı. Tünel de aynı kesitte ve sokete kadar kapalı, dışarıdan kasanın içi görünmüyor. Fişin plastik başı 12 × 7 mm'ye kadar sığar. Baskıda tünelin tavanı 12,4 mm'lik bir köprüdür; P2S bunu desteksiz basar.
 
 ## Ayaklar
-Tabandaki 4 yuva **2 cm (0,75 inç ≈ 19 mm) yapışkanlı yuvarlak pedlere** göre: Ø20,6 mm, 1 mm derin, kenardan en az 1 mm içeride (x ±36, y 16 / 70). 19 mm'lik ped de 20 mm'lik ped de oturur. Ped 1 mm'den kalınsa yuvadan taşar ve kasayı masadan kaldırır.
+Tabandaki 4 yuva **Ø15 mm yapışkanlı yuvarlak kaydırmaz pedlere** göre: Ø15,6 mm, 1 mm derin, kenardan en az 1 mm içeride (x ±37, y 15 / 72,6). Ped 1 mm'den kalınsa yuvadan taşar ve kasayı masadan kaldırır.
 
 ## Parçalar (destek yok)
 | Dosya | Adet | Baskı yönü |

@@ -15,7 +15,7 @@
 #   * USB-C: plain rounded-rectangle opening and tunnel (was 14 x 9 with a 45 deg peak), closed all the way
 #     to the socket so the inside of the case can't be seen; a notch under the tunnel for the battery plug
 #     (it plugs into the JST socket from the board's end).
-#   * feet: recesses for 20 mm (0.75 in) round self-adhesive pads (were 10 mm), moved inward.
+#   * feet: recesses for 15 mm round self-adhesive pads (were 10 mm), moved slightly inward.
 # Everything outside is unchanged: the v5 back cover, knob and key plungers still fit.
 # Board frame (from v4): x along the board (0 = USB end), y across, z = face normal (0 = glass front on the
 # face's inner surface, PCB back at -6.38, more negative = deeper into the case).
@@ -29,8 +29,8 @@ from manifold3d import Manifold, CrossSection, OpType
 PCB_BACK = D.PCB_BACK                 # -6.38
 # ---------------- parameters (mm) ----------------
 USB_W, USB_H, USB_R = 12.4, 7.2, 1.2   # USB-C opening (plug overmold up to ~12 x 7)
-FOOT_D, FOOT_DEPTH = 20.6, 1.0         # 20 mm (0.75 in = 19 mm) pads + clearance
-FEET = [(sx * 36.0, fy) for sx in (1, -1) for fy in (16.0, 70.0)]
+FOOT_D, FOOT_DEPTH = 15.6, 1.0         # 15 mm pads + 0.3 per side
+FEET = [(sx * 37.0, fy) for sx in (1, -1) for fy in (15.0, 72.6)]
 POST_Y   = (13.10, 17.90)   # |y| of the posts (board edge at 12.98)
 PRONG    = 3.0              # prong thickness along x
 SLOT_C   = 0.15             # bar-to-prong clearance per side (x)

@@ -4,6 +4,7 @@ Her push'tan önce en üste bir satır eklenir. Kurallar `GUNCELLEME.md` → 5. 
 
 | Tarih / saat (TSİ) | İmza | Tür | Güncelleme | Özet |
 |---|---|---|---|---|
+| 2026-10-07 12:50 | volkangokyar01 | kasa | Hayır | Kasa v6: ayak yuvaları yeniden Ø15 mm pedlere göre (Ø15,6 × 1 mm, x ±37 / y 15, 72,6). Kontroller 0; baskıda denenmedi |
 | 2026-10-07 12:05 | volkangokyar01 | kasa | Hayır | Kasa v6: ayak yuvaları 2 cm (0,75 inç) pedler için Ø20,6 × 1 mm, x ±36 / y 16, 70; basılabilir pimler (sekizgen 1,7 × 1,2, başlıklı, 6 adet) 3MF'e eklendi. Kontroller 0; baskıda denenmedi |
 | 2026-10-07 11:45 | volkangokyar01 | kasa | Hayır | Kasa v6: USB-C girişi düz 12,4 × 7,2 dikdörtgen, tünel sokete kadar kapalı (üçgen tepe kaldırıldı); ayak yuvaları Ø15 pedler için Ø15,6 × 1 mm. Çakışma kontrolleri 0 (USB fişi 12 × 6,8 süpürmesi dahil); baskıda denenmedi |
 | 2026-10-07 11:10 | volkangokyar01 | kasa | Hayır | Kasa v6: ekran tırnakları yerine 4 kalın direk + 2 baskı çubuğu + 1,75 mm filament pimler (vidasız). Sol çubuk B tuşunun arkasına ve köşelere, sağ çubuk boş sağ uca basar; pim deliği 0,1 mm ön yük verir. Pil fişi için USB kanalında çentik. Resmî kart modeliyle çakışma kontrolleri 0; baskıda denenmedi |
