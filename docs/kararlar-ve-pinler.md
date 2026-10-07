@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.9.1)
+## Firmware (v1.9.2)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -224,3 +224,10 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Aktif bilgisayara giden: HID tuşları ve medya tuşları (Bluetooth'ta yalnız o bağlantıya notify; önceden iki bilgisayar bağlıysa tuşlar ikisine birden gidiyordu), olaylar (launch, media, sys, input, select, status). Ekran verisi (stats, media, media_art, sys, mail) yalnız aktiften alınır; idle bildiren uygulama yoksa eski kural (USB'deki besler).
 - Uygulama yoksa: tuşlar USB'ye, USB yoksa en son bağlanan Bluetooth bilgisayarına.
 - Aktif değişince cihaz "Aktif: <ad>" gösterir, medya/ses verisini sıfırlayıp yeni bilgisayara status/select/media select gönderir. Bağlantılar başlığında "Aktif: <ad>", listede aktif bilgisayarın yanında "aktif"; ilk satır "Aktif bilgisayar · otomatik".
+
+## 2026-10-08 — Asıl neden: ikinci bilgisayar eşleşince ilki siliniyordu (firmware 1.9.2)
+- Windows sürekli "Cihazınızı yeniden bağlamayı deneyin" diyordu. Neden NimBLE'nin bağ deposu: Arduino-ESP32 3.3.12 sdkconfig'i CONFIG_BT_NIMBLE_MAX_CCCDS 8 ve MAX_BONDS 3 veriyor. Eşleşmiş her bilgisayar ~5 bildirim aboneliği (CCCD) saklar: HID rapor 1, rapor 2 (medya), pil, GATT service changed, Volkan Deck TX. İki bilgisayar 10 kayıt ister.
+- Depo dolunca NimBLE'nin varsayılan store_status_cb'si (ble_store_util_status_rr) CCCD taşmasında "şimdiki hariç en eski eşi" eşleşmeden çıkarır. Windows eşleşip abone olurken Mac mini'nin bağı siliniyor, Mac yeniden eşleşince Windows'unki gidiyordu; Windows eski anahtarla bağlanamayınca uyarıyı veriyordu.
+- Düzeltme: derlemede -DMYNEWT_VAL_BLE_STORE_MAX_CCCDS=32 -DMYNEWT_VAL_BLE_STORE_MAX_BONDS=4 (NimBLE'nin esp_nimble_cfg.h'si bu değerleri #ifndef ile alır; sdkconfig'e dokunmak gerekmez). Derlenmiş ELF'te ble_store_config_cccds 512 bayt (32 × 16), peer_secs 352 bayt (4 × 88). `tools/build_firmware.sh` bayrakları verir; Hid.h bayraksız derlemede #error verir.
+- Ek güvenlik: kendi onStoreStatus'umuz CCCD taşmasında başka bilgisayarı silmez, yalnız o kaydı saklamaz (BLE_HS_ESTORE_CAP). Bağ taşması (5. bilgisayar) en eskiyi silmeye devam eder.
+- Güncellemeden sonra cihazdaki ve bilgisayarlardaki eski eşleşmeler bir kez temizlenip yeniden eşleştirilmeli (eski sürümde biri zaten silinmiş olabilir).

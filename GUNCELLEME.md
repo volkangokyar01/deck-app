@@ -34,7 +34,7 @@ Bir commit'e hem güncelleme hem belge girebilir; o zaman tür **uygulama/ayar s
 
 ### Firmware ise ayrıca
 - [ ] `firmware/VolkanDeck/Board.h` içindeki `FW_VERSION` artırıldı (yama `x.y.Z`, özellik `x.Y.0`).
-- [ ] README'deki `arduino-cli compile` + `cp` adımları çalıştı; `firmware/bin/` güncel.
+- [ ] `tools/build_firmware.sh` çalıştı (derleme + `firmware/bin/` + gömme); `firmware/bin/` güncel.
 - [ ] `python3 tools/embed_firmware.py`, ardından `python3 tools/build.py` çalıştı.
 - [ ] README'deki firmware sürümü güncellendi.
 - [ ] Yeni karar/protokol varsa `docs/kararlar-ve-pinler.md`'ye tarihle yazıldı.

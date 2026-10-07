@@ -6,6 +6,13 @@
 #include <NimBLEHIDDevice.h>
 #include <Preferences.h>
 
+// Every paired computer keeps ~5 notification subscriptions (keyboard, media keys, battery, service
+// changed, data channel). NimBLE's default store holds 8, and on overflow it unpairs another computer:
+// a second computer pairing silently removed the first. tools/build_firmware.sh raises the limits.
+#if MYNEWT_VAL(BLE_STORE_MAX_CCCDS) < 24 || MYNEWT_VAL(BLE_STORE_MAX_BONDS) < 4
+#error "NimBLE limits too small: build with tools/build_firmware.sh (MYNEWT_VAL_BLE_STORE_MAX_CCCDS=32, MAX_BONDS=4)"
+#endif
+
 USBHIDKeyboard usbKb;
 USBHIDConsumerControl usbCc;
 volatile bool usbMounted = false, usbSuspended = false;
@@ -166,11 +173,21 @@ static void bleAdvData(const String& name) {
   adv->enableScanResponse(true);
 }
 
+// Store full: a bond overflow (5th computer) still drops the oldest computer, but a subscription
+// record that does not fit is just not saved instead of unpairing another computer.
+class BtStoreCb : public NimBLEDeviceCallbacks {
+  int onStoreStatus(struct ble_store_status_event* e, void* arg) override {
+    if (e->event_code == BLE_STORE_EVENT_OVERFLOW &&
+        (e->overflow.obj_type == BLE_STORE_OBJ_TYPE_CCCD || e->overflow.obj_type == BLE_STORE_OBJ_TYPE_CSFC)) return BLE_HS_ESTORE_CAP;
+    return ble_store_util_status_rr(e, arg);
+  }
+};
 static void btLoad();
 static void bleBegin(const String& name) {
   if (bleStarted) return;
   btLoad();
   NimBLEDevice::init(name.c_str());
+  NimBLEDevice::setDeviceCallbacks(new BtStoreCb());
   NimBLEDevice::setSecurityAuth(false, false, true);   // bonding only in pairing mode (btPairStart)
   NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
   bleServer = NimBLEDevice::createServer();

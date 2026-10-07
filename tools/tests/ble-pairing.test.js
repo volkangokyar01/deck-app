@@ -44,3 +44,13 @@ test('Bağlantılar page: new computers pair only in pairing mode, the chosen on
   assert.match(web, /connections:\{enabled:true\}/);
   assert.match(web, /function drawConnPage\(\)/);
 });
+
+test('NimBLE store fits several computers; a full store never unpairs another computer', () => {
+  const sh = read('tools/build_firmware.sh'), hid = read('firmware/VolkanDeck/Hid.h');
+  assert.match(sh, /-DMYNEWT_VAL_BLE_STORE_MAX_CCCDS=32 -DMYNEWT_VAL_BLE_STORE_MAX_BONDS=4/);
+  assert.match(sh, /compiler\.c\.extra_flags=\$NIMBLE/);
+  assert.match(sh, /compiler\.cpp\.extra_flags=\$NIMBLE/);
+  assert.match(hid, /#if MYNEWT_VAL\(BLE_STORE_MAX_CCCDS\) < 24 \|\| MYNEWT_VAL\(BLE_STORE_MAX_BONDS\) < 4\n#error/);
+  assert.match(hid, /BLE_STORE_OBJ_TYPE_CCCD .*return BLE_HS_ESTORE_CAP;/s);
+  assert.match(hid, /NimBLEDevice::setDeviceCallbacks\(new BtStoreCb\(\)\);/);
+});
