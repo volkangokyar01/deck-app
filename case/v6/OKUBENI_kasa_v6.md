@@ -18,7 +18,7 @@ v4'te kart, ön yüze dik duran 4 ince (1,2 mm) tırnakla tutuluyordu. Gövde y�
 Eski 14 × 9 mm'lik, üstü üçgen tepeli delik yerine **12,4 × 7,2 mm, köşeleri R1,2 düz bir dikdörtgen** açıldı. Tünel de aynı kesitte ve sokete kadar kapalı, dışarıdan kasanın içi görünmüyor. Fişin plastik başı 12 × 7 mm'ye kadar sığar. Baskıda tünelin tavanı 12,4 mm'lik bir köprüdür; P2S bunu desteksiz basar.
 
 ## Ayaklar
-Tabandaki 4 yuva **Ø15 mm yapışkanlı yuvarlak pedlere** göre: Ø15,6 mm, 1 mm derin, köşelerden biraz içeride (x ±37, y 15 / 72,6). Ped 1 mm'den kalınsa yuvadan taşar ve kasayı masadan kaldırır, kalınlığı önemli değildir.
+Tabandaki 4 yuva **2 cm (0,75 inç ≈ 19 mm) yapışkanlı yuvarlak pedlere** göre: Ø20,6 mm, 1 mm derin, kenardan en az 1 mm içeride (x ±36, y 16 / 70). 19 mm'lik ped de 20 mm'lik ped de oturur. Ped 1 mm'den kalınsa yuvadan taşar ve kasayı masadan kaldırır.
 
 ## Parçalar (destek yok)
 | Dosya | Adet | Baskı yönü |
@@ -26,20 +26,22 @@ Tabandaki 4 yuva **Ø15 mm yapışkanlı yuvarlak pedlere** göre: Ø15,6 mm, 1 
 | v6_govde.stl | 1 | Ön yüzü tablada (v4 ile aynı) |
 | v6_baski_cubugu_sol.stl | 1 | Dosyadaki gibi, bacaklar yukarı |
 | v6_baski_cubugu_sag.stl | 1 | Dosyadaki gibi |
-| 1,75 mm filament | 4 × 11 mm | Makasla düz kes |
+| v6_pim (3MF'te 6 adet, 2 yedek) **veya** 1,75 mm filament | 4 × 11 mm | Pim: yatık, dosyadaki gibi. Filament: makasla düz kes |
 
-`VolkanDeck_kasa_v6.3mf`: gövde ve iki çubuk P2S tablasında.
+`VolkanDeck_kasa_v6.3mf`: gövde, iki çubuk ve 6 pim P2S tablasında.
 Önerilen ayar: PLA, 0,2 mm katman, **4 duvar** (direkler dolu çıksın), %20 dolgu.
 
 ## Montaj
 1. Tuş iticilerini ekranın solundaki iki deliğe içeriden takın (v4 ile aynı).
 2. Kartı, kablolar bağlıyken, arka açıklıktan ekran yüzüne bastırın. USB-C ucu sol kanala girer, kart dört direğin arasına oturur.
 3. Sol çubuğu bacakları karta bakacak şekilde sol uca, sağ çubuğu sağ uca yerleştirin. Uçları direklerin yarıklarına girer.
-4. Çubuğu başparmakla karta bastırırken pimi kartın **ortası tarafından** direğe sokun ve dibe kadar itin. Pimler dışa doğru gider, kör delikte durur. Yaklaşık 1,5 mm dışarıda kalır.
+4. Çubuğu başparmakla karta bastırırken pimi kartın **ortası tarafından** (direğin karta bakan değil, kartın ortasına bakan yüzündeki delikten) sokun ve dibe kadar itin. Pim dışa doğru gider, kör delikte durur.
+   - **Basılı pim:** başının 3 mm'lik uzun kenarı ekran yüzüne dik (kasanın içine doğru) dursun; baş direğe dayanınca pim yerindedir.
+   - **Filament pim:** 11 mm kesin, ~1,5 mm dışarıda kalır.
 5. Pil, arka kapak ve düğme v4'teki gibi takılır.
 
 **Pim sıkı girmiyorsa:** Pimin ucunu biraz eğik kesin ya da çakmakla ısıtılmış bir iğneyle deliği bir kez açın.
-**Sökmek için:** Pimi dışarıda kalan ucundan pense ile çekin.
+**Sökmek için:** Pimi başından (ya da dışarıda kalan ucundan) pense ile çekin.
 
 ## Kaynak
 `deck_case6.py` (geometri, v4'ü içe aktarır) ve `export6.py` (STL, 3MF ve görseller). Kartın ölçüleri ve bileşen yükseklikleri LilyGO'nun resmî T-Display-S3 3D modelinden alındı. Çubukların kartın arkasındaki hiçbir bileşene değmediği bu modelle kontrol edildi.
