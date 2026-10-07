@@ -12,7 +12,7 @@
 #define PIN_LCD_BL    38
 #define PIN_BAT       4
 #define BAT_MAH       2000     // Efcell 2000 mAh Li-Po
-#define BAT_CHARGE_MA 500      // board charger current (approx.)
+#define BAT_CHARGE_MA 500      // TP4065, R_PROG (R13) 2 kOhm -> 1000 V / 2 kOhm = 0.5 A (LilyGO: 500 mA)
 #define BAT_IR_V      0.10f    // voltage lift while charging (charge current x cell/wiring resistance)
 
 #define PIN_ENC_CLK   1
