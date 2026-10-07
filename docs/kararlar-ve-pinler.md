@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.9.2)
+## Firmware (v1.9.3)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -231,3 +231,7 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Düzeltme: derlemede -DMYNEWT_VAL_BLE_STORE_MAX_CCCDS=32 -DMYNEWT_VAL_BLE_STORE_MAX_BONDS=4 (NimBLE'nin esp_nimble_cfg.h'si bu değerleri #ifndef ile alır; sdkconfig'e dokunmak gerekmez). Derlenmiş ELF'te ble_store_config_cccds 512 bayt (32 × 16), peer_secs 352 bayt (4 × 88). `tools/build_firmware.sh` bayrakları verir; Hid.h bayraksız derlemede #error verir.
 - Ek güvenlik: kendi onStoreStatus'umuz CCCD taşmasında başka bilgisayarı silmez, yalnız o kaydı saklamaz (BLE_HS_ESTORE_CAP). Bağ taşması (5. bilgisayar) en eskiyi silmeye devam eder.
 - Güncellemeden sonra cihazdaki ve bilgisayarlardaki eski eşleşmeler bir kez temizlenip yeniden eşleştirilmeli (eski sürümde biri zaten silinmiş olabilir).
+
+## 2026-10-08 — "Eşleşmeleri sil" eşleşmeleri silmiyordu (firmware 1.9.3)
+- NimBLE ble_gap_unpair: eş kimlik anahtarı (IRK) dağıtmışsa ve yayın ya da tarama sürüyorsa BLE_HS_EBUSY döner, hiçbir şey silmez. Mac ve Windows her zaman IRK gönderir; cihaz da hep yayında olduğu için deleteAllBonds ilk eşte başarısız oluyordu.
+- bleForget artık: eşleştirme modunu kapatır, bt.hold ile yayını kilitler (bağlantı geri çağrıları yeniden başlatamaz, gelen bağlantı düşürülür), bağlantıları kapatıp en çok 1,5 sn bekler, deleteAllBonds çalıştırır; eşleşme kalırsa ble_store_clear ile depoyu tamamen siler. Sonucu döndürür: cihaz "Eşleşmeler silindi" ya da "Silinemedi" gösterir, ble_forget komutu ok / "busy" yanıtlar.

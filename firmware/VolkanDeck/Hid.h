@@ -71,6 +71,7 @@ struct BtState {
   volatile int evtCode = 0;
   uint8_t evtAddr[6];
   volatile bool newBond = false;
+  volatile bool hold = false;          // no advertising (pairings being deleted)
   uint8_t old[4][6]; uint8_t oldN = 0;  // computers paired before pairing mode started
 };
 enum : uint8_t { BTE_NONE = 0, BTE_CONN, BTE_DISC, BTE_PAIRED, BTE_PAIR_FAIL, BTE_REJECT, BTE_UNPAIRED };
@@ -109,12 +110,12 @@ static uint16_t activeHostConn() {
 static const HostSeen* hostOf(uint16_t conn) { for (auto& h : hostSeen) if (h.conn == conn && hostAlive(h)) return &h; return nullptr; }
 static void btEvt(uint8_t e, int code, const uint8_t* a) { if (a) memcpy(bt.evtAddr, a, 6); bt.evtCode = code; bt.evt = e; }
 static bool btPairing() { return bt.pairUntil && (int32_t)(millis() - bt.pairUntil) < 0; }
-static void btAdvertise() { if (bleStarted && !bt.off) NimBLEDevice::startAdvertising(); }
+static void btAdvertise() { if (bleStarted && !bt.off && !bt.hold) NimBLEDevice::startAdvertising(); }
 
 class BleCb : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, NimBLEConnInfo& ci) override {
     bleConns++; bleConnected = true;
-    if (bt.off) { s->disconnect(ci.getConnHandle()); return; }
+    if (bt.off || bt.hold) { s->disconnect(ci.getConnHandle()); return; }
     if (bleConns < 2) btAdvertise();   // stay visible so the desktop app can find us while the OS holds the keyboard link
   }
   void onDisconnect(NimBLEServer* s, NimBLEConnInfo& ci, int reason) override {
@@ -286,13 +287,27 @@ static void btSetOff(bool off) {
   if (!bleStarted) return;
   if (off) { btPairStop(); NimBLEDevice::stopAdvertising(); btDropAll(); } else btAdvertise();
 }
-static void bleForget() {
-  if (!bleStarted) return;
-  btPairStop(); btDropAll();   // the links use the old keys
+// Delete every pairing. NimBLE refuses to delete a pairing that carries an identity key (Mac and Windows
+// always send one) while advertising runs (ble_gap_unpair → BLE_HS_EBUSY), so advertising stops first and
+// the links are closed; whatever is left is wiped with ble_store_clear. Returns true when no pairing is left.
+static bool bleForget() {
+  if (!bleStarted) return false;
+  btPairStop();
+  bt.hold = true;                                      // nobody reconnects while the keys go
+  NimBLEDevice::stopAdvertising();
+  btDropAll();                                         // the links use the old keys
+  for (int i = 0; i < 60 && bleServer->getConnectedCount(); i++) delay(25);   // up to 1.5 s for the disconnects
+  NimBLEDevice::stopAdvertising();
   NimBLEDevice::deleteAllBonds();
+  if (NimBLEDevice::getNumBonds()) ble_store_clear();
+  bool ok = NimBLEDevice::getNumBonds() == 0;
   Preferences pr; if (pr.begin("vdbt", false)) { pr.clear(); pr.putBool("off", bt.off); pr.end(); }
   bt.hasSel = false;
+  for (auto& h : hostSeen) h = HostSeen();
+  bleLastConn = BLE_HS_CONN_HANDLE_NONE;
+  bt.hold = false;
   btAdvertise();
+  return ok;
 }
 // computer name over GATT (Generic Access → Device Name) for a paired computer without a saved name.
 // Runs on its own short task: discovery waits for the computer's answer.

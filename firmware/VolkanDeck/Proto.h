@@ -323,7 +323,7 @@ static void handleLine(char* buf, size_t len) {
   }
   else if (!strcmp(cmd, "ble_forget")) {         // drop every Bluetooth pairing; computers pair again from scratch
     if (replySrc == SRC_BLE) { replyErr(id, "usb_only"); return; }
-    bleForget(); replyOk(id);
+    if (bleForget()) replyOk(id); else replyErr(id, "busy");
   }
   else if (!strcmp(cmd, "restart")) { replyOk(id); delay(200); ESP.restart(); }
   else replyErr(id, "unknown_cmd");

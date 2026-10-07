@@ -306,7 +306,11 @@ static void connAct() {
     case CR_HOST: btSelect(r.a); toast(btName(r.a) + " seçildi"); connEdit = false; break;
     case CR_PAIR: btPairStart(); connEdit = false; break;
     case CR_FORGET:
-      if (connConfirmAt && millis() - connConfirmAt < 4000) { connConfirmAt = 0; bleForget(); connCur = 0; connEdit = false; toast("Eşleşmeler silindi"); }
+      if (connConfirmAt && millis() - connConfirmAt < 4000) {
+        connConfirmAt = 0; connCur = 0; connEdit = false;
+        toast("Siliniyor…"); render(linkName());
+        toast(bleForget() ? "Eşleşmeler silindi · bilgisayarlarda da kaldır" : "Silinemedi: cihazı yeniden başlatıp dene", 3500);
+      }
       else connConfirmAt = millis() | 1;
       break;
   }

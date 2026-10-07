@@ -34,7 +34,7 @@ test('Bağlantılar page: new computers pair only in pairing mode, the chosen on
   const start = hid.slice(hid.indexOf('static void btPairStart('), hid.indexOf('static void btPairStop('));
   assert.match(start, /setSecurityAuth\(true, false, true\)/);
   assert.match(hid, /bt\.hasSel && memcmp\(id, bt\.sel, 6\)/, 'other computers are dropped when one is chosen');
-  assert.match(hid, /if \(bt\.off\) \{ s->disconnect/);
+  assert.match(hid, /if \(bt\.off \|\| bt\.hold\) \{ s->disconnect/);
   assert.match(ui, /if \(S\.connOn\) items\.push_back\(\{ false, nullptr, K_CONN \}\)/);
   assert.match(ui, /WI-FI/);
   assert.match(ino, /case K_CONN: connPress\(\); break;/);
@@ -53,4 +53,15 @@ test('NimBLE store fits several computers; a full store never unpairs another co
   assert.match(hid, /#if MYNEWT_VAL\(BLE_STORE_MAX_CCCDS\) < 24 \|\| MYNEWT_VAL\(BLE_STORE_MAX_BONDS\) < 4\n#error/);
   assert.match(hid, /BLE_STORE_OBJ_TYPE_CCCD .*return BLE_HS_ESTORE_CAP;/s);
   assert.match(hid, /NimBLEDevice::setDeviceCallbacks\(new BtStoreCb\(\)\);/);
+});
+
+test('deleting pairings stops advertising first (NimBLE refuses to unpair identity-key peers while advertising)', () => {
+  const hid = read('firmware/VolkanDeck/Hid.h');
+  const f = hid.slice(hid.indexOf('static bool bleForget()'), hid.indexOf('// computer name over GATT'));
+  const stop = f.indexOf('NimBLEDevice::stopAdvertising();'), del = f.indexOf('NimBLEDevice::deleteAllBonds();');
+  assert.ok(stop > 0 && del > stop, 'advertising stops before the bonds are deleted');
+  assert.match(f, /bt\.hold = true;[\s\S]*bt\.hold = false;/);
+  assert.match(f, /if \(NimBLEDevice::getNumBonds\(\)\) ble_store_clear\(\);/);
+  assert.match(f, /return ok;/);
+  assert.match(hid, /static void btAdvertise\(\) \{ if \(bleStarted && !bt\.off && !bt\.hold\)/);
 });
