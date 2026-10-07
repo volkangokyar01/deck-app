@@ -342,6 +342,19 @@ static void connPoll() {
     }
     if (curKind() == K_CONN || e != BTE_DISC) dirty = true;
   }
+  // the computer in use changed: say where the keys go now, refresh the new one
+  static uint16_t lastAct = BLE_HS_CONN_HANDLE_NONE;
+  uint16_t act = activeHostConn();
+  if (act != lastAct) {
+    bool had = lastAct != BLE_HS_CONN_HANDLE_NONE;
+    lastAct = act;
+    if (act != BLE_HS_CONN_HANDLE_NONE) {
+      if (had) toast("Aktif: " + hostName(act), 1500);
+      media.stamp = 0; sysSt.stamp = 0;          // the screen waits for the new computer's data
+      evtStatus(); evtSelect(); if (companionOn()) evtMedia("select");
+    }
+    dirty = true;
+  }
   static uint32_t tName = 0;
   if (now - tName > 3000) { tName = now; btLearnNames(); }
   static uint32_t tPair = 0;

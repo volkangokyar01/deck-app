@@ -124,7 +124,7 @@
       serialNote('Uygulamaları doğrudan açmak için kartta firmware v' + MIN_FW + ' gerekiyor (kartta v' + (deviceInfo.fw || '?') + ' var). Cihaz ayarları → Firmware yükle ile güncelle; o zamana kadar cihaz eski klavye yöntemiyle açar.');
       fwNeeded = true; renderStatus(); renderEditor();
     } else {
-      try { const host = port?.isBle ? await deck.hostName?.().catch(() => '') : ''; await send({ cmd: 'companion', os: HOST, mediaLaunch: true, ack: true, ...(host ? { host } : {}) }, 2500, true); direct = true; } catch (e) {}
+      try { const host = await deck.hostName?.().catch(() => '') || ''; await send({ cmd: 'companion', os: HOST, mediaLaunch: true, ack: true, idle: idleSec, ...(host ? { host } : {}) }, 2500, true); direct = true; } catch (e) {}
     }
     pushStatus();
     await pollStats(true);
@@ -134,11 +134,14 @@
   flashTo = async function (p) { busy = true; try { return await _flashTo(p); } finally { busy = false; } };
 
   /* ---- heartbeat: while this arrives, the deck sends launch events instead of typing ---- */
+  // idle seconds of this computer: with two computers the deck follows the one in use (firmware 1.9.1)
+  let idleSec = 0;
+  setInterval(() => { deck.idleTime?.().then(v => { if (typeof v === 'number' && v >= 0) idleSec = v; }).catch(() => {}); }, 1000);
   let checkedPort = null;
   setInterval(() => {
     // the page may have connected on its own (already-allowed port): run the direct-mode handshake once per connection
     if (port && deviceInfo && checkedPort !== port && !connecting && !busy) { checkedPort = port; afterConnect(); }
-    if (writer && deviceInfo && direct && !busy) sendRaw({ cmd: 'companion', os: HOST, mediaLaunch: true });
+    if (writer && deviceInfo && direct && !busy) sendRaw({ cmd: 'companion', os: HOST, mediaLaunch: true, idle: idleSec });
     if (!port) direct = false;
     pushStatus();
   }, 2000);

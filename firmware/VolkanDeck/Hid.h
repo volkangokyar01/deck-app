@@ -68,6 +68,38 @@ struct BtState {
 };
 enum : uint8_t { BTE_NONE = 0, BTE_CONN, BTE_DISC, BTE_PAIRED, BTE_PAIR_FAIL, BTE_REJECT, BTE_UNPAIRED };
 BtState bt;
+
+/* ---------- active computer (1.9.1) ----------
+   Every desktop app reports how long its computer has been idle (no keyboard / mouse). The computer
+   used most recently is "active": keys, launch and media events go there and it feeds the screen.
+   Without any app the last Bluetooth computer that connected gets the keys. */
+static const uint16_t HOST_USB = 0xFFFE;
+struct HostSeen { uint16_t conn = BLE_HS_CONN_HANDLE_NONE; uint32_t seenAt = 0, inputAt = 0; char name[28] = ""; };
+HostSeen hostSeen[4];
+volatile uint16_t bleLastConn = BLE_HS_CONN_HANDLE_NONE;   // newest accepted Bluetooth computer
+static bool hostAlive(const HostSeen& h) {
+  if (h.conn == BLE_HS_CONN_HANDLE_NONE || !h.seenAt || (int32_t)(millis() - h.seenAt) > 6000) return false;
+  if (h.conn == HOST_USB) return usbMounted && !usbSuspended;
+  return true;                                   // Bluetooth entries are cleared on disconnect
+}
+static void hostReport(uint16_t conn, int idleSec, const char* name) {
+  uint32_t now = millis();
+  HostSeen* e = nullptr;
+  for (auto& h : hostSeen) if (h.conn == conn) { e = &h; break; }
+  if (!e) for (auto& h : hostSeen) if (!hostAlive(h)) { h = HostSeen(); h.conn = conn; e = &h; break; }
+  if (!e) return;
+  e->seenAt = now | 1;
+  if (idleSec >= 0) { uint32_t ms = (uint32_t)min(idleSec, 86400) * 1000UL; e->inputAt = ms < now ? (now - ms) | 1 : 1; }
+  if (name && *name) { strncpy(e->name, name, sizeof e->name - 1); e->name[sizeof e->name - 1] = 0; }
+}
+static void hostForget(uint16_t conn) { for (auto& h : hostSeen) if (h.conn == conn) h = HostSeen(); }
+// HOST_USB, a Bluetooth connection, or NONE when no app reports idle time
+static uint16_t activeHostConn() {
+  const HostSeen* best = nullptr;
+  for (auto& h : hostSeen) if (hostAlive(h) && h.inputAt && (!best || (int32_t)(h.inputAt - best->inputAt) > 0)) best = &h;
+  return best ? best->conn : BLE_HS_CONN_HANDLE_NONE;
+}
+static const HostSeen* hostOf(uint16_t conn) { for (auto& h : hostSeen) if (h.conn == conn && hostAlive(h)) return &h; return nullptr; }
 static void btEvt(uint8_t e, int code, const uint8_t* a) { if (a) memcpy(bt.evtAddr, a, 6); bt.evtCode = code; bt.evt = e; }
 static bool btPairing() { return bt.pairUntil && (int32_t)(millis() - bt.pairUntil) < 0; }
 static void btAdvertise() { if (bleStarted && !bt.off) NimBLEDevice::startAdvertising(); }
@@ -82,6 +114,11 @@ class BleCb : public NimBLEServerCallbacks {
     if (bleConns > 0) bleConns--;
     bleConnected = bleConns > 0;
     if (ci.getConnHandle() == bleHostConn) bleHostConn = BLE_HS_CONN_HANDLE_NONE;
+    hostForget(ci.getConnHandle());
+    if (ci.getConnHandle() == bleLastConn) {
+      bleLastConn = BLE_HS_CONN_HANDLE_NONE;
+      for (uint16_t h : s->getPeerDevices()) if (h != ci.getConnHandle()) bleLastConn = h;
+    }
     if (bleDropHook) bleDropHook(ci.getConnHandle());
     btEvt(BTE_DISC, reason, ci.getIdAddress().getVal());
     btAdvertise();
@@ -100,6 +137,7 @@ class BleCb : public NimBLEServerCallbacks {
     if (bt.hasSel && memcmp(id, bt.sel, 6) && !btPairing()) {
       btEvt(BTE_REJECT, 0, id); bleServer->disconnect(ci.getConnHandle()); return;
     }
+    bleLastConn = ci.getConnHandle();
     btEvt(BTE_CONN, 0, id);
   }
 };
@@ -294,11 +332,20 @@ static Link activeLink() {
   bool usbOk = usbMounted && !usbSuspended;
   if (S.conn == 1) return usbMounted ? L_USB : L_NONE;
   if (S.conn == 2) return bleConnected ? L_BLE : L_NONE;
+  uint16_t act = activeHostConn();               // the computer in use, when the desktop apps tell us
+  if (act == HOST_USB && usbOk) return L_USB;
+  if (act != BLE_HS_CONN_HANDLE_NONE && act != HOST_USB && bleConnected) return L_BLE;
   if (usbOk) return L_USB;
   if (bleConnected) return L_BLE;
   return usbMounted ? L_USB : L_NONE;
 }
 
+// Bluetooth keys go to one computer only: the active one, else the newest connection
+static uint16_t bleKeyConn() {
+  uint16_t act = activeHostConn();
+  if (act != BLE_HS_CONN_HANDLE_NONE && act != HOST_USB) return act;
+  return bleLastConn;                            // NONE = every connected computer (only one is connected)
+}
 static void sendKey(uint8_t mods, uint8_t key) {
   Link l = activeLink();
   if (l == L_USB) {
@@ -306,7 +353,7 @@ static void sendKey(uint8_t mods, uint8_t key) {
     usbKb.sendReport(&r);
   } else if (l == L_BLE && bleIn) {
     uint8_t r[8] = { mods, 0, key, 0, 0, 0, 0, 0 };
-    bleIn->setValue(r, 8); bleIn->notify();
+    bleIn->setValue(r, 8); bleIn->notify(bleKeyConn());
   }
 }
 
@@ -324,8 +371,9 @@ static bool consumerTap(uint16_t u) {
   Link l = activeLink();
   if (l == L_USB) { usbCc.press(u); delay(10); usbCc.release(); return true; }
   if (l == L_BLE && bleCc) {
-    uint8_t r[2] = { (uint8_t)u, (uint8_t)(u >> 8) }; bleCc->setValue(r, 2); bleCc->notify(); delay(18);
-    r[0] = r[1] = 0; bleCc->setValue(r, 2); bleCc->notify(); return true;
+    uint16_t to = bleKeyConn();
+    uint8_t r[2] = { (uint8_t)u, (uint8_t)(u >> 8) }; bleCc->setValue(r, 2); bleCc->notify(to); delay(18);
+    r[0] = r[1] = 0; bleCc->setValue(r, 2); bleCc->notify(to); return true;
   }
   return false;
 }

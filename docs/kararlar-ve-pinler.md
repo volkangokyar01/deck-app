@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.9.0)
+## Firmware (v1.9.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -216,3 +216,11 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Bilgisayar adı: masaüstü uygulaması Bluetooth'ta ilk companion mesajında `host` gönderir (Mac: ComputerName, Windows: COMPUTERNAME); yoksa cihaz kendi görevinde bilgisayarın GATT Device Name (0x1800/0x2A00) değerini okur; o da yoksa "Bilgisayar XXXX". NVS vdbt/n<adres>.
 - Wi-Fi satırı yalnız yer tutucu ("Kapalı · yakında"): cihaz Wi-Fi kullanmıyor (PSRAM yok, ~50–70 KB RAM gerekir). Wi-Fi gelirse ağ adı ve şifre masaüstü uygulamasından USB ile gönderilecek (kullanıcı tercihi).
 - hello: `btOff`.
+
+## 2026-10-07 — Aktif bilgisayar: cihaz en son kullanılan bilgisayarı izler (firmware 1.9.1)
+- Kullanıcı isteği: bilgisayarlar arası geçiş için eşleşme kaldırılmasın, hangi bilgisayar kullanılıyorsa cihaz ona gitsin.
+- Masaüstü uygulaması her companion mesajında `idle` (Electron powerMonitor.getSystemIdleTime, saniye) gönderir; ilk (ack) mesajda `host` (bilgisayar adı) USB'de de gider.
+- Cihaz bilgisayar başına (USB = 0xFFFE, Bluetooth = bağlantı tutamacı) son mesaj ve son kullanıcı girişi zamanını tutar; 6 sn mesaj gelmeyen, USB'si askıda olan ya da Bluetooth'u kopan düşer. En son girişi olan "aktif"tir.
+- Aktif bilgisayara giden: HID tuşları ve medya tuşları (Bluetooth'ta yalnız o bağlantıya notify; önceden iki bilgisayar bağlıysa tuşlar ikisine birden gidiyordu), olaylar (launch, media, sys, input, select, status). Ekran verisi (stats, media, media_art, sys, mail) yalnız aktiften alınır; idle bildiren uygulama yoksa eski kural (USB'deki besler).
+- Uygulama yoksa: tuşlar USB'ye, USB yoksa en son bağlanan Bluetooth bilgisayarına.
+- Aktif değişince cihaz "Aktif: <ad>" gösterir, medya/ses verisini sıfırlayıp yeni bilgisayara status/select/media select gönderir. Bağlantılar başlığında "Aktif: <ad>", listede aktif bilgisayarın yanında "aktif"; ilk satır "Aktif bilgisayar · otomatik".

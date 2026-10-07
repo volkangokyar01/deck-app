@@ -49,7 +49,16 @@ static bool usbCompanion() { return companionUsbAt && millis() - companionUsbAt 
 static bool bleCompanion() { return companionBleAt && millis() - companionBleAt < 6000 && bleHostOn(); }
 static bool companionOn() { return usbCompanion() || bleCompanion(); }
 static bool hostListening() { return Serial || bleHostOn(); }   // something may read events
-static uint8_t eventSrc() { return usbCompanion() || (Serial && !bleCompanion()) ? SRC_USB : SRC_BLE; }
+static uint8_t eventSrc() {
+  uint16_t act = activeHostConn();               // the computer in use gets the events (1.9.1)
+  if (act == HOST_USB && Serial) return SRC_USB;
+  if (act != BLE_HS_CONN_HANDLE_NONE && act != HOST_USB) return SRC_BLE;
+  return usbCompanion() || (Serial && !bleCompanion()) ? SRC_USB : SRC_BLE;
+}
+static uint16_t eventConn() {
+  uint16_t act = activeHostConn();
+  return act != BLE_HS_CONN_HANDLE_NONE && act != HOST_USB ? act : bleHostConn;
+}
 
 const char* linkName();
 
@@ -89,7 +98,7 @@ static void bleTxTask(void*) {
 static void sendJson(JsonDocument& d) {   // replies: always write (host just talked to us)
   uint8_t to = replySrc >= 0 ? replySrc : eventSrc();
   if (to == SRC_USB) { serializeJson(d, Serial); Serial.print('\n'); return; }
-  uint16_t conn = replySrc >= 0 ? replyConn : bleHostConn;
+  uint16_t conn = replySrc >= 0 ? replyConn : eventConn();
   if (!bleTxQ || !bleConnAlive(conn)) return;
   size_t n = measureJson(d);
   TxItem it; it.p = (char*)bigAlloc(n + 2); if (!it.p) return;
@@ -144,8 +153,10 @@ static void handleLine(char* buf, size_t len) {
   crumbSet("cmd", cmd);
   // Transfers suspend eco without counting desktop traffic as a user touch.
   if (!strcmp(cmd, "set_config") || !strcmp(cmd, "icon_set") || !strncmp(cmd, "anim_", 5) || !strcmp(cmd, "dfu")) { ecoSuspend(); transferAt = millis() | 1; }
-  // Two computers at once (one on USB, one on Bluetooth): the USB one feeds the screen
-  if (replySrc == SRC_BLE && usbCompanion() &&
+  // Two computers at once: the active one feeds the screen (no idle reports: the USB one)
+  uint16_t act = activeHostConn(), from = replySrc == SRC_BLE ? replyConn : HOST_USB;
+  bool other = act != BLE_HS_CONN_HANDLE_NONE ? from != act : replySrc == SRC_BLE && usbCompanion();
+  if (other &&
       (!strcmp(cmd, "stats") || !strcmp(cmd, "media") || !strcmp(cmd, "media_art") || !strcmp(cmd, "sys") || !strcmp(cmd, "mail"))) {
     if (!id.isNull()) replyOk(id);
     return;
@@ -259,6 +270,7 @@ static void handleLine(char* buf, size_t len) {
     const char* os = doc["os"] | "";
     if (*os) S.hostMac = !strcmp(os, "mac");
     if (replySrc == SRC_BLE && doc["host"].is<const char*>()) btNameFromConn(replyConn, doc["host"]);
+    hostReport(replySrc == SRC_BLE ? replyConn : HOST_USB, doc["idle"] | -1, doc["host"] | "");
     if (doc["ack"] | false) { JsonDocument r; r["id"] = id; r["ok"] = true; r["fw"] = FW_VERSION; sendJson(r); }
   }
   else if (!strcmp(cmd, "stats")) parseStats(doc.as<JsonObjectConst>());   // home-screen widgets, pushed by the desktop app (no reply)

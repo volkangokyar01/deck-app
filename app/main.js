@@ -180,6 +180,8 @@ async function blePaired(name) {
 ipcMain.handle('ble-paired', (e, name) => blePaired(name));
 // computer name shown on the deck's Bağlantılar page (sent over Bluetooth with the first companion message)
 let hostName = null;
+// seconds since the last keyboard / mouse input: the deck sends keys to the computer in use
+ipcMain.handle('idle-time', () => { try { return require('electron').powerMonitor.getSystemIdleTime(); } catch (e) { return -1; } });
 ipcMain.handle('host-name', async () => {
   if (hostName) return hostName;
   if (IS_MAC) { const r = await run('scutil', ['--get', 'ComputerName'], 3000); hostName = r.stdout.trim(); }

@@ -737,6 +737,17 @@ static void drawSystem() {
 enum : uint8_t { CR_ALL = 0, CR_HOST, CR_PAIR, CR_FORGET };
 struct ConnRow { uint8_t type; uint8_t a[6]; };
 bool connEdit = false; int connCur = 0; uint32_t connAt = 0, connConfirmAt = 0;
+// name of a computer the deck talks to: the one its desktop app sent, else the Bluetooth name
+static String hostName(uint16_t conn) {
+  const HostSeen* h = hostOf(conn);
+  if (h && h->name[0]) return h->name;
+  if (conn == HOST_USB) return "USB bilgisayar";
+  if (bleStarted && conn != BLE_HS_CONN_HANDLE_NONE) {
+    NimBLEConnInfo ci = bleServer->getPeerInfoByHandle(conn);
+    if (ci.isBonded()) return btName(ci.getIdAddress().getVal());
+  }
+  return "Bilgisayar";
+}
 static std::vector<ConnRow> connRows() {
   std::vector<ConnRow> v;
   v.push_back({ CR_ALL, {0} });
@@ -760,10 +771,11 @@ static void connRow(int y, const ConnRow& r, bool focus, bool active) {
     if (active) { spr.fillSmoothCircle(14, cy, 5, focus ? SC_HL : CONN_COL); spr.fillSmoothCircle(14, cy, 2, SC_PANEL); }
     else spr.drawCircle(14, cy, 5, SC_DIM);
   }
-  if (r.type == CR_ALL) { label = "Otomatik · eşleşmiş hepsi"; right = String(btHosts().size()) + " cihaz"; }
+  if (r.type == CR_ALL) { label = "Aktif bilgisayar · otomatik"; right = String(btHosts().size()) + " cihaz"; }
   else if (r.type == CR_HOST) {
     label = btName(r.a);
-    if (btConnOf(r.a) != BLE_HS_CONN_HANDLE_NONE) { right = "bağlı"; rc = SC_GREEN; }
+    uint16_t c = btConnOf(r.a);
+    if (c != BLE_HS_CONN_HANDLE_NONE) { bool act = activeHostConn() == c; right = act ? "aktif" : "bağlı"; rc = act ? SC_HL : SC_GREEN; }
   } else if (r.type == CR_PAIR) {
     spr.drawWideLine(9, cy, 19, cy, 1.6f, ic); spr.drawWideLine(14, cy - 5, 14, cy + 5, 1.6f, ic);
     label = "Yeni cihaz eşleştir";
@@ -785,8 +797,11 @@ static void drawConn() {
   if (!bleStarted) { st = "kapalı (Sadece USB)"; sc = SC_DIM; }
   else if (bt.off) { st = "Kapalı"; sc = SC_DIM; }
   else if (btPairing()) { uint32_t left = (bt.pairUntil - millis()) / 1000; st = "Eşleştirme " + String(left / 60) + ":" + (left % 60 < 10 ? "0" : "") + String(left % 60); sc = SC_HL; }
-  else st = bt.hasSel ? "Yalnız seçili" : "Açık";
-  text(st, 104, 27, FSB11, sc);
+  else {
+    uint16_t act = activeHostConn();
+    st = act != BLE_HS_CONN_HANDLE_NONE ? "Aktif: " + hostName(act) : bt.hasSel ? "Yalnız seçili" : "Açık";
+  }
+  text(fit(st, connEdit ? 120 : 110, FSB11), 104, 27, FSB11, sc);
   text(!bleStarted ? "" : connEdit ? "basılı tut: çık" : (bt.off ? "A: aç" : "A: kapat · bas: seç"), 310, 27, FM9, SC_DIM, textdatum_t::middle_right);
 
   if (bleStarted && btPairing()) {           // pairing mode: what to do on the computer
