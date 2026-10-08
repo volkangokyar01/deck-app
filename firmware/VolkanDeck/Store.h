@@ -129,9 +129,47 @@ static void parseLaunch(JsonObjectConst o, Launch& L) {
   L.path = (const char*)(o["path"] | ""); L.mac = (const char*)(o["mac"] | "");
 }
 
-static void freeAppPix() { for (auto& a : S.apps) { if (a.pix) { free(a.pix); a.pix = nullptr; } } }
+/* App icons (40 x 40 RGB565, 3.2 KB each, /icons/<id>.bin). With PSRAM every icon stays loaded there.
+   Without PSRAM (1.12.0) only the icons on screen are in RAM: a small cache filled when an icon is drawn
+   (16 apps used to hold ~51 KB of internal RAM, which left too little for "Cihaza yaz"). */
+static const int ICON_CACHE = 6;
+struct IconSlot { App* a = nullptr; uint16_t* p = nullptr; uint32_t used = 0; };
+IconSlot iconSlots[ICON_CACHE];
+static bool iconInCache(const uint16_t* p) { for (auto& s : iconSlots) if (p && s.p == p) return true; return false; }
+static void freeAppPix() {
+  for (auto& a : S.apps) { if (a.pix && !iconInCache(a.pix)) free(a.pix); a.pix = nullptr; }
+  for (auto& s : iconSlots) { if (s.p) free(s.p); s = IconSlot(); }   // given back too: set_config needs the heap
+}
+static bool readIcon(const String& id, uint16_t* dst) {
+  File f = LittleFS.open("/icons/" + id + ".bin", "r"); if (!f) return false;
+  bool ok = f.read((uint8_t*)dst, 3200) == 3200; f.close(); return ok;
+}
+// the icon's pixels, loading them when needed; nullptr = draw the line icon instead
+static uint16_t* appPix(App* a) {
+  if (!a || !a->img) return nullptr;
+  uint32_t now = millis() | 1;
+  if (a->pix) { for (auto& s : iconSlots) if (s.a == a) s.used = now; return a->pix; }
+  if (psramFound()) {
+    a->pix = (uint16_t*)ps_malloc(3200);
+    if (a->pix && !readIcon(a->id, a->pix)) { free(a->pix); a->pix = nullptr; a->img = false; }
+    return a->pix;
+  }
+  IconSlot* s = &iconSlots[0];
+  for (auto& c : iconSlots) { if (!c.a) { s = &c; break; } if (c.used < s->used) s = &c; }
+  if (s->a) s->a->pix = nullptr;                 // evict the least recently drawn icon
+  s->a = nullptr;
+  if (!s->p) s->p = (uint16_t*)malloc(3200);
+  if (!s->p) return nullptr;
+  if (!readIcon(a->id, s->p)) { a->img = false; return nullptr; }
+  s->a = a; s->used = now; a->pix = s->p;
+  return a->pix;
+}
 
 static void loadAppIcons() {
+  if (!psramFound()) {                            // no PSRAM: only check the files, load on first draw
+    for (auto& a : S.apps) if (a.img && !LittleFS.exists("/icons/" + a.id + ".bin")) a.img = false;
+    return;
+  }
   for (auto& a : S.apps) {
     if (!a.img) continue;
     String p = "/icons/" + a.id + ".bin";

@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.11.0)
+## Firmware (v1.12.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -277,3 +277,11 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - 1.10.x'te cihaza kaydedilmiş ağ adı ve şifre (NVS vdwifi) açılışta silinir.
 - Saat: uygulamadan gelen her "time" çipin kendi saatini de ayarlar (settimeofday). Bu saat yeniden başlatma, çökme ve derin uykuda ("Kapanıyor") sürer; uygulama bağlanmadan da saat ve otomatik tema doğru açılır. Saat dilimi değişince NVS vdclk/tz'ye yazılır (varsayılan +3 saat). Yalnız pil tamamen biterse uygulama bağlanana kadar saat yok. Derin uykuda çipin iç RC saati kullanıldığından uzun uykudan sonra birkaç dakika kayabilir; uygulama bağlanınca düzelir.
 - Ek bellek teşhisi: hello'da embPsram (çip paketinde PSRAM var mı, esp_chip_info CHIP_FEATURE_EMB_PSRAM), psramInit (esp_psram_is_initialized), chipRev, flashMB. Ayar sayfası Cihaz özetinde "Bellek" çipi ve bağlantı kaydında teşhis satırı. Çipte PSRAM var ama başlamıyorsa yazılım tarafı, yoksa kart PSRAM'sız bir sürüm.
+
+## 2026-10-08 — Ek bellek (PSRAM): çipe uygun yazılım, ek bellek yokken ikon önbelleği, Bellek kartı (firmware 1.12.0)
+- Derleme OPI (qio_opi, CONFIG_SPIRAM_MODE_OCT) için doğruydu ve esp_psram_init firmware'de vardı; yine de kart 0 MB bildiriyordu. OPI yazılımı 2 MB'lık quad (QSPI) ek belleği başlatamaz (klon kartlarda ESP32-S3R2 olabilir), QSPI yazılımı da octal belleği başlatamaz.
+- Artık iki derleme var: firmware/bin (OPI) ve firmware/bin-qspi (QSPI; Arduino psramInit ile çalışma anında arar, bulamazsa ek belleksiz devam eder). tools/build_firmware.sh ikisini de derler (build.psram_type=opi / qspi). embed_firmware.py FIRMWARE.parts (OPI) ve FIRMWARE.qspi'yi gömer (app/index.html ~3,8 MB).
+- "Firmware yükle" esptool-js ile çipin eFuse PSRAM_CAP alanını okur: 1 = 8 MB OPI → OPI, 2 = 2 MB QSPI → QSPI, 0 = yok → QSPI (harici quad bellek varsa onu da bulur); okunamazsa OPI (LilyGO kartı). Seçim yükleme kaydına yazılır.
+- hello: psramCap, psramVendor (eFuse), fwPsram ("opi" / "qspi"), embPsram, psramInit, heap, block.
+- Ek bellek yokken uygulama ikonları artık açılışta RAM'e yüklenmez (16 uygulama ≈ 51 KB). 6 yuvalı önbellek (≈ 19 KB) ekrandaki ikonları /icons/<id>.bin'den çizilirken yükler, en eski çizileni çıkarır; applyConfig önbelleği de boşaltır. Ek bellek varsa ikonlar eskisi gibi ek bellekte.
+- Ayar sayfası Cihaz ayarları → "Bellek" kartı: ek bellek durumu, çipteki ek bellek, yüklü yazılım tipi, boş iç bellek ve en büyük parça (çubuk), duruma göre açıklama; yazılım çipe uymuyorsa "Uygun yazılımı yükle". Her status olayında (5 sn) güncellenir; "Yenile" hello'yu yeniden okur.

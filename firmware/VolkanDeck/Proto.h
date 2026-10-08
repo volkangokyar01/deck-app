@@ -1,6 +1,8 @@
 #pragma once
 #include "esp_chip_info.h"
 #include "esp_psram.h"
+#include "esp_efuse.h"
+#include "esp_efuse_table.h"
 #include "mbedtls/base64.h"
 #include "esp32-hal-tinyusb.h"
 
@@ -177,7 +179,17 @@ static void handleLine(char* buf, size_t len) {
     // PSRAM diagnosis (1.11.0): does the chip carry PSRAM at all, and did the startup bring it up?
     { esp_chip_info_t ci; esp_chip_info(&ci);
       r["chipRev"] = ci.revision; r["embPsram"] = (ci.features & CHIP_FEATURE_EMB_PSRAM) != 0;
-      r["psramInit"] = esp_psram_is_initialized(); r["flashMB"] = (uint32_t)(ESP.getFlashChipSize() >> 20); }
+      r["psramInit"] = esp_psram_is_initialized(); r["flashMB"] = (uint32_t)(ESP.getFlashChipSize() >> 20);
+      // eFuse: PSRAM in the package (0 none, 1 = 8 MB octal, 2 = 2 MB quad) and this firmware's PSRAM mode (1.12.0)
+      uint8_t cap = 0, vendor = 0;
+      esp_efuse_read_field_blob(ESP_EFUSE_PSRAM_CAP, &cap, 2); esp_efuse_read_field_blob(ESP_EFUSE_PSRAM_VENDOR, &vendor, 2);
+      r["psramCap"] = cap; r["psramVendor"] = vendor;
+#if CONFIG_SPIRAM_MODE_OCT
+      r["fwPsram"] = "opi";
+#else
+      r["fwPsram"] = "qspi";
+#endif
+    }
     r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); r["block"] = (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024);
     sendJson(r);
   }
@@ -219,7 +231,11 @@ static void handleLine(char* buf, size_t len) {
     if (!f) { replyErr(id, "fs"); return; }
     f.write(tmp, 3200); f.close();
     App* a = appById(aid);
-    if (a) { if (!a->pix) a->pix = (uint16_t*)bigAlloc(3200); if (a->pix) memcpy(a->pix, tmp, 3200); a->img = true; }
+    if (a) {
+      a->img = true;
+      if (!a->pix && psramFound()) a->pix = (uint16_t*)ps_malloc(3200);   // without PSRAM: loaded when drawn
+      if (a->pix) memcpy(a->pix, tmp, 3200);
+    }
     replyOk(id);
   }
   else if (!strcmp(cmd, "anim_begin")) {            // written straight to flash (/anim.tmp), no big RAM buffer needed

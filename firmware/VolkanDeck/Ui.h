@@ -154,12 +154,13 @@ static void bubble(bool home, App* a, int x, int y, int r, float alpha, uint8_t 
     return;
   }
   uint16_t col = home ? HOME_COL : a->color;
-  if (!home && a->pix) {
+  uint16_t* px = (!home && a) ? appPix(a) : nullptr;
+  if (px) {
     uint16_t bgc = mix(ICON_BG, SC_BG, alpha);
     spr.fillSmoothCircle(x, y, r, bgc);
     if (r >= 15) spr.fillArc(x, y, r - (r > 20 ? 2 : 1), r, 0, 360, mix(col, SC_BG, alpha));
     int sz = r >= 25 ? 40 : (int)(r * 1.3f);
-    drawPix(a->pix, x, y, sz, alpha, SC_BG);
+    drawPix(px, x, y, sz, alpha, SC_BG);
   } else {
     uint16_t fill = mix(col, SC_BG, alpha);
     spr.fillSmoothCircle(x, y, r, fill);
@@ -237,10 +238,11 @@ static void drawAppView() {
 /* ---------- small 14 px app icon (box-filtered from the 40 px image) ---------- */
 static void miniIcon(App* a, int cx, int cy) {
   const int N = 14; int x0 = cx - N / 2, y0 = cy - N / 2;
-  if (a->pix) {
+  uint16_t* px = appPix(a);
+  if (px) {
     for (int y = 0; y < N; y++) for (int x = 0; x < N; x++) {
       int sx0 = x * 40 / N, sx1 = (x + 1) * 40 / N, sy0 = y * 40 / N, sy1 = (y + 1) * 40 / N, r = 0, g = 0, b = 0, n = 0;
-      for (int yy = sy0; yy < sy1; yy++) for (int xx = sx0; xx < sx1; xx++) { uint16_t c = a->pix[yy * 40 + xx]; r += c >> 11; g += (c >> 5) & 63; b += c & 31; n++; }
+      for (int yy = sy0; yy < sy1; yy++) for (int xx = sx0; xx < sx1; xx++) { uint16_t c = px[yy * 40 + xx]; r += c >> 11; g += (c >> 5) & 63; b += c & 31; n++; }
       spr.drawPixel(x0 + x, y0 + y, ((r / n) << 11) | ((g / n) << 5) | (b / n));
     }
   } else {
