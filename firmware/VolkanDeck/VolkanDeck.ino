@@ -115,11 +115,12 @@ static void setBright(int pct) {
   curBright = pct; lcd.setBrightness(pct <= 0 ? 0 : map(pct, 1, 100, 8, 255));
 }
 
-static bool wakeUp() {   // returns true if the input should be swallowed
-  bool wasEco = ecoActive; ecoExit();
-  bool was = (screenOff || dimmed) && !wasEco;
+// Wakes a dimmed / switched-off screen. 1.13.7: the input is never swallowed any more, the knob or key
+// acts at once (the first press used to only wake the screen). Returns false so callers keep their shape.
+static bool wakeUp() {
+  ecoExit();
   screenOff = false; dimmed = false; setBright(S.brightness);
-  return was;
+  return false;
 }
 
 // Battery level. On battery the cell voltage is read through a Li-Po discharge curve. On cable the charger

@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.13.5)
+## Firmware (v1.13.7)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -341,3 +341,6 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Çözüm (yalnız `app/`): `app/ble-pick.js`. macOS'ta `blePaired` `system_profiler SPBluetoothDataType -json` ile bu Mac'in eşleşmiş cihazlarına bakar; ayarlardaki cihaz adı yoksa Bluetooth hiç denenmez (Windows'taki gibi, sorulamazsa engellenmez). Seçici artık `list[0]` değil, ayarlardaki adı taşıyan cihazı seçer; ad uyuşan yoksa 8 sn sonra vazgeçer.
 - Sınır: kapı cihaz adına dayanır (Windows'taki gibi). İki deck aynı adı taşırsa ve bu bilgisayar birine eşleşmişse ayırt edilemez; kullanıcı deck adlarını farklı vermeli.
 - Güncelleme gelene kadar çözüm yolu: Ayarlar → Cihaz → Bağlantı = "USB" (`device.connection:"usb"`) uygulamanın Bluetooth denemesini kapatır.
+
+## 2026-10-09 — Karartılmış ekranda ilk dokunuş da çalışır (firmware 1.13.7)
+- Ekran karartılmış ya da güç tuşuyla kapatılmışken döndürgeç veya bir tuş eskiden yalnız ekranı uyandırıyor, işlem ikinci dokunuşta yapılıyordu. Artık ekran uyanır ve aynı dokunuş hemen uygulanır (`wakeUp()` girdiyi yutmaz). Güç tuşu aynı kaldı: kısa bas ekranı açar / kapatır, uzun bas kapatır.

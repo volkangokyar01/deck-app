@@ -85,3 +85,11 @@ test('Bağlantılar (1.13.5): the knob moves the row cursor at once and never le
   assert.match(enc, /if \(!connEdit\) \{ connEdit = true; connCur = connActiveRow\(rows\); \}/);
   assert.ok(enc.indexOf('k == K_CONN') < enc.indexOf('subPage && steps < 0'), 'turning left on Bağlantılar does not go back to the menu');
 });
+
+test('wake (1.13.7): a key or the knob wakes a dimmed / dark screen and acts at once', () => {
+  const ino = read('firmware/VolkanDeck/VolkanDeck.ino');
+  const wake = ino.slice(ino.indexOf('static bool wakeUp()'), ino.indexOf('// Battery level.'));
+  assert.match(wake, /screenOff = false; dimmed = false; setBright\(S\.brightness\);/);
+  assert.match(wake, /return false;/);
+  assert.ok(!/return was/.test(wake), 'the first input is not swallowed');
+});
