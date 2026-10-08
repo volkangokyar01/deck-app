@@ -12,6 +12,7 @@ const { createStats } = require('./stats');
 const { createSensorInstaller } = require('./sensor-install');
 const { createUpdater, REPO_URL } = require('./updater');
 const { createTrayUpdate, openLocationSettings } = require('./main-actions');
+const { macDeckPaired, pickDeck } = require('./ble-pick');
 const { createMailWatcher } = require('./mail');
 
 const IS_WIN = process.platform === 'win32';
@@ -159,24 +160,39 @@ function setupBluetooth(wc) {
   wc.on('select-bluetooth-device', (event, list, callback) => {
     event.preventDefault();
     pending = callback;
-    if (list.length) return finish(list[0].deviceId);         // the page filters by the Volkan Deck service
+    // the page filters by the Volkan Deck service; only the deck named in the settings is taken (another person's deck
+    // in the same room would make macOS ask its owner "connect to …?")
+    const id = pickDeck(list, bleWantName);
+    if (id) return finish(id);
     if (!timer) timer = setTimeout(() => finish(''), 8000);    // nothing nearby: give up, the page retries later
   });
   session.defaultSession.setBluetoothPairingHandler?.((details, callback) => callback({ confirmed: details.pairingKind === 'confirm' || details.pairingKind === 'confirmPin' }));
 }
 ipcMain.handle('ble-ready', () => bluetoothReady());
-// Windows: connecting to a deck that is not paired in Windows makes Windows try to pair on its own and show
-// "Try connecting your device again" each time; the app only uses Bluetooth once Windows lists the deck.
+// The app only uses Bluetooth once this computer lists the deck as paired. Windows: connecting to an unpaired deck
+// makes Windows try to pair on its own ("Try connecting your device again"). macOS: it shows "connect to <deck>?" on
+// the screen, and the app retries every 12 s .. 5 min, so a deck in the same room that belongs to someone else kept
+// asking its neighbour's Mac (2026-10-08).
 let blePairedCache = { name: '', at: 0, value: false };
+let bleWantName = '';                                        // the deck the selector may pick (see setupBluetooth)
 async function blePaired(name) {
-  if (!IS_WIN) return true;
   name = String(name || 'Game Deck').slice(0, 40);
+  bleWantName = name;
+  if (!IS_WIN && !IS_MAC) return true;
   if (blePairedCache.name === name && Date.now() - blePairedCache.at < 60e3) return blePairedCache.value;
-  const q = name.replace(/'/g, "''");
-  const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
-    `[Console]::OutputEncoding=[Text.Encoding]::UTF8; @(Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'BTHLE\\DEV_*' -and $_.FriendlyName -eq '${q}' }).Count`], 15000);
-  const n = parseInt(r.stdout.trim(), 10);
-  const value = r.code !== 0 || isNaN(n) ? true : n > 0;    // if Windows can't be asked, don't block Bluetooth
+  let value = true;                                          // if the system can't be asked, don't block Bluetooth
+  if (IS_WIN) {
+    const q = name.replace(/'/g, "''");
+    const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
+      `[Console]::OutputEncoding=[Text.Encoding]::UTF8; @(Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'BTHLE\\DEV_*' -and $_.FriendlyName -eq '${q}' }).Count`], 15000);
+    const n = parseInt(r.stdout.trim(), 10);
+    if (r.code === 0 && !isNaN(n)) value = n > 0;
+  } else {
+    const r = await run('system_profiler', ['SPBluetoothDataType', '-json'], 20000);
+    let json = null; try { json = JSON.parse(r.stdout); } catch (e) {}
+    const paired = r.code === 0 ? macDeckPaired(json, name) : null;
+    if (paired !== null) value = paired;
+  }
   blePairedCache = { name, at: Date.now(), value };
   return value;
 }

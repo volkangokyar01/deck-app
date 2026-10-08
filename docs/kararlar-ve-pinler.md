@@ -333,3 +333,11 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Firmware: `wifiScanStart()` taramayı `scanNetworks(true)` ile başlatır; `protoPoll` başındaki `scanPoll()` bitince cevabı isteğin geldiği yoldan (USB / Bluetooth bağlantısı) gönderir; 12 sn'de bitmezse iptal. Tarama sürerken ikinci `wifi_scan` → `busy`. Ölçüm: tarama sürerken `wifi_status` 33 kez ≤ 55 ms'de cevaplandı.
 - Ayar sayfası: Wi-Fi zaten bağlıysa açılışta tarama yok; "Yeniden tara" düğmesi tarar.
 - `Wifi.h` → `WifiLink.h`: büyük/küçük harf ayırmayan diskte (macOS, Windows) `#include <WiFi.h>` taslak klasöründeki `Wifi.h`'ı buluyordu; temiz derleme hata veriyordu (eski `includes.cache` ile çalışıyordu).
+
+
+## 2026-10-08 — Başkasının deck'ine Bluetooth ile bağlanma denemesi (uygulama)
+- Belirti: Sencer'in deck'i kendi Mac'ine USB ile bağlıyken, aynı odadaki Volkan'ın Mac'inde belirli aralıklarla "Sencer Deck'e bağlanılsın mı?" penceresi çıkıyordu; cihaz eşleştirme modunda değildi.
+- Neden: kabloyla bağlı olmayan bilgisayarda uygulama Bluetooth veri kanalını 12 sn / 30 sn / 1 dk, sonra 5 dk aralıkla dener. Seçici yalnız servis UUID'sine bakıp `list[0]`'ı alıyordu, yani menzildeki herhangi bir Game Deck'i. "Bu bilgisayar cihazla eşleşmiş mi?" kapısı yalnız Windows'taydı (`blePaired`, 1.8.5); macOS'ta hep `true` döndüğü için eşleşmemiş deck'e bağlanılmaya çalışılıyor, macOS da deck'in sahibi olmayan Mac'te eşleştirme penceresi açıyordu. Cihaz ayrıca eşleştirme modunda olmasa da hep bağlantıya açık reklam yayınlar (bağlı bilgisayarlar ve masaüstü uygulaması bulabilsin diye); bu değişmedi, firmware'e dokunulmadı.
+- Çözüm (yalnız `app/`): `app/ble-pick.js`. macOS'ta `blePaired` `system_profiler SPBluetoothDataType -json` ile bu Mac'in eşleşmiş cihazlarına bakar; ayarlardaki cihaz adı yoksa Bluetooth hiç denenmez (Windows'taki gibi, sorulamazsa engellenmez). Seçici artık `list[0]` değil, ayarlardaki adı taşıyan cihazı seçer; ad uyuşan yoksa 8 sn sonra vazgeçer.
+- Sınır: kapı cihaz adına dayanır (Windows'taki gibi). İki deck aynı adı taşırsa ve bu bilgisayar birine eşleşmişse ayırt edilemez; kullanıcı deck adlarını farklı vermeli.
+- Güncelleme gelene kadar çözüm yolu: Ayarlar → Cihaz → Bağlantı = "USB" (`device.connection:"usb"`) uygulamanın Bluetooth denemesini kapatır.

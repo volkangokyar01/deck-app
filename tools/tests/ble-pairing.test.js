@@ -9,7 +9,8 @@ const read = f => fs.readFileSync(path.join(root, f), 'utf8');
 test('Bluetooth auto-connect waits for Windows pairing and backs off after failures', () => {
   const comp = read('app/companion.js'), main = read('app/main.js'), pre = read('app/preload.js');
   assert.match(pre, /blePaired: name => ipcRenderer\.invoke\('ble-paired', name\)/);
-  assert.match(main, /if \(!IS_WIN\) return true;/);
+  assert.match(main, /if \(!IS_WIN && !IS_MAC\) return true;/);
+  assert.match(main, /system_profiler/, 'macOS asks the system which Bluetooth devices are paired');
   assert.match(main, /BTHLE\\\\DEV_\*/);
   assert.match(comp, /deck\.blePaired\?\.\(/);
   assert.match(comp, /\[12e3, 30e3, 60e3\]\[bleFails\] \|\| 300e3/);
