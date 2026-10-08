@@ -53,3 +53,20 @@ test('PSRAM (1.12.1): the build turns on the Arduino PSRAM layer, allocations ch
   const web = read('web/body.html');
   assert.match(web, /if\(d\.fw&&!verGE\(d\.fw,"1\.12\.1"\)\) return "Ek bellek kapalı · firmware'i güncelle"/);
 });
+
+test('home status row (1.13.1): Bluetooth and Wi-Fi icons differ when connected and redraw on change', () => {
+  const ui = read('firmware/VolkanDeck/Ui.h'), ino = read('firmware/VolkanDeck/VolkanDeck.ino');
+  const bt = ui.slice(ui.indexOf('static uint8_t btIconState()'), ui.indexOf('static uint8_t wifiIconState()'));
+  assert.match(bt, /if \(!bleStarted \|\| bt\.off\) return 0;/);
+  assert.match(bt, /return bleConnected \? 3 : 1;/);
+  const wf = ui.slice(ui.indexOf('static uint8_t wifiIconState()'), ui.indexOf('static void gSlash('));
+  assert.match(wf, /"connected"/);
+  assert.match(wf, /"failed"\) \|\| !strcmp\(ws, "nomem"\)\) return 2;/);
+  const draw = ui.slice(ui.indexOf('static void drawLinkIcons('), ui.indexOf('// Layout: 2 px outer margin'));
+  assert.match(draw, /b == 3 \? BT_ON/, 'connected Bluetooth has its own colour');
+  assert.match(draw, /if \(b == 0\) gSlash/, 'Bluetooth off is crossed out');
+  assert.match(draw, /if \(w == 0\) gSlash/, 'Wi-Fi off is crossed out');
+  assert.match(draw, /if \(w == 2\) gSlash\(wx, 7, SC_RED\)/, 'Wi-Fi failure is crossed out in red');
+  assert.match(ui, /if \(x0 > 2\) drawLinkIcons\(/, 'only the home status row (x0 = 134) draws the icons');
+  assert.match(ino, /uint8_t ic = btIconState\(\) \| wifiIconState\(\) << 2; if \(ic != lastIcons\)/);
+});

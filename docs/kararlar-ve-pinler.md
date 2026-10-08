@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.13.0)
+## Firmware (v1.13.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -302,3 +302,9 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Bellek: Wi-Fi kütüphanesi sabit iç RAM'i ~20 KB artırır (derlemede 75 → 96 KB). Wi-Fi istenince (açık + ağ kayıtlı) 108 KB'lık ekran tamponu açılışta ek belleğe konur; radyo açılırken iç RAM yetmezse tampon ek belleğe taşınır (`wifiMakeRoom`). Boş iç RAM 45 KB altındaysa radyo açılmaz, durum `nomem` ("Bellek yetmedi"). Modem uykusu açık kalır.
 - Saat: bağlıyken NTP (`pool.ntp.org`, `time.google.com`); uygulamanın gönderdiği saat ve saat dilimi yine geçerli. 1.11.0'ın açılışta `vdwifi`'yi silmesi kaldırıldı.
 - Uygulamanın görünen adı **Game Deck** (pencere, tepsi, bildirimler, ayar sayfası, kurulum betikleri, cihazın USB ürün adı ve varsayılan Bluetooth adı). Ayarlar kaybolmasın diye `userData` eski "Volkan Deck" klasöründe sabit. Kurulum betikleri `Game Deck.app` / `%LOCALAPPDATA%\Programs\Game Deck` kurar, eski Volkan Deck kurulumunu ve kısayollarını kaldırır. Değişmeyenler: depo adı, `firmware/VolkanDeck`, paket adı `volkan-deck`, bundle id `com.volkan.deck`, macOS imza kimliği "Volkan Deck Yerel" (değişirse izinler yeniden sorulur). Cihazda kayıtlı Bluetooth adı kendiliğinden değişmez.
+
+## 2026-10-08 — Ana ekranda Bluetooth ve Wi-Fi simgeleri (firmware 1.13.1)
+- Ana ekranın durum satırında, sayfa sayacı ile bağlantı yazısı (usb / ble) arasında iki küçük simge.
+- Bluetooth: bilgisayar bağlıysa mavi + yeşil nokta; açık ama bağlı değilse gri; eşleştirme modunda turuncu; kapalıysa (veya "Sadece USB") gri ve üstü çizili.
+- Wi-Fi: bağlıyken beyaz, sinyal gücü 1–3 çizgi (-60 / -72 dBm eşikleri, Bağlantılar sayfasıyla aynı); bağlanırken turuncu; bağlanamadı / bellek yetmedi kırmızı çizili; kapalı veya ağ seçilmemişse gri çizili.
+- Durum her 500 ms'de kontrol edilir; değişirse ana ekran yeniden çizilir (tasarruf modunda da).

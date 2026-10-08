@@ -573,6 +573,8 @@ void loop() {
   if (now - tBat > 2000) { tBat = now; uint8_t oldBat = batPct; bool oldCharge = charging; readBattery(); bleBattery(batPct); if (oldBat != batPct || oldCharge != charging) dirty = true; }
   if (now - tStatus > 5000) { tStatus = now; evtStatus(); if (!ecoActive) dirty = true; }
   Link l = activeLink(); if (l != lastLink) { lastLink = l; dirty = true; evtStatus(); }
+  static uint8_t lastIcons = 0xFF; static uint32_t tIcons = 0;   // home BT / Wi-Fi icons (1.13.1), also in eco mode
+  if (now - tIcons >= 500) { tIcons = now; uint8_t ic = btIconState() | wifiIconState() << 2; if (ic != lastIcons) { lastIcons = ic; if (!items.empty() && items[sel].home) dirty = true; } }
 
   bool onHome = !items.empty() && items[sel].home;
   bool onWidgets = curKind() == K_WIDGETS;

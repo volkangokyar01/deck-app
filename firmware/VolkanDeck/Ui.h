@@ -183,12 +183,50 @@ uint8_t batPct = 0; bool charging = false, extPower = false;
 
 static void toast(const String& m, uint32_t ms = 1800) { toastMsg = m; toastUntil = millis() + ms; }
 
+// Home status row (1.13.1): Bluetooth and Wi-Fi state icons, right of the page counter.
+// BT: 0 off (slashed) · 1 on, no computer (grey) · 2 pairing (amber) · 3 connected (blue)
+static uint8_t btIconState() {
+  if (!bleStarted || bt.off) return 0;
+  if (btPairing()) return 2;
+  return bleConnected ? 3 : 1;
+}
+// Wi-Fi: 0 off / no network (slashed) · 1 connecting (amber) · 2 failed / no memory (red slash) · 3..5 connected, 1..3 bars
+static uint8_t wifiIconState() {
+  const char* ws = wifiStateName();
+  if (!strcmp(ws, "connected")) { int r = WiFi.RSSI(); return r > -60 ? 5 : r > -72 ? 4 : 3; }
+  if (!strcmp(ws, "off") || !wf.ssid.length()) return 0;
+  if (!strcmp(ws, "failed") || !strcmp(ws, "nomem")) return 2;
+  return 1;
+}
+static void gSlash(int cx, int cy, uint16_t c) {   // "not connected" stroke with a background gap
+  spr.drawWideLine(cx - 6, cy - 5, cx + 6, cy + 5, 2.6f, SC_BG);
+  spr.drawWideLine(cx - 6, cy - 5, cx + 6, cy + 5, 1.2f, c);
+}
+static void drawLinkIcons(int right) {           // right: x where the icons must end
+  const uint16_t BT_ON = C(0x60A5FA);
+  int wx = right - 8, bx = right - 26;           // Wi-Fi fan ~15 px wide, BT rune ~8 px
+  uint8_t b = btIconState();
+  uint16_t bc = b == 3 ? BT_ON : b == 2 ? SC_HL : SC_DIM;
+  gBt(bx, 7, 10, bc, b == 3 ? 1.4f : 1.1f);
+  if (b == 3) spr.fillSmoothCircle(bx + 6, 11, 2, SC_GREEN);       // small dot: a computer is connected
+  if (b == 0) gSlash(bx, 7, SC_DIM);
+  uint8_t w = wifiIconState();
+  int lvl = w >= 3 ? w - 2 : 0;                  // bars lit
+  uint16_t on = w >= 3 ? SC_TEXT : w == 1 ? SC_HL : SC_DIM, off = mix(SC_DIM, SC_BG, .45f);
+  spr.fillSmoothCircle(wx, 11, 1.6f, w >= 3 || w == 1 ? on : SC_DIM);
+  spr.drawArc(wx, 12, 6, 5, 225, 315, w == 1 || lvl >= 2 ? on : w >= 3 ? off : SC_DIM);
+  spr.drawArc(wx, 12, 10, 9, 225, 315, w == 1 || lvl >= 3 ? on : w >= 3 ? off : SC_DIM);
+  if (w == 0) gSlash(wx, 7, SC_DIM);
+  if (w == 2) gSlash(wx, 7, SC_RED);
+}
+
 // Layout: 2 px outer margin, 2 px between panels, panels separated by tone only (no outlines).
 // Status row is y 0..13, content y 15..167. x0: where the row starts (home: right of the animation).
 static void drawStatus(uint16_t dot, const char* link, int x0 = 2) {
   spr.fillSmoothCircle(x0 + 4, 7, 4, dot);     // page colour (was a 3 px bar across the top)
   text(items.size() ? String(sel + 1) + "/" + String(items.size()) : String("0/0"), x0 + 12, 7, FSB11, SC_SUB);
   text(link, 254, 7, FSB11, SC_SUB, textdatum_t::middle_right);
+  if (x0 > 2) drawLinkIcons(254 - textW(link, FSB11) - 6);   // home only
   spr.drawRoundRect(260, 2, 22, 10, 2, SC_SUB); spr.fillRect(282, 5, 2, 4, SC_SUB);
   spr.fillRect(262, 4, max(1, 18 * batPct / 100), 6, batPct < 20 && !charging ? SC_RED : SC_TEXT);
   if (charging) {   // lightning bolt across the cell while charging; the level stays visible
