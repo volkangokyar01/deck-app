@@ -4,7 +4,7 @@
 #include "Store.h"
 #include "Hid.h"
 #include "Stats.h"
-#include "Wifi.h"
+#include "WifiLink.h"
 #include "Ui.h"
 #include "Proto.h"
 #include "esp_sleep.h"

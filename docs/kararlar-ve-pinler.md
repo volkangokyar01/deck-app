@@ -327,3 +327,9 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 ## 2026-10-08 — Bağlantılar'da da döndürgeç sayfanın içinde (firmware 1.13.5)
 - Bağlantılar sayfasında döndürgeç çevrilince satır imleci hemen açılır (aktif satırdan başlar) ve satırlar arasında gezer; sayfadan çıkmaz, sola çevirmek de menüye dönmez. Basınca seçili satır uygulanır (bilgisayar seç, yeni cihaz, eşleşmeleri sil). Çıkış: uzun bas veya bekle. Bluetooth kapalıyken / eşleştirme sırasında çevirmek bir şey yapmaz.
 - Üst satır ipucu "çevir: seç · A: kapat". Ayar sayfasındaki önizleme ve kontrol listesi güncellendi.
+
+## 2026-10-08 — Wi-Fi taraması arka planda (firmware 1.13.6)
+- Belirti: uygulama açılınca ya da ⌘R ile yenilenince kart birkaç saniye donuyor, uygulama bağlantıyı yeniden kuruyordu (Bağlantılar sayfasından bağımsız). Neden: Cihaz ayarları → Wi-Fi kartı her açılışta `wifi_scan` gönderiyor, firmware `WiFi.scanNetworks(false)` ile beklemeli tarıyordu. Bluetooth anteni paylaştığı için tarama kartta 8,9 sn sürdü; bu sürede ana döngü (ekran, komutlar) duruyordu.
+- Firmware: `wifiScanStart()` taramayı `scanNetworks(true)` ile başlatır; `protoPoll` başındaki `scanPoll()` bitince cevabı isteğin geldiği yoldan (USB / Bluetooth bağlantısı) gönderir; 12 sn'de bitmezse iptal. Tarama sürerken ikinci `wifi_scan` → `busy`. Ölçüm: tarama sürerken `wifi_status` 33 kez ≤ 55 ms'de cevaplandı.
+- Ayar sayfası: Wi-Fi zaten bağlıysa açılışta tarama yok; "Yeniden tara" düğmesi tarar.
+- `Wifi.h` → `WifiLink.h`: büyük/küçük harf ayırmayan diskte (macOS, Windows) `#include <WiFi.h>` taslak klasöründeki `Wifi.h`'ı buluyordu; temiz derleme hata veriyordu (eski `includes.cache` ile çalışıyordu).

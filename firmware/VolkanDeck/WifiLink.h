@@ -91,14 +91,23 @@ static void wifiPoll() {
   // NTP sets the chip clock itself (configTime); Stats.h localTime reads it while the desktop app is away
   if (s == WL_CONNECTED && !wf.timeSet && time(nullptr) > 1700000000) { wf.timeSet = true; wf.dirty = true; }
 }
-// networks around (blocking, ~2–4 s); the radio goes back off if Wi-Fi is not in use
-// returns the scan result count, < 0 when the radio could not scan (e.g. not enough memory to start Wi-Fi)
-static int wifiScan(JsonArray out) {
+// networks around. Asynchronous since 1.13.6: a blocking scan (several seconds with Bluetooth sharing the
+// antenna) froze the screen and the link, and the settings page scans whenever it opens.
+// wifiScanStart: 0 started, -2 not enough memory, -1 the radio refused. wifiScanCollect: WIFI_SCAN_RUNNING
+// while scanning, else the result count (< 0 failed); the radio goes back off if Wi-Fi is not in use.
+static bool scanRadioWas = false;
+static int wifiScanStart() {
   bool was = wf.started;
   if (!was && internalFree() < WIFI_MIN_HEAP + 20 * 1024 && wifiMakeRoom) wifiMakeRoom();
   if (!was && internalFree() < WIFI_MIN_HEAP) return -2;
   if (!was) { WiFi.mode(WIFI_STA); WiFi.setSleep(true); }
-  int n = WiFi.scanNetworks(false, false);
+  scanRadioWas = was;
+  if (WiFi.scanNetworks(true, false) == WIFI_SCAN_FAILED) { if (!was) WiFi.mode(WIFI_OFF); return -1; }
+  return 0;
+}
+static int wifiScanCollect(JsonArray out) {
+  int n = WiFi.scanComplete();
+  if (n == WIFI_SCAN_RUNNING) return n;
   for (int i = 0; i < n && out.size() < 15; i++) {
     String ss = WiFi.SSID(i); if (!ss.length()) continue;
     bool dup = false; for (JsonVariant v : out) if (ss == (const char*)(v["ssid"] | "")) dup = true;
@@ -106,9 +115,10 @@ static int wifiScan(JsonArray out) {
     JsonObject o = out.add<JsonObject>(); o["ssid"] = ss; o["rssi"] = WiFi.RSSI(i); o["lock"] = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
   }
   WiFi.scanDelete();
-  if (!was) WiFi.mode(WIFI_OFF);
+  if (!scanRadioWas && !wf.started) WiFi.mode(WIFI_OFF);
   return n;
 }
+static void wifiScanAbort() { WiFi.scanDelete(); if (!scanRadioWas && !wf.started) WiFi.mode(WIFI_OFF); }
 static void wifiStatusJson(JsonDocument& r) {
   r["state"] = wifiStateName(); r["ssid"] = wf.ssid; r["on"] = wf.on;
   if (wifiConnected()) { r["ip"] = WiFi.localIP().toString(); r["rssi"] = WiFi.RSSI(); }

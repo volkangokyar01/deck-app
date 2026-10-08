@@ -78,6 +78,8 @@ static BleLink* bleLinkOf(uint16_t conn) {
 static bool bleConnAlive(uint16_t conn) { return conn != BLE_HS_CONN_HANDLE_NONE && bleLinkOf(conn); }
 static uint16_t bleMtuOf(uint16_t conn) { BleLink* L = bleLinkOf(conn); return L ? L->mtu : 23; }
 static volatile uint16_t replyConn = BLE_HS_CONN_HANDLE_NONE;   // Bluetooth connection of the command being handled
+// wifi_scan waiting for the radio (1.13.6): who asked, so the late reply goes back the same way
+struct ScanReq { bool on = false; long id = 0; int8_t src = -1; uint16_t conn = BLE_HS_CONN_HANDLE_NONE; uint32_t at = 0; } scanReq;
 
 struct TxItem { char* p; size_t n; uint16_t conn; };
 static QueueHandle_t bleTxQ = nullptr;
@@ -344,11 +346,11 @@ static void handleLine(char* buf, size_t len) {
   }
   // Wi-Fi (1.13.0): chosen only in the desktop app; the password is stored on the deck and never sent back
   else if (!strcmp(cmd, "wifi_status")) { JsonDocument r; r["id"] = id; r["ok"] = true; wifiStatusJson(r); sendJson(r); }
-  else if (!strcmp(cmd, "wifi_scan")) {
-    JsonDocument r; r["id"] = id;
-    int n = wifiScan(r["nets"].to<JsonArray>());
-    r["ok"] = n >= 0; if (n < 0) { r["error"] = "scan_failed"; r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); }
-    sendJson(r);
+  else if (!strcmp(cmd, "wifi_scan")) {             // answered from protoPoll when the scan ends (1.13.6)
+    if (scanReq.on) { replyErr(id, "busy"); return; }
+    int e = wifiScanStart();
+    if (e < 0) { JsonDocument r; r["id"] = id; r["ok"] = false; r["error"] = "scan_failed"; r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); sendJson(r); return; }
+    scanReq.on = true; scanReq.id = id.as<long>(); scanReq.src = replySrc; scanReq.conn = replyConn; scanReq.at = millis();
   }
   else if (!strcmp(cmd, "wifi_set")) {
     String ssid = (const char*)(doc["ssid"] | ""), pass = (const char*)(doc["pass"] | "");
@@ -450,7 +452,21 @@ static void protoBegin() {
   xTaskCreatePinnedToCore(serialTask, "ser", 4096, nullptr, 3, nullptr, 0);
 }
 
+static void scanPoll() {
+  if (!scanReq.on) return;
+  JsonDocument r; r["id"] = scanReq.id;
+  int n = wifiScanCollect(r["nets"].to<JsonArray>());
+  if (n == WIFI_SCAN_RUNNING) {
+    if (millis() - scanReq.at < 12000) return;
+    wifiScanAbort();
+  }
+  scanReq.on = false;
+  r["ok"] = n >= 0; if (n < 0) { r["error"] = "scan_failed"; r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); }
+  replySrc = scanReq.src; replyConn = scanReq.conn; sendJson(r); replySrc = -1; replyConn = BLE_HS_CONN_HANDLE_NONE;
+}
+
 static void protoPoll() {
+  scanPoll();
   LineItem it;
   while (lineQ && xQueueReceive(lineQ, &it, 0) == pdTRUE) {
     replySrc = it.src; replyConn = it.conn;

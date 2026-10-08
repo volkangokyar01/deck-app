@@ -27,7 +27,7 @@ test('Medya / Ses ve parlaklık (1.13.4): the knob works inside the page at once
 });
 
 test('Wi-Fi (1.13.0): chosen only in the app, kept across restarts, password never echoed; the clock still works without it', () => {
-  const w = read('firmware/VolkanDeck/Wifi.h'), proto = read('firmware/VolkanDeck/Proto.h'), ino = read('firmware/VolkanDeck/VolkanDeck.ino');
+  const w = read('firmware/VolkanDeck/WifiLink.h'), proto = read('firmware/VolkanDeck/Proto.h'), ino = read('firmware/VolkanDeck/VolkanDeck.ino');
   const ui = read('firmware/VolkanDeck/Ui.h'), web = read('web/body.html');
   assert.match(w, /if \(wf\.on && wf\.ssid\.length\(\)\) wifiStart\(\);/, 'radio off until a network is saved');
   assert.match(w, /WiFi\.setSleep\(true\);/, 'modem sleep is required with Bluetooth on');
