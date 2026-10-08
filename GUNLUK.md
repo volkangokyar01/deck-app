@@ -4,6 +4,7 @@ Her push'tan önce en üste bir satır eklenir. Kurallar `GUNCELLEME.md` → 5. 
 
 | Tarih / saat (TSİ) | İmza | Tür | Güncelleme | Özet |
 |---|---|---|---|---|
+| 2026-10-08 15:20 | volkangokyar01 | uygulama / ayar sayfası / firmware / belge | Evet | Firmware 1.13.4: durum satırında Bluetooth ve USB simgeleri piksel çizim (net, yumuşatmasız); Medya ve Ses ve parlaklık sayfalarında döndürgeç doğrudan ses / parlaklık ayarlar, sayfadan çıkmaz (çıkış: uzun bas veya bekle); Medya'da B basılı ses modu kaldırıldı. Ayar sayfası önizlemesi de güncellendi. Firmware derlendi ve gömüldü; 182 Node / 30 Python testi geçti. Donanımda denenmedi |
 | 2026-10-08 14:55 | volkangokyar01 | uygulama / firmware / belge | Evet | Firmware 1.13.3: iOS tarzı pil göstergesi (kapsül, yüzde içinde, şarjda yeşil + şimşek, %20 altı kırmızı). Firmware derlendi ve gömüldü; 182 Node / 30 Python testi geçti. Donanımda denenmedi |
 | 2026-10-08 14:45 | volkangokyar01 | uygulama / firmware / belge | Evet | Firmware 1.13.2: durum satırında "usb" / "ble" yazısı yerine USB ve Bluetooth simgesi; bağlı değilken üstü çizili USB. Firmware derlendi ve gömüldü; 182 Node / 30 Python testi geçti. Donanımda denenmedi |
 | 2026-10-08 12:30 | volkangokyar01 | uygulama / firmware / belge | Evet | Firmware 1.13.1: ana ekranın durum satırına Bluetooth ve Wi-Fi simgeleri; bağlı / bağlı değil / eşleştirme / bağlanıyor / hata / kapalı durumları farklı çizilir, Wi-Fi sinyal gücünü gösterir. Firmware derlendi ve gömüldü; 182 Node / 30 Python testi geçti. Donanımda denenmedi |

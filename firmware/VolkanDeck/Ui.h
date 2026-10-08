@@ -202,25 +202,34 @@ static void gSlash(int cx, int cy, uint16_t c) {   // "not connected" stroke wit
   spr.drawWideLine(cx - 6, cy - 5, cx + 6, cy + 5, 2.6f, SC_BG);
   spr.drawWideLine(cx - 6, cy - 5, cx + 6, cy + 5, 1.2f, c);
 }
-// USB trident, ~16 x 9, pointing right
-static void gUsb(int cx, int cy, uint16_t c) {
-  const float w = 1.2f;
-  spr.fillSmoothCircle(cx - 6, cy, 1.8f, c);
-  spr.drawWideLine(cx - 6, cy, cx + 5, cy, w, c);
-  spr.fillTriangle(cx + 5, cy - 3, cx + 5, cy + 3, cx + 8, cy, c);
-  spr.drawWideLine(cx - 3, cy, cx, cy - 3, w, c); spr.drawWideLine(cx, cy - 3, cx + 2, cy - 3, w, c);
-  spr.fillSmoothCircle(cx + 3, cy - 3, 1.4f, c);
-  spr.drawWideLine(cx - 1, cy, cx + 2, cy + 3, w, c); spr.drawWideLine(cx + 2, cy + 3, cx + 3, cy + 3, w, c);
-  spr.fillRect(cx + 3, cy + 2, 3, 3, c);
+// Status-row symbols (1.13.4): pixel bitmaps, 1 px strokes at 45 degrees, no anti-aliasing,
+// so they stay sharp on the small panel. Row masks, leftmost pixel = highest bit.
+static const uint16_t BM_BT[13] = { 0x0008, 0x000C, 0x000A, 0x0049, 0x002A, 0x001C, 0x0008, 0x001C, 0x002A, 0x0049, 0x000A, 0x000C, 0x0008 };   // 7 x 13
+static const uint16_t BM_USB[9] = { 0x0018, 0x00F8, 0x0104, 0x7206, 0x7FFF, 0x7086, 0x0044, 0x0038, 0x0018 };   // 15 x 9
+static void drawBm(const uint16_t* bm, int w, int h, int x, int y, uint16_t c) {
+  for (int j = 0; j < h; j++) {
+    uint16_t r = bm[j];
+    for (int i = 0; i < w;) {
+      if (!(r >> (w - 1 - i) & 1)) { i++; continue; }
+      int k = i; while (k < w && (r >> (w - 1 - k) & 1)) k++;
+      spr.drawFastHLine(x + i, y + j, k - i, c); i = k;
+    }
+  }
+}
+static void pxBt(int cx, int cy, uint16_t c) { drawBm(BM_BT, 7, 13, cx - 3, cy - 6, c); }
+static void pxUsb(int cx, int cy, uint16_t c) { drawBm(BM_USB, 15, 9, cx - 7, cy - 4, c); }
+static void pxSlash(int cx, int cy, int r, uint16_t c) {   // 1 px "not connected" stroke with a background gap
+  spr.drawLine(cx - r + 1, cy - r, cx + r, cy + r - 1, SC_BG); spr.drawLine(cx - r, cy - r + 1, cx + r - 1, cy + r, SC_BG);
+  spr.drawLine(cx - r, cy - r, cx + r, cy + r, c);
 }
 static void drawLinkIcons(int right) {           // right: x where the icons must end
   const uint16_t BT_ON = C(0x60A5FA);
-  int wx = right - 8, bx = right - 26;           // Wi-Fi fan ~15 px wide, BT rune ~8 px
+  int wx = right - 8, bx = right - 27;           // Wi-Fi fan ~15 px wide, BT rune 7 px
   uint8_t b = btIconState();
   uint16_t bc = b == 3 ? BT_ON : b == 2 ? SC_HL : SC_DIM;
-  gBt(bx, 7, 10, bc, b == 3 ? 1.4f : 1.1f);
-  if (b == 3) spr.fillSmoothCircle(bx + 6, 11, 2, SC_GREEN);       // small dot: a computer is connected
-  if (b == 0) gSlash(bx, 7, SC_DIM);
+  pxBt(bx, 7, bc);
+  if (b == 3) spr.fillRect(bx + 5, 10, 3, 3, SC_GREEN);            // small dot: a computer is connected
+  if (b == 0) pxSlash(bx, 7, 6, SC_DIM);
   uint8_t w = wifiIconState();
   int lvl = w >= 3 ? w - 2 : 0;                  // bars lit
   uint16_t on = w >= 3 ? SC_TEXT : w == 1 ? SC_HL : SC_DIM, off = mix(SC_DIM, SC_BG, .45f);
@@ -261,8 +270,8 @@ static void drawStatus(uint16_t dot, const char* link, int x0 = 2) {
   bool usb = !strcmp(link, "usb"), ble = !strcmp(link, "ble");
   bool linkIcon = !(x0 > 2 && ble);
   if (linkIcon) {
-    if (ble) gBt(263, 7, 10, C(0x60A5FA), 1.4f);
-    else { gUsb(262, 7, usb ? SC_TEXT : SC_DIM); if (!usb) gSlash(262, 7, SC_DIM); }
+    if (ble) pxBt(264, 7, C(0x60A5FA));
+    else { pxUsb(264, 7, usb ? SC_TEXT : SC_DIM); if (!usb) pxSlash(264, 7, 6, SC_DIM); }
   }
   if (x0 > 2) drawLinkIcons(linkIcon ? 250 : 270);   // home only
   drawBattery();
@@ -774,7 +783,7 @@ static void drawMedia() {
     spr.fillRoundRect(240, 150, max(3, 72 * sysSt.vol / 100), 6, 3, sysSt.mute ? SC_DIM : (adjust == 1 ? SC_HL : SC_TEXT));
   } else if (keyFlashWhat == 1 && now - keyFlashAt < 700) text(keyFlash > 0 ? "ses +" : "ses -", 312, 124, FSB12, SC_HL, textdatum_t::middle_right);
   else text("ses", 312, 124, FSB12, SC_DIM, textdatum_t::middle_right);
-  text(adjust == 1 ? "çevir: ses · B basılı: bitir" : "B basılı: ses · A basılı: sessiz", 4, 125, FM9, adjust == 1 ? SC_HL : SC_DIM);
+  text("çevir: ses · A basılı: sessiz", 4, 125, FM9, adjust == 1 ? SC_HL : SC_DIM);
   if (companionOn()) text("çift bas: oynatıcı", 4, 140, FM9, SC_DIM);
 }
 
@@ -812,7 +821,7 @@ static void sysRow(int y, int h, bool vol, bool focus) {
   }
   String hint;
   if (vol) hint = muted ? "SESSİZ · A: aç" : "A: sessiz";
-  else hint = focus ? "çevir: ayarla" : adjust ? "bas: buraya geç" : "bas: ayarla";
+  else hint = focus ? "çevir: ayarla" : "bas: buraya geç";
   if (vol && focus && !muted) hint = "çevir: ayarla · A: sessiz";
   text(hint, 310, y + 10, FM9, muted ? SC_RED : focus ? SC_HL : SC_DIM, textdatum_t::middle_right);
 }
@@ -829,7 +838,7 @@ static void micRow(int y, int h) {
 }
 
 static void drawSystem() {
-  sysRow(15, 56, true, adjust == 1);
+  sysRow(15, 56, true, adjust != 2);      // 1.13.4: the knob always sets one of them, volume unless brightness is chosen
   sysRow(73, 56, false, adjust == 2);
   micRow(131, 37);
 }

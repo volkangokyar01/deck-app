@@ -414,8 +414,9 @@ static void handleInput() {
     if (!wakeUp()) {
       if (S.encRev) steps = -steps;
       uint8_t k = curKind();
-      if (adjust && k == K_MEDIA) levelStep(true, steps);           // volume mode on the media page
-      else if (adjust && k == K_SYS) levelStep(adjust == 1, steps);
+      // 1.13.4: on Medya and Ses ve parlaklık the knob works inside the page right away; leave with a long press (or idle)
+      if (k == K_MEDIA) { adjust = 1; levelStep(true, steps); }
+      else if (k == K_SYS) { if (!adjust) adjust = 1; levelStep(adjust == 1, steps); }
       else if (menuPick && k == K_MENU) {
         int n = menuPages().size(); menuCur = constrain(menuCur + steps, 0, max(0, n - 1)); menuAt = millis(); dirty = true;
       }
@@ -460,8 +461,7 @@ static void handleInput() {
     else quickAct(S.quickA);
   }
   int b = bB.poll(600);
-  if (b == 2 && curKind() == K_MEDIA && !wakeUp()) { evtInput("b_hold"); adjust = adjust ? 0 : 1; adjustAt = now; dirty = true; }
-  else if ((b == 1 || b == 2) && !wakeUp()) {
+  if ((b == 1 || b == 2) && !wakeUp()) {          // 1.13.4: no volume mode any more, a B hold is a press everywhere
     evtInput("b"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("next", CC_NEXT);
     else if (k == K_SYS) { toggleMic(); if (adjust) adjustAt = now; }

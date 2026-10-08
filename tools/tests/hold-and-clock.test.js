@@ -14,12 +14,16 @@ test('holding the knob goes home from every screen and closes open modes', () =>
   assert.ok(!/K_MEDIA|K_SYS|K_CONN|K_MENU/.test(hold), 'no screen keeps its own long press');
 });
 
-test('media page: A hold mutes, B hold toggles the volume mode; other screens treat a hold as a press', () => {
+test('Medya / Ses ve parlaklık (1.13.4): the knob works inside the page at once; A hold mutes; B hold is a press', () => {
   const ino = read('firmware/VolkanDeck/VolkanDeck.ino');
   assert.match(ino, /int a = bA\.poll\(600\);\n  if \(a == 2 && curKind\(\) == K_MEDIA && !wakeUp\(\)\) \{ evtInput\("a_hold"\); toggleMute\(\);/);
-  assert.match(ino, /int b = bB\.poll\(600\);\n  if \(b == 2 && curKind\(\) == K_MEDIA && !wakeUp\(\)\) \{ evtInput\("b_hold"\); adjust = adjust \? 0 : 1;/);
+  assert.ok(!/b_hold/.test(ino), 'no volume mode on B hold any more');
   assert.match(ino, /else if \(\(a == 1 \|\| a == 2\) && !wakeUp\(\)\)/);
-  assert.match(ino, /else if \(\(b == 1 \|\| b == 2\) && !wakeUp\(\)\)/);
+  assert.match(ino, /if \(\(b == 1 \|\| b == 2\) && !wakeUp\(\)\)/);
+  const enc = ino.slice(ino.indexOf('uint8_t k = curKind();', ino.indexOf('static void handleInput()')), ino.indexOf('evtInput(steps > 0 ? "cw" : "ccw");'));
+  assert.match(enc, /if \(k == K_MEDIA\) \{ adjust = 1; levelStep\(true, steps\); \}/);
+  assert.match(enc, /else if \(k == K_SYS\) \{ if \(!adjust\) adjust = 1; levelStep\(adjust == 1, steps\); \}/);
+  assert.ok(enc.indexOf('k == K_MEDIA') < enc.indexOf('selectIndex('), 'the page handles the knob before the wheel moves');
 });
 
 test('Wi-Fi (1.13.0): chosen only in the app, kept across restarts, password never echoed; the clock still works without it', () => {
@@ -64,11 +68,12 @@ test('home status row (1.13.1): Bluetooth and Wi-Fi icons differ when connected 
   assert.match(wf, /"failed"\) \|\| !strcmp\(ws, "nomem"\)\) return 2;/);
   const draw = ui.slice(ui.indexOf('static void drawLinkIcons('), ui.indexOf('// Layout: 2 px outer margin'));
   assert.match(draw, /b == 3 \? BT_ON/, 'connected Bluetooth has its own colour');
-  assert.match(draw, /if \(b == 0\) gSlash/, 'Bluetooth off is crossed out');
+  assert.match(draw, /if \(b == 0\) pxSlash/, 'Bluetooth off is crossed out');
   assert.match(draw, /if \(w == 0\) gSlash/, 'Wi-Fi off is crossed out');
   assert.match(draw, /if \(w == 2\) gSlash\(wx, 7, SC_RED\)/, 'Wi-Fi failure is crossed out in red');
   assert.match(ui, /if \(x0 > 2\) drawLinkIcons\(/, 'only the home status row (x0 = 134) draws the icons');
   assert.ok(!/text\(link,/.test(ui), 'the link is a symbol, not "usb" / "ble" text (1.13.2)');
-  assert.match(ui, /gUsb\(262, 7, usb \? SC_TEXT : SC_DIM\)/);
+  assert.match(ui, /pxUsb\(264, 7, usb \? SC_TEXT : SC_DIM\)/);
+  assert.match(ui, /static const uint16_t BM_BT\[13\]/, 'status-row symbols are pixel bitmaps (1.13.4)');
   assert.match(ino, /uint8_t ic = btIconState\(\) \| wifiIconState\(\) << 2; if \(ic != lastIcons\)/);
 });

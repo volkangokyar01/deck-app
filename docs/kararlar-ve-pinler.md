@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.13.3)
+## Firmware (v1.13.4)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -317,3 +317,9 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Durum satırındaki pil kutusu ve dışındaki "%" yazısı yerine iOS tarzı kapsül: yuvarlak köşeli gövde (soluk iz), seviye kadar dolu, yüzde sayısı gövdenin içinde (dolu kısımda oyuk, boş kısımda açık renk), ayrı küçük kutup başı (tam dolunca seviye renginde).
 - Renkler: normal beyaz (açık temada koyu), %20 altında kırmızı, şarj olurken yeşil ve kapsülün solunda yeşil şimşek.
 - Kapsül x 284–313, kutup başı 314–316. USB / Bluetooth simgesi 262'ye, ana ekrandaki BT / Wi-Fi simgeleri bir sola kaydı.
+
+## 2026-10-08 — Piksel simgeler; Medya ve Ses ve parlaklıkta döndürgeç sayfanın içinde (firmware 1.13.4)
+- Durum satırındaki Bluetooth ve USB simgeleri kenar yumuşatmalı çizgilerden (1.13.2) piksel bitmap'e geçti: 1 px çizgi, yalnız 45° köşegen, yumuşatma yok (`BM_BT` 7×13, `BM_USB` 15×9, `drawBm`). Küçük panelde bulanık görünüyorlardı. "Bağlı değil" çizgisi de pikselli (`pxSlash`). Wi-Fi ve pil olduğu gibi kaldı. Bağlantılar sayfasındaki ve menüdeki büyük Bluetooth simgesi değişmedi.
+- Medya ve Ses ve parlaklık sayfalarında döndürgeç artık sayfadan çıkmaz: Medya'da çevirince doğrudan ses değişir; Ses ve parlaklık'ta çevirince seçili değer değişir (başta ses, basınca ses ↔ parlaklık). Çıkmak için uzun basılır (ana sayfa) veya ana sayfaya dönüş süresi beklenir. Medya'da "Ana sayfaya dönme" açıksa (varsayılan) beklemekle dönülmez.
+- Medya'da B basılı tutma (ses modu) kaldırıldı; B basılı = B (sonraki şarkı). A basılı = sessiz, aynı kaldı.
+- Ayar sayfasındaki önizleme ve kontrol listesi aynı davranışa ve aynı durum satırına güncellendi.
