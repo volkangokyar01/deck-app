@@ -24,7 +24,7 @@ class IconCacheTest(unittest.TestCase):
 struct String : std::string { using std::string::string; String(const std::string& s):std::string(s){} };
 String operator+(const char* a, const String& b){ return String(std::string(a)+b); }
 uint32_t ms=1000; uint32_t millis(){ return ms++; }
-bool psram=false; bool psramFound(){ return psram; } void* ps_malloc(size_t n){ return malloc(n); }
+bool psram=false; bool psramOk(){ return psram; } void* ps_malloc(size_t n){ return malloc(n); }
 int reads=0, mallocs=0; std::vector<void*> freed;
 struct File { bool ok; explicit operator bool() const { return ok; } size_t read(uint8_t* d, size_t n){ memset(d,7,n); reads++; return n; } void close(){} };
 struct { File open(const String& p, const char*){ return File{p.find("missing")==std::string::npos}; } } LittleFS;

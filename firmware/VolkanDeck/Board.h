@@ -1,6 +1,15 @@
 #pragma once
 // LilyGO T-Display-S3 + KY-040 + 2 buttons
-#define FW_VERSION "1.12.0"
+#define FW_VERSION "1.12.1"
+#include "esp_heap_caps.h"
+
+// PSRAM (1.12.1): without BOARD_HAS_PSRAM Arduino 3.x compiles its PSRAM layer out and the 8 MB is never used.
+#ifndef BOARD_HAS_PSRAM
+#error "Derleme tools/build_firmware.sh ile yapılmalı (BOARD_HAS_PSRAM yok)"
+#endif
+// psramFound() is not enough: with CONFIG_SPIRAM_BOOT_INIT Arduino reports true even when startup failed.
+static inline bool psramOk() { return heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0; }
+static inline uint32_t psramKB() { return (uint32_t)(heap_caps_get_total_size(MALLOC_CAP_SPIRAM) / 1024); }
 
 // CPU scaling (240 <-> 80 MHz) is off since 1.8.1: the switch back to 240 MHz happened right before the
 // config write and the board restarted ("Cihaza yaz" on Windows). Idle redraw saving stays enabled.

@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.12.0)
+## Firmware (v1.12.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -285,3 +285,13 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - hello: psramCap, psramVendor (eFuse), fwPsram ("opi" / "qspi"), embPsram, psramInit, heap, block.
 - Ek bellek yokken uygulama ikonları artık açılışta RAM'e yüklenmez (16 uygulama ≈ 51 KB). 6 yuvalı önbellek (≈ 19 KB) ekrandaki ikonları /icons/<id>.bin'den çizilirken yükler, en eski çizileni çıkarır; applyConfig önbelleği de boşaltır. Ek bellek varsa ikonlar eskisi gibi ek bellekte.
 - Ayar sayfası Cihaz ayarları → "Bellek" kartı: ek bellek durumu, çipteki ek bellek, yüklü yazılım tipi, boş iç bellek ve en büyük parça (çubuk), duruma göre açıklama; yazılım çipe uymuyorsa "Uygun yazılımı yükle". Her status olayında (5 sn) güncellenir; "Yenile" hello'yu yeniden okur.
+
+## 2026-10-08 — Ek bellek gerçekten açıldı: BOARD_HAS_PSRAM (firmware 1.12.1)
+- Asıl neden: `lilygo_t_display_s3` kart tanımı `BOARD_HAS_PSRAM` vermiyor. Arduino-ESP32 3.x `esp32-hal-psram.h` içinde bu tanım yoksa `CONFIG_SPIRAM`'i siliyor; `psramFound()` hep false, `ps_malloc` / `ps_realloc` hep NULL, `ESP.getPsramSize()` hep 0 oluyordu. ESP-IDF ise ek belleği açılışta başlatıp yığına ekliyordu (1.11.1'in ara derlemesi `heap_caps_get_total_size(MALLOC_CAP_SPIRAM)` ile 8192 KB okudu): 4 KB'tan büyük sıradan malloc'lar zaten ek bellekteydi, ama ekran tamponu, animasyon, ikonlar ve satır tamponları iç RAM'de kalıyordu.
+- Donanım (esptool, 2026-10-08, Sencer'in kartı): ESP32-S3 (QFN56) rev v0.2, `Embedded PSRAM 8MB (AP_3v3)`, eFuse PSRAM_CAP = 1 (8M), PSRAM_VENDOR = 1 (AP_3v3), flash 16 MB 3.3 V. 1.12.0'ın "QSPI klon kart" varsayımı bu kart için geçerli değil; QSPI derlemesi de aynı `BOARD_HAS_PSRAM` eksikliğiyle derlendiği için çözmüyordu. QSPI derlemesi ve çipe göre seçim kaldırıldı, tek (OPI) derleme.
+- 1.11.0'ın `embPsram`'ı yanlıştı: ESP-IDF'nin S3 `esp_chip_info()`'su `CHIP_FEATURE_EMB_PSRAM`'i hiç doldurmaz. Artık eFuse PSRAM_CAP'ten okunuyor (hello: psramCap, psramVendor, embPsram = cap != 0).
+- Derleme: `tools/build_firmware.sh` `-DBOARD_HAS_PSRAM` verir; `Board.h` bu tanım yoksa derlemeyi durdurur. arduino-cli çekirdek önbelleğini (`core.a`) derleme bayraklarına bakmadan anahtarlıyor; 5 Ekim'den kalan bayraksız `core.a` yeniden kullanılıyordu. Betik `ARDUINO_BUILD_CACHE_PATH`'i bayrakların özetine göre ayırır (`firmware/VolkanDeck/build/cache-<özet>`). Derlenmiş ELF'te `psramFound` / `ps_malloc` 7 baytlık boş gövdeyse PSRAM katmanı yine kapalıdır.
+- `psramFound()`'a güvenilmez: `CONFIG_SPIRAM_BOOT_INIT` ile Arduino, açılış başarısız olsa da true döndürür. Firmware `psramOk()` (yığında SPIRAM var mı) kullanır; satır tamponu ek bellek alamazsa iç RAM'e döner (ara derlemede `ps_realloc` NULL döndüğü için seri okuma görevi ilk tamponu sonsuza kadar bekledi, kart komut almadı).
+- Ekran tamponu (320×170×2 = 108 KB) önce iç RAM'e konur (panele aktarım ek bellekten daha yavaş); sığmazsa ek belleğe. Animasyon kareleri, ikonlar, kapak, satır ve gönderme tamponları ek bellekte.
+- Kartta ölçülen (1.12.1, USB): psram 8192 KB, boş iç RAM 35 → 58 KB, 55 karelik GIF ek bellekte (en büyük boş blok 6271 KB). Cihaza yaz ve Bluetooth çalıştı; GIF kullanıcıya göre biraz daha akıcı (ölçülmedi).
+- 1.12.0'dan kalanlar: ek bellek yokken 6 yuvalı ikon önbelleği (artık `psramOk()` ile), ayar sayfasındaki Bellek kartı (QSPI / yazılım tipi satırları çıkarıldı; 1.12.1'den eski firmware'de "Firmware'i güncelle").

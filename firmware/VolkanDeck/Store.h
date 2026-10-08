@@ -149,7 +149,7 @@ static uint16_t* appPix(App* a) {
   if (!a || !a->img) return nullptr;
   uint32_t now = millis() | 1;
   if (a->pix) { for (auto& s : iconSlots) if (s.a == a) s.used = now; return a->pix; }
-  if (psramFound()) {
+  if (psramOk()) {
     a->pix = (uint16_t*)ps_malloc(3200);
     if (a->pix && !readIcon(a->id, a->pix)) { free(a->pix); a->pix = nullptr; a->img = false; }
     return a->pix;
@@ -166,7 +166,7 @@ static uint16_t* appPix(App* a) {
 }
 
 static void loadAppIcons() {
-  if (!psramFound()) {                            // no PSRAM: only check the files, load on first draw
+  if (!psramOk()) {                               // no PSRAM: only check the files, load on first draw
     for (auto& a : S.apps) if (a.img && !LittleFS.exists("/icons/" + a.id + ".bin")) a.img = false;
     return;
   }
@@ -175,7 +175,7 @@ static void loadAppIcons() {
     String p = "/icons/" + a.id + ".bin";
     File f = LittleFS.open(p, "r");
     if (!f) { a.img = false; continue; }
-    a.pix = (uint16_t*)(psramFound() ? ps_malloc(3200) : malloc(3200)); if (!a.pix) a.pix = (uint16_t*)malloc(3200);
+    a.pix = (uint16_t*)(psramOk() ? ps_malloc(3200) : malloc(3200)); if (!a.pix) a.pix = (uint16_t*)malloc(3200);
     if (a.pix && f.read((uint8_t*)a.pix, 3200) != 3200) { free(a.pix); a.pix = nullptr; a.img = false; }
     f.close();
   }
@@ -329,7 +329,7 @@ static bool loadAnim(Anim& A) {
     if (f.read(dl, 2 * n) != (size_t)(2 * n)) { f.close(); A.frames = 0; return false; }
     for (int i = 0; i < n; i++) { A.delays[i] = max(20, dl[2 * i] | dl[2 * i + 1] << 8); A.total += A.delays[i]; }
   }
-  uint16_t* b = psramFound() ? (uint16_t*)ps_malloc(bytes) : nullptr;
+  uint16_t* b = psramOk() ? (uint16_t*)ps_malloc(bytes) : nullptr;
   if (!b && bytes <= 96 * 1024) b = (uint16_t*)malloc(bytes);
   if (b && f.read((uint8_t*)b, bytes) == bytes) { A.buf = b; f.close(); return true; }
   if (b) free(b);

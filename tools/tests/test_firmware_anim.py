@@ -49,7 +49,7 @@ struct File {
 };
 struct { File open(const char* p, const char*) { File f; if (disk.count(p)) { f.p = p; f.open = true; } return f; }
          void remove(const char* p) { disk.erase(p); } } LittleFS;
-bool psram = true; bool psramFound() { return psram; } void* ps_malloc(size_t n) { return malloc(n); }
+bool psram = true; bool psramOk() { return psram; } void* ps_malloc(size_t n) { return malloc(n); }
 // 128x128 file: n frames, each frame filled with its index; optional per-frame delays
 void put(const char* path, int n, const std::vector<int>& delays = {}) {
   std::vector<uint8_t> f = { 'V','D','A','N', 128, 0, 128, 0, (uint8_t)n, 0, 12, (uint8_t)(delays.empty() ? 0 : 1) };

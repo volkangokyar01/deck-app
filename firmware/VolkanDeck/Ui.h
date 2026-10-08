@@ -981,7 +981,8 @@ static void uiBegin() {
   lcd.setRotation(S.flip ? 3 : 1);
   lcd.setBrightness(0);
   spr.setColorDepth(16);
-  spr.setPsram(psramFound());
-  if (!spr.createSprite(320, 170)) { spr.setPsram(false); spr.createSprite(320, 170); }
+  // Internal RAM first: PSRAM is slower to push to the panel. With PSRAM up the other big buffers move there.
+  spr.setPsram(false);
+  if (!spr.createSprite(320, 170) && psramOk()) { spr.setPsram(true); spr.createSprite(320, 170); }
   fontsBegin();
 }

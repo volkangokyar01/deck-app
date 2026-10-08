@@ -1,5 +1,4 @@
 #pragma once
-#include "esp_chip_info.h"
 #include "esp_psram.h"
 #include "esp_efuse.h"
 #include "esp_efuse_table.h"
@@ -37,7 +36,7 @@ static volatile bool usbPartial = false;
 static File animUp; static size_t animBytes = 0, animGot = 0; static int animW = 0, animH = 0, animN = 0, animFpsIn = 15; static bool animUpLight = false;
 bool configChangedFlag = false;
 uint32_t rxBytes = 0, rxLines = 0;
-static void* bigAlloc(size_t n) { void* p = psramFound() ? ps_malloc(n) : nullptr; if (!p) p = malloc(n); return p; }      // main applies side effects
+static void* bigAlloc(size_t n) { void* p = psramOk() ? ps_malloc(n) : nullptr; if (!p) p = malloc(n); return p; }      // main applies side effects
 String pendingName;
 uint32_t companionAt = 0; bool companionNew = false, companionMediaLaunch = false;
 bool mediaDirty = false; uint32_t sysLocalAt = 0;
@@ -123,7 +122,7 @@ static void evtSelect() {
 static void evtStatus() {
   if (!hostListening()) return;
   JsonDocument d; d["evt"] = "status"; d["fw"] = FW_VERSION; d["battery"] = batPct; d["charging"] = charging; d["link"] = linkName();
-  d["rx"] = rxBytes; d["lines"] = rxLines; d["psram"] = (uint32_t)(ESP.getPsramSize() / 1024);
+  d["rx"] = rxBytes; d["lines"] = rxLines; d["psram"] = psramKB();
   d["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); d["block"] = (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024); sendJson(d);
 }
 static void evtLaunch(App* a) {
@@ -171,25 +170,18 @@ static void handleLine(char* buf, size_t len) {
 
   if (!strcmp(cmd, "hello")) {
     JsonDocument r; r["id"] = id; r["ok"] = true; r["fw"] = FW_VERSION; r["name"] = S.name;
-    r["battery"] = batPct; r["charging"] = charging; r["link"] = linkName(); r["psram"] = (uint32_t)(ESP.getPsramSize() / 1024);
+    r["battery"] = batPct; r["charging"] = charging; r["link"] = linkName(); r["psram"] = psramKB();
     r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleMtuOf(replyConn);
     r["anim"] = anim.frames; r["animLight"] = animLight.frames;   // frames stored per theme (0: none)
     r["reset"] = bootReset; if (bootCrash.length()) r["crash"] = bootCrash;
     r["bonds"] = bleBondCount(); r["btOff"] = bt.off;
-    // PSRAM diagnosis (1.11.0): does the chip carry PSRAM at all, and did the startup bring it up?
-    { esp_chip_info_t ci; esp_chip_info(&ci);
-      r["chipRev"] = ci.revision; r["embPsram"] = (ci.features & CHIP_FEATURE_EMB_PSRAM) != 0;
-      r["psramInit"] = esp_psram_is_initialized(); r["flashMB"] = (uint32_t)(ESP.getFlashChipSize() >> 20);
-      // eFuse: PSRAM in the package (0 none, 1 = 8 MB octal, 2 = 2 MB quad) and this firmware's PSRAM mode (1.12.0)
-      uint8_t cap = 0, vendor = 0;
+    // PSRAM diagnosis: does the chip carry PSRAM at all, and did the startup bring it up? Read from the eFuse
+    // (PSRAM_CAP 0 none, 1 = 8 MB octal, 2 = 2 MB quad): esp_chip_info never sets CHIP_FEATURE_EMB_PSRAM on the S3
+    { uint8_t cap = 0, vendor = 0;
       esp_efuse_read_field_blob(ESP_EFUSE_PSRAM_CAP, &cap, 2); esp_efuse_read_field_blob(ESP_EFUSE_PSRAM_VENDOR, &vendor, 2);
-      r["psramCap"] = cap; r["psramVendor"] = vendor;
-#if CONFIG_SPIRAM_MODE_OCT
-      r["fwPsram"] = "opi";
-#else
-      r["fwPsram"] = "qspi";
-#endif
-    }
+      r["psramCap"] = cap; r["psramVendor"] = vendor; r["embPsram"] = cap != 0;
+      r["chipRev"] = ESP.getChipRevision();
+      r["psramInit"] = esp_psram_is_initialized(); r["flashMB"] = (uint32_t)(ESP.getFlashChipSize() >> 20); }
     r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); r["block"] = (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024);
     sendJson(r);
   }
@@ -233,7 +225,7 @@ static void handleLine(char* buf, size_t len) {
     App* a = appById(aid);
     if (a) {
       a->img = true;
-      if (!a->pix && psramFound()) a->pix = (uint16_t*)ps_malloc(3200);   // without PSRAM: loaded when drawn
+      if (!a->pix && psramOk()) a->pix = (uint16_t*)ps_malloc(3200);   // without PSRAM: loaded when drawn
       if (a->pix) memcpy(a->pix, tmp, 3200);
     }
     replyOk(id);
@@ -362,12 +354,13 @@ static QueueHandle_t lineQ = nullptr;
 // Line buffers grow only while a long line (config, icon, cover) arrives and shrink back afterwards:
 // without PSRAM a permanent 24 KB per buffer left too little heap for "Cihaza yaz".
 static const size_t LINEBUF_SMALL = 1024;
-static size_t lineCap() { return psramFound() ? LINEBUF_MAX : 24 * 1024; }
+static size_t lineCap() { return psramOk() ? LINEBUF_MAX : 24 * 1024; }
 static bool lineGrow(char*& buf, size_t& have, size_t need) {
   if (need <= have) return true;
   size_t cap = lineCap(); if (need > cap) return false;
   size_t n = min(cap, max(need, have * 2));
-  char* p = (char*)(psramFound() ? ps_realloc(buf, n) : realloc(buf, n));
+  char* p = psramOk() ? (char*)ps_realloc(buf, n) : nullptr;
+  if (!p) p = (char*)realloc(buf, n);             // PSRAM full or not usable: internal RAM
   if (!p) return false;
   buf = p; have = n; return true;
 }

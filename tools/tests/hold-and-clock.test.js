@@ -33,5 +33,17 @@ test('Wi-Fi removed (1.11.0): no Wi-Fi code, the clock survives without it, old 
   assert.match(stats, /time_t now = time\(nullptr\);\n    if \(now < 1700000000\) return false;/, 'chip clock used until the app sends time');
   assert.match(stats, /clockSet\(st\.epoch, st\.tz\);/);
   assert.match(read('firmware/VolkanDeck/VolkanDeck.ino'), /pr\.begin\("vdwifi", false\)\) \{ pr\.clear\(\);/);
-  assert.match(read('firmware/VolkanDeck/Proto.h'), /r\["embPsram"\] = \(ci\.features & CHIP_FEATURE_EMB_PSRAM\) != 0;/);
+  assert.match(read('firmware/VolkanDeck/Proto.h'), /r\["embPsram"\] = cap != 0;/, 'PSRAM read from the eFuse');
+});
+
+test('PSRAM (1.12.1): the build turns on the Arduino PSRAM layer, allocations check the heap', () => {
+  assert.match(read('tools/build_firmware.sh'), /FLAGS="[^"]*-DBOARD_HAS_PSRAM/);
+  assert.match(read('tools/build_firmware.sh'), /export ARDUINO_BUILD_CACHE_PATH=.*cache-\$\(printf %s "\$FLAGS"/, 'core.a cache keyed by the flags');
+  const board = read('firmware/VolkanDeck/Board.h');
+  assert.match(board, /#ifndef BOARD_HAS_PSRAM\n#error/);
+  assert.match(board, /psramOk\(\) \{ return heap_caps_get_total_size\(MALLOC_CAP_SPIRAM\) > 0; \}/);
+  const fw = ['Proto.h', 'Store.h', 'Ui.h', 'VolkanDeck.ino'].map(f => read('firmware/VolkanDeck/' + f)).join('\n');
+  assert.ok(!/psramFound\(\)|ESP\.getPsramSize/.test(fw), 'psramFound() is true even when PSRAM failed to start');
+  const web = read('web/body.html');
+  assert.match(web, /if\(d\.fw&&!verGE\(d\.fw,"1\.12\.1"\)\) return "Ek bellek kapalı · firmware'i güncelle"/);
 });
