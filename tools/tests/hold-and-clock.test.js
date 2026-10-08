@@ -68,5 +68,7 @@ test('home status row (1.13.1): Bluetooth and Wi-Fi icons differ when connected 
   assert.match(draw, /if \(w == 0\) gSlash/, 'Wi-Fi off is crossed out');
   assert.match(draw, /if \(w == 2\) gSlash\(wx, 7, SC_RED\)/, 'Wi-Fi failure is crossed out in red');
   assert.match(ui, /if \(x0 > 2\) drawLinkIcons\(/, 'only the home status row (x0 = 134) draws the icons');
+  assert.ok(!/text\(link,/.test(ui), 'the link is a symbol, not "usb" / "ble" text (1.13.2)');
+  assert.match(ui, /gUsb\(246, 7, usb \? SC_TEXT : SC_DIM\)/);
   assert.match(ino, /uint8_t ic = btIconState\(\) \| wifiIconState\(\) << 2; if \(ic != lastIcons\)/);
 });

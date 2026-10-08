@@ -202,6 +202,17 @@ static void gSlash(int cx, int cy, uint16_t c) {   // "not connected" stroke wit
   spr.drawWideLine(cx - 6, cy - 5, cx + 6, cy + 5, 2.6f, SC_BG);
   spr.drawWideLine(cx - 6, cy - 5, cx + 6, cy + 5, 1.2f, c);
 }
+// USB trident, ~16 x 9, pointing right
+static void gUsb(int cx, int cy, uint16_t c) {
+  const float w = 1.2f;
+  spr.fillSmoothCircle(cx - 6, cy, 1.8f, c);
+  spr.drawWideLine(cx - 6, cy, cx + 5, cy, w, c);
+  spr.fillTriangle(cx + 5, cy - 3, cx + 5, cy + 3, cx + 8, cy, c);
+  spr.drawWideLine(cx - 3, cy, cx, cy - 3, w, c); spr.drawWideLine(cx, cy - 3, cx + 2, cy - 3, w, c);
+  spr.fillSmoothCircle(cx + 3, cy - 3, 1.4f, c);
+  spr.drawWideLine(cx - 1, cy, cx + 2, cy + 3, w, c); spr.drawWideLine(cx + 2, cy + 3, cx + 3, cy + 3, w, c);
+  spr.fillRect(cx + 3, cy + 2, 3, 3, c);
+}
 static void drawLinkIcons(int right) {           // right: x where the icons must end
   const uint16_t BT_ON = C(0x60A5FA);
   int wx = right - 8, bx = right - 26;           // Wi-Fi fan ~15 px wide, BT rune ~8 px
@@ -225,8 +236,14 @@ static void drawLinkIcons(int right) {           // right: x where the icons mus
 static void drawStatus(uint16_t dot, const char* link, int x0 = 2) {
   spr.fillSmoothCircle(x0 + 4, 7, 4, dot);     // page colour (was a 3 px bar across the top)
   text(items.size() ? String(sel + 1) + "/" + String(items.size()) : String("0/0"), x0 + 12, 7, FSB11, SC_SUB);
-  text(link, 254, 7, FSB11, SC_SUB, textdatum_t::middle_right);
-  if (x0 > 2) drawLinkIcons(254 - textW(link, FSB11) - 6);   // home only
+  // Link (1.13.2): a symbol instead of "usb" / "ble". Home already shows Bluetooth's state, so a BLE link adds nothing there.
+  bool usb = !strcmp(link, "usb"), ble = !strcmp(link, "ble");
+  bool linkIcon = !(x0 > 2 && ble);
+  if (linkIcon) {
+    if (ble) gBt(247, 7, 10, C(0x60A5FA), 1.4f);
+    else { gUsb(246, 7, usb ? SC_TEXT : SC_DIM); if (!usb) gSlash(246, 7, SC_DIM); }
+  }
+  if (x0 > 2) drawLinkIcons(linkIcon ? 234 : 254);   // home only
   spr.drawRoundRect(260, 2, 22, 10, 2, SC_SUB); spr.fillRect(282, 5, 2, 4, SC_SUB);
   spr.fillRect(262, 4, max(1, 18 * batPct / 100), 6, batPct < 20 && !charging ? SC_RED : SC_TEXT);
   if (charging) {   // lightning bolt across the cell while charging; the level stays visible

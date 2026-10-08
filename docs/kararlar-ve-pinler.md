@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.13.1)
+## Firmware (v1.13.2)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -308,3 +308,7 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Bluetooth: bilgisayar bağlıysa mavi + yeşil nokta; açık ama bağlı değilse gri; eşleştirme modunda turuncu; kapalıysa (veya "Sadece USB") gri ve üstü çizili.
 - Wi-Fi: bağlıyken beyaz, sinyal gücü 1–3 çizgi (-60 / -72 dBm eşikleri, Bağlantılar sayfasıyla aynı); bağlanırken turuncu; bağlanamadı / bellek yetmedi kırmızı çizili; kapalı veya ağ seçilmemişse gri çizili.
 - Durum her 500 ms'de kontrol edilir; değişirse ana ekran yeniden çizilir (tasarruf modunda da).
+
+## 2026-10-08 — Bağlantı yazısı yerine simge (firmware 1.13.2)
+- Durum satırındaki "usb" / "ble" / "none" yazısı kaldırıldı. Yerine USB ile bağlıyken beyaz USB simgesi, Bluetooth ile bağlıyken mavi Bluetooth simgesi, bağlı değilken gri ve üstü çizili USB simgesi.
+- Ana ekranda Bluetooth durum simgesi zaten olduğu için Bluetooth bağlantısında ayrıca simge çizilmez; USB ve "bağlı değil" simgesi yine görünür.
