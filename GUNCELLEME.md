@@ -63,7 +63,7 @@ Ayarlarda **Sadece yayınlanan sürümler (Releases)** seçen kullanıcı yalnı
 - Release notu `GUNLUK.md`'deki ilgili satırlardan derlenir.
 
 ```sh
-gh release create v1.5.2 --target main --title "Volkan Deck 1.5.2" --notes "…"
+gh release create v1.5.2 --target main --title "Game Deck 1.5.2" --notes "…"
 ```
 
 ## 5. Günlük (imza defteri)

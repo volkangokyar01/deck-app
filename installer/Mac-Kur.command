@@ -1,5 +1,5 @@
 #!/bin/bash
-# Volkan Deck — macOS kurulumu (Apple Silicon)
+# Game Deck (eski adı Volkan Deck) — macOS kurulumu (Apple Silicon)
 set -e
 cd "$(dirname "$0")"
 # Kurulum paketinde app/ betiğin yanında; depodaki installer/ klasöründen çalıştırılınca bir üst klasörde
@@ -9,25 +9,25 @@ else echo "HATA: app klasörü bulunamadı. Betiği kurulum paketinin içinden �
 fi
 V=44.5.1
 T=$(mktemp -d)
-echo "Volkan Deck kuruluyor (Electron $V indiriliyor, ~130 MB)…"
+echo "Game Deck kuruluyor (Electron $V indiriliyor, ~130 MB)…"
 curl -L --fail --progress-bar -o "$T/e.zip" "https://github.com/electron/electron/releases/download/v$V/electron-v$V-darwin-arm64.zip"
 ditto -x -k "$T/e.zip" "$T"
-A="$T/Volkan Deck.app"
+A="$T/Game Deck.app"
 mv "$T/Electron.app" "$A"
 rm -f "$A/Contents/Resources/default_app.asar"
 cp -R "$SRC" "$A/Contents/Resources/app"
 rm -f "$A/Contents/Resources/app/icon.ico"
 cp electron.icns "$A/Contents/Resources/electron.icns"
 P="$A/Contents/Info.plist"
-plutil -replace CFBundleName -string "Volkan Deck" "$P"
-plutil -replace CFBundleDisplayName -string "Volkan Deck" "$P"
+plutil -replace CFBundleName -string "Game Deck" "$P"
+plutil -replace CFBundleDisplayName -string "Game Deck" "$P"
 plutil -replace CFBundleIdentifier -string "com.volkan.deck" "$P"
-plutil -replace NSAppleEventsUsageDescription -string "Volkan Deck, çalan şarkıyı göstermek ve Spotify / Müzik uygulamasını cihazdaki tuşlarla kontrol etmek için izin ister." "$P"
-plutil -replace NSBluetoothAlwaysUsageDescription -string "Volkan Deck, kablo takılı değilken cihaza Bluetooth ile bağlanmak için izin ister." "$P"
-/usr/libexec/PlistBuddy -c 'Set :NSLocationUsageDescription Volkan Deck hava durumu için konumunu kullanır.' "$P" 2>/dev/null || \
-  /usr/libexec/PlistBuddy -c 'Add :NSLocationUsageDescription string Volkan Deck hava durumu için konumunu kullanır.' "$P"
-/usr/libexec/PlistBuddy -c 'Set :NSLocationWhenInUseUsageDescription Volkan Deck hava durumu için konumunu kullanır.' "$P" 2>/dev/null || \
-  /usr/libexec/PlistBuddy -c 'Add :NSLocationWhenInUseUsageDescription string Volkan Deck hava durumu için konumunu kullanır.' "$P"
+plutil -replace NSAppleEventsUsageDescription -string "Game Deck, çalan şarkıyı göstermek ve Spotify / Müzik uygulamasını cihazdaki tuşlarla kontrol etmek için izin ister." "$P"
+plutil -replace NSBluetoothAlwaysUsageDescription -string "Game Deck, kablo takılı değilken cihaza Bluetooth ile bağlanmak için izin ister." "$P"
+/usr/libexec/PlistBuddy -c 'Set :NSLocationUsageDescription Game Deck hava durumu için konumunu kullanır.' "$P" 2>/dev/null || \
+  /usr/libexec/PlistBuddy -c 'Add :NSLocationUsageDescription string Game Deck hava durumu için konumunu kullanır.' "$P"
+/usr/libexec/PlistBuddy -c 'Set :NSLocationWhenInUseUsageDescription Game Deck hava durumu için konumunu kullanır.' "$P" 2>/dev/null || \
+  /usr/libexec/PlistBuddy -c 'Add :NSLocationWhenInUseUsageDescription string Game Deck hava durumu için konumunu kullanır.' "$P"
 # BEGIN local signing — keep in sync with app/mac-sign.js
 find_signing_identity() {
   /usr/bin/security find-identity -p codesigning "$SIGN_KC" 2>/dev/null |
@@ -97,9 +97,12 @@ sign_mac_app() {
 # END local signing
 sign_mac_app "$A" || { echo "HATA: Uygulama imzası doğrulanamadı." >&2; exit 1; }
 pkill -f "Volkan Deck.app/Contents/MacOS" 2>/dev/null || true
+pkill -f "Game Deck.app/Contents/MacOS" 2>/dev/null || true
+# 2026-10-08: uygulamanın adı Game Deck oldu; eski Volkan Deck.app kaldırılır (ayarlar ve imza anahtarı yerinde kalır)
 rm -rf "/Applications/Volkan Deck.app"
+rm -rf "/Applications/Game Deck.app"
 mv "$A" /Applications/
-xattr -cr "/Applications/Volkan Deck.app" 2>/dev/null || true
+xattr -cr "/Applications/Game Deck.app" 2>/dev/null || true
 rm -rf "$T"
-open "/Applications/Volkan Deck.app"
-echo "Kuruldu: /Applications/Volkan Deck.app"
+open "/Applications/Game Deck.app"
+echo "Kuruldu: /Applications/Game Deck.app"

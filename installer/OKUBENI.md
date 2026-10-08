@@ -1,4 +1,4 @@
-# Volkan Deck masaüstü uygulaması (Windows + macOS)
+# Game Deck masaüstü uygulaması (eski adı Volkan Deck) (Windows + macOS)
 
 Uygulama arka planda çalışır. Cihazda bir tuşa bastığında, istediğin programı bilgisayarda kendisi başlatır.
 
@@ -12,8 +12,8 @@ Uygulama arka planda çalışır. Cihazda bir tuşa bastığında, istediğin pr
 - **Ana sayfa kartları:** CPU, GPU, saat, hava durumu, döviz ve ağ verilerini cihaza kabloyla gönderir. Kartın Wi-Fi'ye bağlanmasına gerek kalmaz. Windows'ta CPU sıcaklığı için Cihaz ayarlarından sensör sürücüsü kurulur; NVIDIA GPU ayarsız çalışır.
 - **Ayarlar:** Aynı pencerede bütün ayar ekranı var: uygulama ekleme, Cihaza yaz, Firmware yükle.
 - **Arka plan:** Pencereyi kapatınca sistem tepsisinde (Windows) ya da menü çubuğunda (macOS) çalışmaya devam eder. Bilgisayar açılınca kendiliğinden başlar; tepsi menüsünden kapatabilirsin.
-- **Uygulama kapalıysa:** Cihaz hiçbir şey yazmaz; ekranında "Volkan Deck uygulaması açık değil" uyarısı çıkar. İstersen Cihaz ayarlarından eski klavye yöntemini (Win+R / Başlat / Spotlight) açabilirsin.
-- **Medya (firmware 1.3.0):** Spotify, Apple Music ve YouTube Music'te çalan şarkıyı cihaza gönderir; cihazdaki oynat/duraklat, ileri ve geri tuşları doğrudan o uygulamaya gider. macOS'te ilk seferde "Volkan Deck, Spotify'ı (Müzik'i, Chrome'u) denetlemek istiyor" izni sorulur: **İzin Ver** de.
+- **Uygulama kapalıysa:** Cihaz hiçbir şey yazmaz; ekranında "Game Deck uygulaması açık değil" uyarısı çıkar. İstersen Cihaz ayarlarından eski klavye yöntemini (Win+R / Başlat / Spotlight) açabilirsin.
+- **Medya (firmware 1.3.0):** Spotify, Apple Music ve YouTube Music'te çalan şarkıyı cihaza gönderir; cihazdaki oynat/duraklat, ileri ve geri tuşları doğrudan o uygulamaya gider. macOS'te ilk seferde "Game Deck, Spotify'ı (Müzik'i, Chrome'u) denetlemek istiyor" izni sorulur: **İzin Ver** de.
 - **Ses ve parlaklık (firmware 1.3.0):** Bilgisayarın sesini ve ekran parlaklığını okuyup cihazdan ayarlatır. Windows'ta harici monitör için monitörün menüsünde DDC/CI açık olmalı.
 - **Arka planda aç:** Uygulama başına seçenek. İşaretlersen program odağı almadan açılır (Windows'ta simge durumunda, macOS'te arkada).
 
@@ -23,9 +23,9 @@ Kurulum betiği uygulamanın çalışma motorunu (Electron 44.5.1, ~130–150 MB
 1. **Firmware:** `StreamDeck-Ayar.local.html` ile ya da uygulama kurulduktan sonra Cihaz ayarları → Firmware yükle. Güncel firmware sayfaya gömülüdür.
 2. **Windows:** `Windows-Kur.bat` dosyasına çift tıkla.
    - SmartScreen uyarısı çıkarsa: Ek bilgi → Yine de çalıştır.
-   - Uygulama `%LOCALAPPDATA%\Programs\Volkan Deck` klasörüne kurulur. Başlat menüsüne ve masaüstüne kısayol eklenir.
+   - Uygulama `%LOCALAPPDATA%\Programs\Game Deck` klasörüne kurulur; eski `Volkan Deck` kurulumu ve kısayolları kaldırılır, ayarlar korunur. Başlat menüsüne ve masaüstüne kısayol eklenir.
 3. **macOS:** Terminal'i aç ve şunu yaz: `bash ` (sonunda bir boşluk bırak). Sonra `Mac-Kur.command` dosyasını Terminal penceresine sürükle ve Enter'a bas.
-   - Uygulama `/Applications/Volkan Deck.app` olarak kurulur, bu Mac için imzalanır ve açılır.
+   - Uygulama `/Applications/Game Deck.app` olarak kurulur (eski `Volkan Deck.app` kaldırılır, ayarlar korunur), bu Mac için imzalanır ve açılır.
 4. **Güncelleme:** Uygulama, tepsi/menü çubuğundaki **Güncellemeleri kontrol et** düğmesiyle kendini günceller. Electron sürümü değiştiğinde betiği yeniden çalıştırmak gerekir; ayarlar silinmez.
 
 ## Bir uygulamayı doğrudan açtırmak

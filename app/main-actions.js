@@ -8,15 +8,15 @@ function createTrayUpdate({ updater, dialog, refreshTray }) {
   return async function trayUpdate() {
     if (working) return;
     working = true;
-    const message = text => dialog.showMessageBox({ type: 'info', title: 'Volkan Deck', message: text, buttons: ['Tamam'] });
+    const message = text => dialog.showMessageBox({ type: 'info', title: 'Game Deck', message: text, buttons: ['Tamam'] });
     try {
       let state = updater.getState();
       if (['checking', 'downloading', 'installing'].includes(state.phase)) return;
       if (!state.available) state = await updater.check({ manual: true });
       refreshTray();
       if (state.needsInstaller || !state.available || state.phase === 'error') { await message(state.message); return; }
-      const { response } = await dialog.showMessageBox({ type: 'question', title: 'Volkan Deck',
-        message: 'Volkan Deck güncellensin mi? Uygulama yeniden başlar.',
+      const { response } = await dialog.showMessageBox({ type: 'question', title: 'Game Deck',
+        message: 'Game Deck güncellensin mi? Uygulama yeniden başlar.',
         buttons: ['Güncelle', 'Vazgeç'], defaultId: 0, cancelId: 1, noLink: true });
       if (response === 0) {
         const result = await updater.apply();

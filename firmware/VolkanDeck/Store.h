@@ -27,7 +27,7 @@ struct App {
 };
 
 struct Settings {
-  String name = "Volkan Deck";
+  String name = "Game Deck";
   bool   trq = true;
   uint8_t conn = 0;          // 0 auto, 1 usb, 2 ble
   int brightness = 80, dimAfter = 30, sleepAfter = 300, launchDelay = 400, encDetent = 4;   // dimAfter / sleepAfter: on battery (s, 0 = off)
@@ -67,7 +67,7 @@ Settings S;
 
 static const char DEFAULT_CONFIG[] PROGMEM = R"JSON({
 "version":3,
-"device":{"name":"Volkan Deck","layout":"tr_q","connection":"auto","brightness":80,"dimAfter":30,"sleepAfter":300,"dimAfterUsb":30,"sleepAfterUsb":0,"ecoAfterUsb":60,"ecoAfter":30,"dimLevelUsb":17,"dimLevel":17,"ecoFpsUsb":4,"ecoFps":4,"launchDelay":400,"wrap":true,"encReverse":false,"encDetent":4,"theme":"auto","lightFrom":420,"darkFrom":1140},
+"device":{"name":"Game Deck","layout":"tr_q","connection":"auto","brightness":80,"dimAfter":30,"sleepAfter":300,"dimAfterUsb":30,"sleepAfterUsb":0,"ecoAfterUsb":60,"ecoAfter":30,"dimLevelUsb":17,"dimLevel":17,"ecoFpsUsb":4,"ecoFps":4,"launchDelay":400,"wrap":true,"encReverse":false,"encDetent":4,"theme":"auto","lightFrom":420,"darkFrom":1140},
 "home":{"enabled":true,"cards":["cpu","gpu"],"weather":{"city":"İstanbul","lat":41.01,"lon":28.97},"cpuLabel":"","gpuLabel":"","cpuWarn":85,"cpuCrit":95,"gpuWarn":80,"gpuCrit":87,"showLoad":true,"returnAfter":60,"pressApp":null,"anim":{"kind":"fan","color":"#3B6CF6","fps":15}},
 "apps":[
  {"id":"cs2","name":"Counter-Strike 2","icon":"game","color":"#E0A800","inWheel":true,"launch":{"method":"run","value":"steam://rungameid/730"}},
@@ -187,7 +187,7 @@ static void applyConfig(JsonObjectConst c) {
   freeAppPix();
   Settings N;
   JsonObjectConst d = c["device"];
-  N.name = (const char*)(d["name"] | "Volkan Deck");
+  N.name = (const char*)(d["name"] | "Game Deck");
   N.trq = strcmp(d["layout"] | "tr_q", "us") != 0;
   const char* cn = d["connection"] | "auto";
   N.conn = !strcmp(cn, "usb") ? 1 : !strcmp(cn, "ble") ? 2 : 0;

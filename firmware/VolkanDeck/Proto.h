@@ -174,7 +174,7 @@ static void handleLine(char* buf, size_t len) {
     r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleMtuOf(replyConn);
     r["anim"] = anim.frames; r["animLight"] = animLight.frames;   // frames stored per theme (0: none)
     r["reset"] = bootReset; if (bootCrash.length()) r["crash"] = bootCrash;
-    r["bonds"] = bleBondCount(); r["btOff"] = bt.off;
+    r["bonds"] = bleBondCount(); r["btOff"] = bt.off; r["wifi"] = wifiStateName();
     // PSRAM diagnosis: does the chip carry PSRAM at all, and did the startup bring it up? Read from the eFuse
     // (PSRAM_CAP 0 none, 1 = 8 MB octal, 2 = 2 MB quad): esp_chip_info never sets CHIP_FEATURE_EMB_PSRAM on the S3
     { uint8_t cap = 0, vendor = 0;
@@ -342,6 +342,21 @@ static void handleLine(char* buf, size_t len) {
     if (replySrc == SRC_BLE) { replyErr(id, "usb_only"); return; }
     if (bleForget()) replyOk(id); else replyErr(id, "busy");
   }
+  // Wi-Fi (1.13.0): chosen only in the desktop app; the password is stored on the deck and never sent back
+  else if (!strcmp(cmd, "wifi_status")) { JsonDocument r; r["id"] = id; r["ok"] = true; wifiStatusJson(r); sendJson(r); }
+  else if (!strcmp(cmd, "wifi_scan")) {
+    JsonDocument r; r["id"] = id;
+    int n = wifiScan(r["nets"].to<JsonArray>());
+    r["ok"] = n >= 0; if (n < 0) { r["error"] = "scan_failed"; r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); }
+    sendJson(r);
+  }
+  else if (!strcmp(cmd, "wifi_set")) {
+    String ssid = (const char*)(doc["ssid"] | ""), pass = (const char*)(doc["pass"] | "");
+    if (!ssid.length() || ssid.length() > 32 || pass.length() > 63 || (pass.length() && pass.length() < 8)) { replyErr(id, "invalid"); return; }
+    wifiSet(ssid, pass); replyOk(id);
+  }
+  else if (!strcmp(cmd, "wifi_on")) { wifiSetOn(doc["on"] | true); replyOk(id); }
+  else if (!strcmp(cmd, "wifi_forget")) { wifiForget(); replyOk(id); }
   else if (!strcmp(cmd, "restart")) { replyOk(id); delay(200); ESP.restart(); }
   else replyErr(id, "unknown_cmd");
 }

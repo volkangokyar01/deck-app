@@ -196,7 +196,7 @@ static void bleBegin(const String& name) {
   bleHid = new NimBLEHIDDevice(bleServer);
   bleIn = bleHid->getInputReport(1);
   bleCc = bleHid->getInputReport(2);
-  bleHid->setManufacturer("Volkan Deck");
+  bleHid->setManufacturer("Game Deck");
   bleHid->setPnp(0x02, 0x303A, 0x1001, 0x0100);
   bleHid->setHidInfo(0x00, 0x01);
   bleHid->setReportMap((uint8_t*)HID_MAP, sizeof(HID_MAP));
@@ -355,7 +355,7 @@ static void hidBegin() {
   usbKb.begin();
   usbCc.begin();
   USB.onEvent(usbEvent);
-  USB.productName("Volkan Deck");
+  USB.productName("Game Deck");
   USB.manufacturerName("Volkan");
   USB.begin();
 }

@@ -36,7 +36,7 @@ test('Bağlantılar page: new computers pair only in pairing mode, the chosen on
   assert.match(hid, /bt\.hasSel && memcmp\(id, bt\.sel, 6\)/, 'other computers are dropped when one is chosen');
   assert.match(hid, /if \(bt\.off \|\| bt\.hold\) \{ s->disconnect/);
   assert.match(ui, /if \(S\.mediaOn \|\| S\.sysOn \|\| S\.connOn\) items\.push_back\(\{ false, nullptr, K_MENU \}\)/);
-  assert.ok(!/WI-FI/.test(ui), 'Wi-Fi row removed in 1.11.0');
+  assert.match(ui, /text\("WI-FI"/, 'Wi-Fi status row (1.13.0, set in the app)');
   assert.match(ino, /case K_CONN: connPress\(\); break;/);
   assert.match(ino, /connPoll\(\);/);
   assert.match(store, /"connections":\{"enabled":true\}/);

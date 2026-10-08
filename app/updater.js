@@ -43,7 +43,7 @@ function isInstalledApp(dir, platform = process.platform, exists = fs.existsSync
     catch (e) { return false; }
   } else if (platform === 'win32') {
     if (p.basename(p.dirname(dir)).toLowerCase() !== 'resources' ||
-        !exists(p.join(p.dirname(p.dirname(dir)), 'Volkan Deck.exe'))) return false;
+        !['Game Deck.exe', 'Volkan Deck.exe'].some(x => exists(p.join(p.dirname(p.dirname(dir)), x)))) return false;
   } else return false;
   const locations = [dir];
   try { locations.push(fs.realpathSync(dir)); } catch (e) {}

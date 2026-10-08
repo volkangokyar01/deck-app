@@ -1,11 +1,11 @@
-// Desktop-app additions on top of the settings page (only active inside the Volkan Deck app)
+// Desktop-app additions on top of the settings page (only active inside the Game Deck app)
 (function () {
   if (!window.deck) return;
   const OS = deck.platform;                 // 'win32' | 'darwin'
   const HOST = OS === 'darwin' ? 'mac' : 'win';
   const MIN_FW = '1.2.0';
   const MAIL_FW = '1.8.0';
-  document.title = 'Volkan Deck';
+  document.title = 'Game Deck';
   // protocol page: keyboard fallbacks of this computer only
   document.querySelectorAll('#view-proto [data-os]').forEach(e => { e.hidden = e.dataset.os !== HOST; });
   if (OS === 'darwin') {
@@ -104,7 +104,7 @@
           bleTriedAt = Date.now();
           const avail = await navigator.bluetooth.getAvailability?.().catch(() => true);
           if (avail === false) log('er', '  Bluetooth: bilgisayarın Bluetooth\'u kapalı ya da uygulamanın izni yok');
-          else if (!(await deck.blePaired?.(cfg.device.name || 'Volkan Deck').catch(() => true) ?? true)) {
+          else if (!(await deck.blePaired?.(cfg.device.name || 'Game Deck').catch(() => true) ?? true)) {
             if (!bleUnpairedNote) log('', '  Bluetooth: cihaz bu bilgisayarla eşleşmemiş. Cihazda Bağlantılar → Yeni cihaz eşleştir, sonra Windows Ayarlar → Bluetooth ve cihazlar → Cihaz ekle → Bluetooth.');
             bleUnpairedNote = true;
           } else {
@@ -147,7 +147,7 @@
   }, 2000);
   function pushStatus() {
     const on = !!(port && deviceInfo);
-    deck.status({ connected: on, direct: on && direct, mail: on && !!deviceInfo.fw && verGE(deviceInfo.fw, MAIL_FW), text: on ? (deviceInfo.name || 'Volkan Deck') + (deviceInfo.fw ? ' · v' + deviceInfo.fw : '') + (port.isBle ? ' · Bluetooth' : '') : 'Bağlı değil' });
+    deck.status({ connected: on, direct: on && direct, mail: on && !!deviceInfo.fw && verGE(deviceInfo.fw, MAIL_FW), text: on ? (deviceInfo.name || 'Game Deck') + (deviceInfo.fw ? ' · v' + deviceInfo.fw : '') + (port.isBle ? ' · Bluetooth' : '') : 'Bağlı değil' });
     const ct = document.getElementById('connText');
     if (on && ct) ct.textContent = (deviceInfo.name || 'Cihaz') + (deviceInfo.fw ? ' · v' + deviceInfo.fw : '') + (port.isBle ? ' · Bluetooth' : '') + (direct ? ' · doğrudan açma' : '');
   }
@@ -161,7 +161,7 @@
     if (r && r.ok) log('', '  açıldı (' + r.how + ')');
     else {
       const msg = (m.name || 'Uygulama') + ' açılamadı: ' + (r && r.error || 'bilinmeyen hata');
-      log('er', '  ' + msg); toast(msg); deck.notify('Volkan Deck', msg);
+      log('er', '  ' + msg); toast(msg); deck.notify('Game Deck', msg);
     }
   };
 
@@ -195,7 +195,7 @@
     function askSensorConsent(remove) {
       if (sensorWorking) return;
       consentText.textContent = remove
-        ? 'Bu kullanıcıya ait sensör görevi ve dosyaları kaldırılacak. PawnIO yalnız Volkan Deck kurduysa ve başka bir Windows kullanıcısının sensör görevi yoksa kaldırılır. CPU sıcaklığı “—” görünecek. Devam edilsin mi?'
+        ? 'Bu kullanıcıya ait sensör görevi ve dosyaları kaldırılacak. PawnIO yalnız Game Deck (Volkan Deck) kurduysa ve başka bir Windows kullanıcısının sensör görevi yoksa kaldırılır. CPU sıcaklığı “—” görünecek. Devam edilsin mi?'
         : 'Windows CPU sıcaklığını yalnız bir sürücü üzerinden okuyabildiği için imzalı, açık kaynaklı ve çekirdek düzeyinde çalışan PawnIO sürücüsü kurulacak. Bu kullanıcı her oturum açtığında sensörü yönetici yetkileriyle okuyan bir başlangıç görevi de kurulacak. Ağda dinleyen hiçbir hizmet yoktur. Kurulumu “Kaldır” düğmesiyle kaldırabilirsiniz.';
       consentConfirm.textContent = remove ? 'Kaldır' : 'Anladım, kur';
       consentConfirm.onclick = () => performSensorAction(remove);
@@ -231,7 +231,7 @@
       log('rx', '← Outlook aç');
       try {
         const r = await deck.openOutlook();
-        if (!r || !r.ok) { const msg = 'Outlook açılamadı: ' + (r && r.error || 'bilinmeyen hata'); log('er', '  ' + msg); toast(msg); deck.notify('Volkan Deck', msg); }
+        if (!r || !r.ok) { const msg = 'Outlook açılamadı: ' + (r && r.error || 'bilinmeyen hata'); log('er', '  ' + msg); toast(msg); deck.notify('Game Deck', msg); }
       } catch (e) { log('er', '  Outlook açılamadı: ' + e.message); }
     };
     const status = el('span', { class: 'fwstate', role: 'status', 'aria-live': 'polite' });
@@ -241,7 +241,7 @@
     for (const n of [5, 10, 15, 30, 60]) seconds.append(el('option', { value: n }, n + ' saniye'));
     const test = el('button', { class: 'btn', onclick: () => {
       if (!mailReady()) { toast(deviceInfo?.fw && !verGE(deviceInfo.fw, MAIL_FW) ? 'Bildirim için kartta firmware v' + MAIL_FW + ' gerekiyor' : 'Cihaz bağlı değil'); return; }
-      sendRaw(noteFor(OS === 'win32' && mail.settings.subject ? 'Deneme: Volkan Deck bildirimi' : '', mail.state.unread, 1));
+      sendRaw(noteFor(OS === 'win32' && mail.settings.subject ? 'Deneme: Game Deck bildirimi' : '', mail.state.unread, 1));
       toast('Deneme bildirimi gönderildi');
     } }, 'Deneme bildirimi');
     const box = el('div', { class: 'panel', id: 'mailPanel' },

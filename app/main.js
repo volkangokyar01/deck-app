@@ -1,4 +1,4 @@
-// Volkan Deck — desktop companion (Windows + macOS)
+// Game Deck (formerly Volkan Deck) — desktop companion (Windows + macOS)
 // Keeps the USB link to the deck, opens apps directly when a key is pressed (no Win+R / Spotlight typing),
 // forwards home-screen statistics and hosts the settings UI.
 const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog, nativeImage, session, Notification, nativeTheme, net } = require('electron');
@@ -24,7 +24,10 @@ if (IS_MAC || IS_WIN) {
   const features = app.commandLine.getSwitchValue('enable-features');
   app.commandLine.appendSwitch('enable-features', [features, 'LocationProviderManager:LocationProviderManagerMode/PlatformOnly'].filter(Boolean).join(','));
 }
-app.setName('Volkan Deck');
+// The app is called Game Deck since 2026-10-08. Settings stay in the folder Volkan Deck used
+// (state.json, sensor cache): pin userData there before anything reads it.
+app.setPath('userData', path.join(app.getPath('appData'), 'Volkan Deck'));
+app.setName('Game Deck');
 const sensorInstaller = createSensorInstaller({ fetch: (...args) => net.fetch(...args), cacheDir: path.join(app.getPath('userData'), 'stats-cache') });
 const stats = createStats({ fetch: (...args) => net.fetch(...args), cacheDir: path.join(app.getPath('userData'), 'stats-cache'), sensorFile: sensorInstaller.sensorFile });
 if (IS_WIN) app.setAppUserModelId('com.volkan.deck');
@@ -51,7 +54,7 @@ function createWindow() {
   const updatedAtStart = !!updater.getState().receipt;
   win = new BrowserWindow({
     width: 1320, height: 900, minWidth: 980, minHeight: 640, show: false,
-    title: 'Volkan Deck', icon: path.join(__dirname, 'icon.png'), backgroundColor: '#0E1116',
+    title: 'Game Deck', icon: path.join(__dirname, 'icon.png'), backgroundColor: '#0E1116',
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, backgroundThrottling: false }
   });
@@ -78,7 +81,7 @@ function createWindow() {
     e.preventDefault(); hideWindow();
     const st = readState();
     if (!st.hiddenTipShown && Notification.isSupported()) {
-      new Notification({ title: 'Volkan Deck arka planda çalışıyor', body: IS_MAC ? 'Menü çubuğundaki simgesinden açabilirsin; kapatmak için simge → Çık.' : 'Görev çubuğunun sağındaki simgesine tıklayarak açabilirsin (gizli simgeler ^ içinde olabilir). Kapatmak için simgeye sağ tıkla → Çık.' }).show();
+      new Notification({ title: 'Game Deck arka planda çalışıyor', body: IS_MAC ? 'Menü çubuğundaki simgesinden açabilirsin; kapatmak için simge → Çık.' : 'Görev çubuğunun sağındaki simgesine tıklayarak açabilirsin (gizli simgeler ^ içinde olabilir). Kapatmak için simgeye sağ tıkla → Çık.' }).show();
       st.hiddenTipShown = true; writeState(st);
     }
   });
@@ -104,13 +107,13 @@ const STATUS_TEXT = { on: 'Bağlı · uygulamaları açıyor', warn: 'Bağlı ·
 function applyStatusVisual() {
   const k = statusKey();
   if (win && !win.isDestroyed()) {
-    win.setTitle('Volkan Deck — ' + STATUS_TEXT[k]);
+    win.setTitle('Game Deck — ' + STATUS_TEXT[k]);
     if (IS_WIN) win.setOverlayIcon(nativeImage.createFromPath(path.join(__dirname, 'overlay-' + k + '.png')), STATUS_TEXT[k]);
   }
   if (IS_MAC && app.dock && inDock) app.dock.setIcon(nativeImage.createFromPath(path.join(__dirname, 'dock-' + k + '.png')));
   if (IS_MAC && tray) { const im = nativeImage.createFromPath(path.join(__dirname, 'trayT-' + k + 'Template.png')); im.setTemplateImage(true); tray.setImage(im); }
   if (IS_WIN && tray) tray.setImage(nativeImage.createFromPath(path.join(__dirname, 'tray-win-' + k + '.png')));
-  if (tray) tray.setToolTip('Volkan Deck — ' + STATUS_TEXT[k]);
+  if (tray) tray.setToolTip('Game Deck — ' + STATUS_TEXT[k]);
 }
 
 /* ---------------- tray ---------------- */
@@ -126,7 +129,7 @@ function buildTray() {
 function refreshTray() {
   if (!tray) return;
   const login = app.getLoginItemSettings().openAtLogin;
-  tray.setToolTip('Volkan Deck — ' + status.text);
+  tray.setToolTip('Game Deck — ' + status.text);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: status.connected ? '● ' + status.text : '○ Cihaz bağlı değil', enabled: false },
     { label: status.direct ? 'Uygulamalar doğrudan açılıyor' : 'Doğrudan açma kapalı (klavye yöntemi)', enabled: false },
@@ -167,7 +170,7 @@ ipcMain.handle('ble-ready', () => bluetoothReady());
 let blePairedCache = { name: '', at: 0, value: false };
 async function blePaired(name) {
   if (!IS_WIN) return true;
-  name = String(name || 'Volkan Deck').slice(0, 40);
+  name = String(name || 'Game Deck').slice(0, 40);
   if (blePairedCache.name === name && Date.now() - blePairedCache.at < 60e3) return blePairedCache.value;
   const q = name.replace(/'/g, "''");
   const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',

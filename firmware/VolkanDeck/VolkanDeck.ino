@@ -1,9 +1,10 @@
-// Volkan Deck firmware — LilyGO T-Display-S3 app launcher
+// Game Deck (formerly Volkan Deck) firmware — LilyGO T-Display-S3 app launcher
 // Board: LilyGO T-Display-S3, USB Mode: USB-OTG (TinyUSB), USB CDC On Boot: Enabled
 #include "Board.h"
 #include "Store.h"
 #include "Hid.h"
 #include "Stats.h"
+#include "Wifi.h"
 #include "Ui.h"
 #include "Proto.h"
 #include "esp_sleep.h"
@@ -298,7 +299,7 @@ static void doLaunch(App* a) {
   const Launch& L = a->launch;
   bool direct = L.method == M_RUN || L.method == M_SEARCH || ((L.method == M_TASKBAR) && (L.path.length() || L.mac.length()));
   // apps are opened only by the desktop app (system call); no Win+R / Start / Spotlight typing unless enabled
-  if (direct && !companionOn() && !S.kbFallback) { toast("Volkan Deck uygulaması açık değil"); dirty = true; return; }
+  if (direct && !companionOn() && !S.kbFallback) { toast("Game Deck uygulaması açık değil"); dirty = true; return; }
   if (activeLink() == L_NONE && !companionOn()) { toast("Bilgisayara bağlı değil"); dirty = true; return; }
   bool onApp = !items.empty() && items[sel].kind == K_APP && items[sel].app == a;
   if (onApp) {
@@ -526,7 +527,7 @@ void setup() {
   for (uint8_t p : { PIN_ENC_CLK, PIN_ENC_DT, PIN_ENC_SW, PIN_BTN_A, PIN_BTN_B, PIN_KEY_PWR, PIN_KEY_RST }) pinMode(p, INPUT_PULLUP);
 
   hidBegin();
-  { Preferences pr; if (pr.begin("vdwifi", true)) { pr.end(); if (pr.begin("vdwifi", false)) { pr.clear(); pr.end(); } } }   // 1.10.x Wi-Fi network + password: removed in 1.11.0
+  wifiBegin();
   Serial.begin(115200);
   Serial.enableReboot(false);
   protoBegin();
@@ -562,6 +563,8 @@ void loop() {
   if (mailActive() && !screenOff) mailInput();
   crumbSet("input"); handleInput(); crumbClear();
   connPoll();
+  wifiPoll();
+  if (wf.dirty) { wf.dirty = false; dirty = true; }   // Wi-Fi state (and a moved screen buffer) redraw the screen
 
   uint32_t now = millis();
   static uint32_t tBat = 0, tStatus = 0, tFrame = 0, tTheme = 0;

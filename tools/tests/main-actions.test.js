@@ -16,7 +16,7 @@ test('tray applies in main after native confirmation, with no renderer dependenc
   await t.run();
   assert.ok(t.calls.includes('apply')); assert.equal(t.calls.filter(x => x?.[0] === 'check').length, 0);
   const question = t.calls.find(x => x.type === 'question');
-  assert.equal(question.message, 'Volkan Deck güncellensin mi? Uygulama yeniden başlar.');
+  assert.equal(question.message, 'Game Deck güncellensin mi? Uygulama yeniden başlar.');
   assert.deepEqual(question.buttons, ['Güncelle', 'Vazgeç']); assert.equal(question.cancelId, 1);
 });
 test('tray manual check refreshes label and offers installation; cancel and installer do not apply', async () => {

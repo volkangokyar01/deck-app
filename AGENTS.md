@@ -24,7 +24,7 @@ Bu yüzden:
 - `web/body.html` veya `app/companion.js` değiştiyse `python3 tools/build.py` çalıştırılmadan commit atılmaz; üretilen `app/index.html` ve `web/StreamDeck-Ayar.html` de commit'e girer.
 
 ## Yasaklar
-- **Kurulu uygulamaya dokunma.** `/Applications/Volkan Deck.app` (macOS) ve `%LOCALAPPDATA%\Programs\Volkan Deck` (Windows) elle değiştirilmez, kopyalanmaz, silinmez. Kurulu uygulama yalnız kendi güncelleme düğmesiyle ya da kurulum betiğiyle güncellenir.
+- **Kurulu uygulamaya dokunma.** `/Applications/Game Deck.app` (macOS) ve `%LOCALAPPDATA%\Programs\Game Deck` (Windows) — eski kurulumlarda `Volkan Deck` adıyla — elle değiştirilmez, kopyalanmaz, silinmez. Kurulu uygulama yalnız kendi güncelleme düğmesiyle ya da kurulum betiğiyle güncellenir.
 - `app/index.html`, `web/StreamDeck-Ayar.html` ve `app/build-info.json` elle düzenlenmez; `tools/build.py` üretir.
 - Başkasının commit'ini `git push --force` ile ezme, `main`'in geçmişini yeniden yazma.
 - Kullanıcı istemeden commit atma, push yapma, Release yayınlama.
@@ -32,7 +32,7 @@ Bu yüzden:
 ## Ürün kuralları
 - Arayüz platforma göre ayrılır: macOS'te yalnız macOS'e, Windows'ta yalnız Windows'a özgü seçenekler görünür.
 - Uygulamalar yalnız masaüstü uygulamasının sistem çağrısıyla açılır. Klavye yöntemleri (Win+R, Başlat, Spotlight) yeni özelliklerde kullanılmaz.
-- Cihaz Wi-Fi kullanmaz (1.10.x'te denendi, 1.11.0'da kaldırıldı: PSRAM başlamayan kartta Wi-Fi yığını sabit ~20 KB + açıkken ~50 KB iç RAM istiyordu, tarama bile başlamadı). Ana sayfa verileri ve saat masaüstü uygulamasından USB / Bluetooth ile gelir; saat çipin kendi saatinde korunur. Belleğe yük getiren özellik eklemeden önce `hello` içindeki `heap` / `block` / `psram` / `embPsram` değerlerine bak.
+- Wi-Fi isteğe bağlıdır ve **yalnız uygulamadan** seçilir (Cihaz ayarları → Wi-Fi; 1.13.0). Cihaz yalnız durumu gösterir, şifre yalnız cihazda saklanır, geri gönderilmez. 1.10.x'te PSRAM başlamadığı için bellek yetmemişti; 1.12.1'de PSRAM düzeldi. Wi-Fi istenince ekran tamponu PSRAM'e taşınır, iç RAM 45 KB altındaysa radyo açılmaz (`nomem`). Ana sayfa verileri ve saat yine uygulamadan USB / Bluetooth ile de gelir; Wi-Fi varsa saat NTP'den de alınır. Belleğe yük getiren özellik eklemeden önce `hello` içindeki `heap` / `block` / `psram` / `embPsram` değerlerine bak.
 - Kullanıcıya görünen metinler Türkçe ve kısa. Ekran fontlarında yalnız ASCII + Türkçe harf var.
 - Yeni donanım/protokol kararları `docs/kararlar-ve-pinler.md`'ye tarihle yazılır.
 

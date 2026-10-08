@@ -22,18 +22,24 @@ test('media page: A hold mutes, B hold toggles the volume mode; other screens tr
   assert.match(ino, /else if \(\(b == 1 \|\| b == 2\) && !wakeUp\(\)\)/);
 });
 
-test('Wi-Fi removed (1.11.0): no Wi-Fi code, the clock survives without it, old credentials are wiped', () => {
-  const fw = ['Hid.h', 'Proto.h', 'Stats.h', 'Ui.h', 'VolkanDeck.ino'].map(f => read('firmware/VolkanDeck/' + f)).join('\n');
-  assert.ok(!fs.existsSync(path.join(root, 'firmware/VolkanDeck/Wifi.h')));
-  assert.ok(!/#include <WiFi\.h>|wifiScan|wifi_set|WiFi\./.test(fw));
-  const web = read('web/body.html');
-  assert.ok(!/wifi_scan|wifi_set|cardWifi/.test(web));
+test('Wi-Fi (1.13.0): chosen only in the app, kept across restarts, password never echoed; the clock still works without it', () => {
+  const w = read('firmware/VolkanDeck/Wifi.h'), proto = read('firmware/VolkanDeck/Proto.h'), ino = read('firmware/VolkanDeck/VolkanDeck.ino');
+  const ui = read('firmware/VolkanDeck/Ui.h'), web = read('web/body.html');
+  assert.match(w, /if \(wf\.on && wf\.ssid\.length\(\)\) wifiStart\(\);/, 'radio off until a network is saved');
+  assert.match(w, /WiFi\.setSleep\(true\);/, 'modem sleep is required with Bluetooth on');
+  assert.ok(!/pass/.test(w.slice(w.indexOf('static void wifiStatusJson('))), 'status never carries the password');
+  assert.ok(!/pr\.begin\("vdwifi", false\)\) \{ pr\.clear\(\);/.test(ino), 'the 1.11.0 boot wipe is gone: the saved network survives');
+  for (const c of ['wifi_status', 'wifi_scan', 'wifi_set', 'wifi_on', 'wifi_forget']) assert.ok(proto.includes('"' + c + '"'), c);
+  assert.ok(!/wifiSetOn\(!wf\.on\)/.test(ino), 'no device-side toggle: networks are set in the app only');
+  assert.match(ui, /spr\.setPsram\(psramOk\(\) && wifiWanted\(\)\);/, 'screen buffer in PSRAM when Wi-Fi is on');
+  assert.match(w, /if \(!wf\.started && internalFree\(\) < WIFI_MIN_HEAP\) \{ wf\.noMem = true;/);
+  assert.match(web, /const WIFI_FW="1\.13\.0";/);
+  assert.match(web, /await send\(\{cmd:"wifi_set",ssid,pass:pv\},4000,true\); passInp\.value="";/);
+  assert.ok(!/cfg\.[a-z.]*pass/i.test(web), 'the password is not part of the saved config');
   const stats = read('firmware/VolkanDeck/Stats.h');
   assert.match(stats, /settimeofday\(&tv, nullptr\);/, 'app time also sets the chip clock');
-  assert.match(stats, /time_t now = time\(nullptr\);\n    if \(now < 1700000000\) return false;/, 'chip clock used until the app sends time');
-  assert.match(stats, /clockSet\(st\.epoch, st\.tz\);/);
-  assert.match(read('firmware/VolkanDeck/VolkanDeck.ino'), /pr\.begin\("vdwifi", false\)\) \{ pr\.clear\(\);/);
-  assert.match(read('firmware/VolkanDeck/Proto.h'), /r\["embPsram"\] = cap != 0;/, 'PSRAM read from the eFuse');
+  assert.match(stats, /time_t now = time\(nullptr\);\n    if \(now < 1700000000\) return false;/, 'chip clock (NTP or app) used while the app is away');
+  assert.match(proto, /r\["embPsram"\] = cap != 0;/, 'PSRAM read from the eFuse');
 });
 
 test('PSRAM (1.12.1): the build turns on the Arduino PSRAM layer, allocations check the heap', () => {
