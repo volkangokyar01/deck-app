@@ -470,6 +470,7 @@ static void protoPoll() {
   LineItem it;
   while (lineQ && xQueueReceive(lineQ, &it, 0) == pdTRUE) {
     replySrc = it.src; replyConn = it.conn;
+    if (it.src == SRC_USB) usbPcSeen = true;                                         // a computer is on the cable
     if (it.src == SRC_BLE && !bleConnAlive(bleHostConn)) bleHostConn = it.conn;   // first app on Bluetooth gets the events
     handleLine(it.p, it.n);
     replySrc = -1; replyConn = BLE_HS_CONN_HANDLE_NONE; free(it.p);

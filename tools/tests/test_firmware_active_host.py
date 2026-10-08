@@ -58,6 +58,46 @@ int main(){
         self.assertIn('hostReport(replySrc == SRC_BLE ? replyConn : HOST_USB, doc["idle"] | -1, doc["host"] | "");', proto)
         self.assertIn("idle: idleSec", comp)
 
+    def test_usb_counts_only_when_a_computer_is_on_the_cable(self):
+        """1.13.8: a charger / TV / console port must not take the keys away from Bluetooth."""
+        hid = (ROOT / 'firmware/VolkanDeck/Hid.h').read_text()
+        fn = hid[hid.index('static Link activeLink()'):hid.index('// Bluetooth keys go to one computer only')]
+        compiler = shutil.which('clang++') or shutil.which('g++')
+        if not compiler:
+            self.skipTest('C++ compiler unavailable')
+        harness = r'''#include <cassert>
+#include <cstdint>
+#define BLE_HS_CONN_HANDLE_NONE 0xFFFF
+enum Link { L_NONE, L_USB, L_BLE };
+static const uint16_t HOST_USB = 0xFFFE;
+struct { int conn = 0; } S;
+bool usbMounted=false, usbSuspended=false, usbPcSeen=false, bleConnected=false;
+struct { bool dtr=false; explicit operator bool() const { return dtr; } } Serial;
+uint16_t act = BLE_HS_CONN_HANDLE_NONE; uint16_t activeHostConn(){ return act; }
+''' + fn + r'''
+int main(){
+ bleConnected=true;
+ usbMounted=true;                          // charger / TV / PS5: enumerates, no app on the cable
+ assert(activeLink()==L_BLE);
+ usbPcSeen=true; assert(activeLink()==L_USB);   // the desktop app spoke over USB: a computer
+ usbPcSeen=false; Serial.dtr=true; assert(activeLink()==L_USB);   // a program has the serial port open
+ Serial.dtr=false; bleConnected=false; assert(activeLink()==L_USB);   // no Bluetooth: USB is better than nothing
+ bleConnected=true; usbPcSeen=true; usbSuspended=true; assert(activeLink()==L_BLE);   // computer asleep
+ S.conn=1; assert(activeLink()==L_USB);   // "Sadece USB" unchanged
+ return 0;
+}
+'''
+        with tempfile.TemporaryDirectory() as work:
+            cpp, binary = Path(work) / 'link.cpp', Path(work) / 'test'
+            cpp.write_text(harness)
+            r = subprocess.run([compiler, '-std=c++17', str(cpp), '-o', str(binary)], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = subprocess.run([str(binary)], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        proto = (ROOT / 'firmware/VolkanDeck/Proto.h').read_text()
+        self.assertIn('if (it.src == SRC_USB) usbPcSeen = true;', proto)
+        self.assertIn('usbMounted = true; usbSuspended = false; usbPcSeen = false;', hid)
+
 
 if __name__ == '__main__':
     unittest.main()

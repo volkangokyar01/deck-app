@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.13.7)
+## Firmware (v1.13.8)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -344,3 +344,8 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 
 ## 2026-10-09 — Karartılmış ekranda ilk dokunuş da çalışır (firmware 1.13.7)
 - Ekran karartılmış ya da güç tuşuyla kapatılmışken döndürgeç veya bir tuş eskiden yalnız ekranı uyandırıyor, işlem ikinci dokunuşta yapılıyordu. Artık ekran uyanır ve aynı dokunuş hemen uygulanır (`wakeUp()` girdiyi yutmaz). Güç tuşu aynı kaldı: kısa bas ekranı açar / kapatır, uzun bas kapatır.
+
+## 2026-10-09 — Şarj aletinde Bluetooth devrede kalır (firmware 1.13.8)
+- Otomatik bağlantıda USB, kablonun ucunda bilgisayar olduğu bilinince önceliklidir: masaüstü uygulaması (veya ayar sayfası) USB seri üzerinden bir satır gönderdiyse (`usbPcSeen`) ya da bir program seri portu açtıysa (`Serial`). Şarj aleti, TV, konsol, monitör portu cihazı yalnız besler / tanır; o zaman Bluetooth bağlıysa tuşlar ve olaylar Bluetooth'tan gider. Bluetooth da yoksa USB'ye düşer (eskisi gibi).
+- `usbPcSeen` her yeni USB oturumunda (STARTED) ve kablo çıkınca (STOPPED) sıfırlanır. "Sadece USB" / "Sadece Bluetooth" ayarları değişmedi.
+- Sınır: uygulaması kapalı bir bilgisayara takılı kabloda da Bluetooth öne geçer (bilgisayarı başka cihazdan ayırt edecek sinyal yok); uygulama açılınca USB'ye döner.

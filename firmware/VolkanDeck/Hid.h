@@ -16,6 +16,9 @@
 USBHIDKeyboard usbKb;
 USBHIDConsumerControl usbCc;
 volatile bool usbMounted = false, usbSuspended = false;
+// 1.13.8: the USB host is a computer once the desktop app (or the settings page) talks over USB serial.
+// A charger, TV, console or monitor port only powers / enumerates the device; Bluetooth keeps the keys then.
+volatile bool usbPcSeen = false;
 volatile bool bleConnected = false;
 volatile int bleConns = 0;
 NimBLEServer* bleServer = nullptr;
@@ -153,8 +156,8 @@ class BleCb : public NimBLEServerCallbacks {
 static void usbEvent(void* arg, esp_event_base_t base, int32_t id, void* data) {
   if (base != ARDUINO_USB_EVENTS) return;
   switch (id) {
-    case ARDUINO_USB_STARTED_EVENT: usbMounted = true; usbSuspended = false; break;
-    case ARDUINO_USB_STOPPED_EVENT: usbMounted = false; break;
+    case ARDUINO_USB_STARTED_EVENT: usbMounted = true; usbSuspended = false; usbPcSeen = false; break;   // a new host: not known as a computer yet
+    case ARDUINO_USB_STOPPED_EVENT: usbMounted = false; usbPcSeen = false; break;
     case ARDUINO_USB_SUSPEND_EVENT: usbSuspended = true; break;
     case ARDUINO_USB_RESUME_EVENT: usbSuspended = false; break;
   }
@@ -367,8 +370,9 @@ static Link activeLink() {
   uint16_t act = activeHostConn();               // the computer in use, when the desktop apps tell us
   if (act == HOST_USB && usbOk) return L_USB;
   if (act != BLE_HS_CONN_HANDLE_NONE && act != HOST_USB && bleConnected) return L_BLE;
+  if (usbOk && (usbPcSeen || Serial)) return L_USB;   // cable to a computer: USB first
+  if (bleConnected) return L_BLE;                      // cable to a charger / TV / console: Bluetooth stays in use
   if (usbOk) return L_USB;
-  if (bleConnected) return L_BLE;
   return usbMounted ? L_USB : L_NONE;
 }
 
