@@ -97,7 +97,8 @@ static void wifiPoll() {
   }
 }
 // networks around (blocking, ~2–4 s); the radio goes back off if Wi-Fi is not in use
-static void wifiScan(JsonArray out) {
+// returns the scan result count, < 0 when the radio could not scan (e.g. not enough memory to start Wi-Fi)
+static int wifiScan(JsonArray out) {
   bool was = wf.started;
   if (!was) { WiFi.mode(WIFI_STA); WiFi.setSleep(true); }
   int n = WiFi.scanNetworks(false, false);
@@ -109,6 +110,7 @@ static void wifiScan(JsonArray out) {
   }
   WiFi.scanDelete();
   if (!was) WiFi.mode(WIFI_OFF);
+  return n;
 }
 static void wifiStatusJson(JsonDocument& r) {
   r["state"] = wifiStateName(); r["ssid"] = wf.ssid; r["on"] = wf.on;

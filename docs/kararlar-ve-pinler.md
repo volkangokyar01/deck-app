@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.10.0)
+## Firmware (v1.10.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -265,3 +265,9 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Medya: A basılı → sessiz aç / kapat, B basılı → ses modu (çevirerek ses; tekrar B basılı ya da 6 sn ile biter). Kısa A / B önceki / sonraki. Diğer ekranlarda A / B'yi basılı tutmak kısa basma gibi çalışır.
 - Ses ve parlaklık: ayar modundan çıkış artık basılı tutma değil; mod 6 sn sonra kendisi kapanır, basılı tutma ana sayfaya götürür. Bağlantılar ve Menü'de imleç basılı tutmayla kapanmak yerine ana sayfaya dönülür.
 - Menü'de sola çevirmek Menü'de bırakır (son uygulamaya geçmez). Menüden açılan bir ekranda sola çevirmek Menü listesine döndürür; sağa çevirmek ana sayfaya.
+
+## 2026-10-08 — Wi-Fi ağları kendiliğinden listelenir (firmware 1.10.1)
+- Sorun: Wi-Fi kartı düğmeleri çizildiği anki bağlantı durumuna göre kapatıyordu; sayfa cihaz bağlanmadan çizildiyse "Ağları tara" kapalı kalıyordu. Ağ adı da elle yazılıyordu.
+- Kart cihazı bekler (1,5 sn'de bir); cihaz bağlı ve firmware ≥ 1.10.0 olunca, Cihaz ayarları sekmesi açıksa ağları kendisi tarar. Liste sinyale göre sıralı; ağa tıklayınca altında şifre alanı ve Bağlan açılır (açık ağda şifre yok). Elle ağ adı alanı kaldırıldı. Eski firmware'de "Firmware yükle" düğmesi çıkar.
+- Tarama sonucu ve açık ağ yeniden çizimlerde korunur; en çok dakikada bir tarama (sayfa her düzenlemede yeniden çiziliyor, cihaz taramada 2–4 sn meşgul).
+- Cihaz Wi-Fi'yi başlatamazsa (bellek) wifi_scan "scan_failed" ve heap döner; sayfa bunu "Cihaz Wi-Fi'yi başlatamadı" diye gösterir.

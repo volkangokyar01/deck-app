@@ -331,7 +331,10 @@ static void handleLine(char* buf, size_t len) {
   // Wi-Fi (1.10.0): set from the desktop app; the password is stored on the deck and never sent back
   else if (!strcmp(cmd, "wifi_status")) { JsonDocument r; r["id"] = id; r["ok"] = true; wifiStatusJson(r); sendJson(r); }
   else if (!strcmp(cmd, "wifi_scan")) {
-    JsonDocument r; r["id"] = id; r["ok"] = true; wifiScan(r["nets"].to<JsonArray>()); sendJson(r);
+    JsonDocument r; r["id"] = id;
+    int n = wifiScan(r["nets"].to<JsonArray>());
+    r["ok"] = n >= 0; if (n < 0) { r["error"] = "scan_failed"; r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); }
+    sendJson(r);
   }
   else if (!strcmp(cmd, "wifi_set")) {
     String ssid = (const char*)(doc["ssid"] | ""), pass = (const char*)(doc["pass"] | "");

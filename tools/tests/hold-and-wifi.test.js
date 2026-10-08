@@ -30,6 +30,8 @@ test('Wi-Fi: off until a network is saved, password never echoed, settings page 
   assert.ok(!/pass/.test(status), 'status never carries the password');
   for (const c of ['wifi_status', 'wifi_scan', 'wifi_set', 'wifi_on', 'wifi_forget']) assert.ok(proto.includes('"' + c + '"'), c);
   assert.match(proto, /pass\.length\(\) && pass\.length\(\) < 8/);
-  assert.match(web, /await send\(\{cmd:"wifi_set",ssid:sv,pass:pv\},4000,true\); pass\.value="";/);
+  assert.match(web, /await send\(\{cmd:"wifi_set",ssid,pass:pv\},4000,true\); passInp\.value="";/);
+  assert.match(web, /if\(ready\(\)&&shownNow\)\{ fwBtn\.hidden=true; refresh\(\)\.then\(scan\); return; \}/, 'networks are listed by themselves once the deck is ready');
+  assert.ok(!/id:"wifiSsid"/.test(web), 'no network name to type');
   assert.ok(!/cfg\.[a-z.]*pass/i.test(web), 'the password is not part of the saved config');
 });
