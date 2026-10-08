@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.13.2)
+## Firmware (v1.13.3)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -312,3 +312,8 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 ## 2026-10-08 — Bağlantı yazısı yerine simge (firmware 1.13.2)
 - Durum satırındaki "usb" / "ble" / "none" yazısı kaldırıldı. Yerine USB ile bağlıyken beyaz USB simgesi, Bluetooth ile bağlıyken mavi Bluetooth simgesi, bağlı değilken gri ve üstü çizili USB simgesi.
 - Ana ekranda Bluetooth durum simgesi zaten olduğu için Bluetooth bağlantısında ayrıca simge çizilmez; USB ve "bağlı değil" simgesi yine görünür.
+
+## 2026-10-08 — iOS tarzı pil göstergesi (firmware 1.13.3)
+- Durum satırındaki pil kutusu ve dışındaki "%" yazısı yerine iOS tarzı kapsül: yuvarlak köşeli gövde (soluk iz), seviye kadar dolu, yüzde sayısı gövdenin içinde (dolu kısımda oyuk, boş kısımda açık renk), ayrı küçük kutup başı (tam dolunca seviye renginde).
+- Renkler: normal beyaz (açık temada koyu), %20 altında kırmızı, şarj olurken yeşil ve kapsülün solunda yeşil şimşek.
+- Kapsül x 284–313, kutup başı 314–316. USB / Bluetooth simgesi 262'ye, ana ekrandaki BT / Wi-Fi simgeleri bir sola kaydı.

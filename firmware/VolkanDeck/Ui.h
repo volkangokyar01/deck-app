@@ -233,6 +233,27 @@ static void drawLinkIcons(int right) {           // right: x where the icons mus
 
 // Layout: 2 px outer margin, 2 px between panels, panels separated by tone only (no outlines).
 // Status row is y 0..13, content y 15..167. x0: where the row starts (home: right of the animation).
+// Battery (1.13.3), iOS style: a capsule whose level is a solid fill, the number cut out of it,
+// a separate terminal nub, green while charging (small bolt on the left), red below 20 %.
+static void drawBattery() {
+  const int X = 284, Y = 1, W = 29, H = 12, R = 4;
+  uint8_t p = min<uint8_t>(batPct, 100);
+  bool low = p < 20 && !charging;
+  uint16_t lvl = charging ? SC_GREEN : low ? SC_RED : SC_TEXT;
+  uint16_t track = mix(SC_TEXT, SC_BG, .26f);
+  int fw = p ? max(3, (W * p + 50) / 100) : 0;
+  spr.fillSmoothRoundRect(X, Y, W, H, R, track);
+  if (fw) { spr.setClipRect(X, Y, fw, H); spr.fillSmoothRoundRect(X, Y, W, H, R, lvl); spr.clearClipRect(); }
+  spr.fillSmoothRoundRect(X + W + 1, Y + 4, 3, 4, 1, p >= 100 ? lvl : track);
+  String n = String(p);
+  int cx = X + W / 2, cy = Y + H / 2;
+  if (fw) { spr.setClipRect(X, Y, fw, H); text(n, cx, cy, FB10, SC_BG, textdatum_t::middle_center); spr.clearClipRect(); }
+  if (fw < W) { spr.setClipRect(X + fw, Y, W - fw, H); text(n, cx, cy, FB10, SC_TEXT, textdatum_t::middle_center); spr.clearClipRect(); }
+  if (charging) {                                  // bolt left of the capsule
+    spr.fillTriangle(280, 1, 275, 8, 279, 8, SC_GREEN);
+    spr.fillTriangle(278, 6, 282, 6, 277, 13, SC_GREEN);
+  }
+}
 static void drawStatus(uint16_t dot, const char* link, int x0 = 2) {
   spr.fillSmoothCircle(x0 + 4, 7, 4, dot);     // page colour (was a 3 px bar across the top)
   text(items.size() ? String(sel + 1) + "/" + String(items.size()) : String("0/0"), x0 + 12, 7, FSB11, SC_SUB);
@@ -240,17 +261,11 @@ static void drawStatus(uint16_t dot, const char* link, int x0 = 2) {
   bool usb = !strcmp(link, "usb"), ble = !strcmp(link, "ble");
   bool linkIcon = !(x0 > 2 && ble);
   if (linkIcon) {
-    if (ble) gBt(247, 7, 10, C(0x60A5FA), 1.4f);
-    else { gUsb(246, 7, usb ? SC_TEXT : SC_DIM); if (!usb) gSlash(246, 7, SC_DIM); }
+    if (ble) gBt(263, 7, 10, C(0x60A5FA), 1.4f);
+    else { gUsb(262, 7, usb ? SC_TEXT : SC_DIM); if (!usb) gSlash(262, 7, SC_DIM); }
   }
-  if (x0 > 2) drawLinkIcons(linkIcon ? 234 : 254);   // home only
-  spr.drawRoundRect(260, 2, 22, 10, 2, SC_SUB); spr.fillRect(282, 5, 2, 4, SC_SUB);
-  spr.fillRect(262, 4, max(1, 18 * batPct / 100), 6, batPct < 20 && !charging ? SC_RED : SC_TEXT);
-  if (charging) {   // lightning bolt across the cell while charging; the level stays visible
-    spr.fillTriangle(273, 2, 266, 8, 271, 8, SC_BG); spr.fillTriangle(270, 6, 276, 6, 269, 12, SC_BG);
-    spr.fillTriangle(272, 3, 268, 7, 271, 7, SC_TEXT); spr.fillTriangle(271, 7, 274, 7, 270, 11, SC_TEXT);
-  }
-  text(String(batPct) + "%", 318, 7, FM9, SC_SUB, textdatum_t::middle_right);
+  if (x0 > 2) drawLinkIcons(linkIcon ? 250 : 270);   // home only
+  drawBattery();
 }
 
 // A / B can open an app or a menu page (1.9.6): "__media", "__system", "__connections"

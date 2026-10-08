@@ -4,6 +4,7 @@ Her push'tan önce en üste bir satır eklenir. Kurallar `GUNCELLEME.md` → 5. 
 
 | Tarih / saat (TSİ) | İmza | Tür | Güncelleme | Özet |
 |---|---|---|---|---|
+| 2026-10-08 14:55 | volkangokyar01 | uygulama / firmware / belge | Evet | Firmware 1.13.3: iOS tarzı pil göstergesi (kapsül, yüzde içinde, şarjda yeşil + şimşek, %20 altı kırmızı). Firmware derlendi ve gömüldü; 182 Node / 30 Python testi geçti. Donanımda denenmedi |
 | 2026-10-08 14:45 | volkangokyar01 | uygulama / firmware / belge | Evet | Firmware 1.13.2: durum satırında "usb" / "ble" yazısı yerine USB ve Bluetooth simgesi; bağlı değilken üstü çizili USB. Firmware derlendi ve gömüldü; 182 Node / 30 Python testi geçti. Donanımda denenmedi |
 | 2026-10-08 12:30 | volkangokyar01 | uygulama / firmware / belge | Evet | Firmware 1.13.1: ana ekranın durum satırına Bluetooth ve Wi-Fi simgeleri; bağlı / bağlı değil / eşleştirme / bağlanıyor / hata / kapalı durumları farklı çizilir, Wi-Fi sinyal gücünü gösterir. Firmware derlendi ve gömüldü; 182 Node / 30 Python testi geçti. Donanımda denenmedi |
 | 2026-10-08 13:30 | volkangokyar01 | uygulama / ayar sayfası / firmware / kurulum / belge | Evet | Firmware 1.13.0: Wi-Fi geri geldi, yalnız uygulamadan seçilir (otomatik tarama, ağa dokun + şifre, aç/kapat, ağı unut); cihaz durumu gösterir. Wi-Fi istenince ekran tamponu ek belleğe, iç RAM 45 KB altında radyo açılmaz. Uygulamanın adı Game Deck (ayarlar eski klasörde korunur; kurulum betikleri eski kurulumu kaldırır). 181 Node / 30 Python testi geçti; donanımda, Mac'te ve Windows'ta denenmedi |
