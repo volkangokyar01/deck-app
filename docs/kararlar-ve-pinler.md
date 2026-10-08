@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.9.6)
+## Firmware (v1.10.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -254,3 +254,14 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Sayfaların kendi A / B işi sürer: Medya'da önceki / sonraki, Ses ve parlaklık'ta sessiz / mikrofon, Bağlantılar'da A Bluetooth aç / kapat.
 - Ayar sayfası: Buton A / B düzenleyicisinde önce üç ekran, sonra uygulamalar; cihaza giden yapılandırma ve fark listesi sayfa kimliklerini korur.
 - Ayar sayfasının bütün betiklerini derleyen test eklendi (page-syntax.test.js): fazladan bir parantez sayfayı açılışta bozmuştu, işlev testleri yakalamamıştı.
+
+## 2026-10-08 — Wi-Fi (isteğe bağlı), basılı tutma her yerde ana sayfa, Menü'de sola kalma (firmware 1.10.0)
+- Wi-Fi: kullanıcı isteğiyle eklendi; önceki "cihaz Wi-Fi kullanmaz" kuralı değişti (AGENTS.md). Ağ adı ve şifre ayar sayfasındaki Cihaz ayarları → Wi-Fi kartından gönderilir (wifi_scan, wifi_set, wifi_status, wifi_on, wifi_forget). Şifre yalnız cihazda (NVS vdwifi) durur, hiçbir yanıtta geri gönderilmez; uygulama saklamaz. Şifre boş (açık ağ) ya da 8–63 karakter.
+- Ağ kaydedilmedikçe radyo kapalı. Bağlanınca NTP (pool.ntp.org, time.google.com) saati verir; masaüstü uygulaması 6 saattir saat göndermediyse cihaz saati NTP'den alır. Yerel saat farkı uygulamanın son "time.tz" değerinden saklanır (varsayılan +3 saat).
+- Bluetooth ile birlikte çalışmak için modem uyku açık kalır (WiFi.setSleep(true); kapatılırsa ESP-IDF çöker). Bağlanamazsa 20 sn sonra "Bağlanamadı", dakikada bir yeniden dener.
+- Bellek: Wi-Fi kütüphanesi bağlanınca statik RAM 75,3 KB'tan 96,0 KB'a çıktı (+20,7 KB, Wi-Fi kapalıyken de); radyo açıkken yığın yaklaşık 50 KB daha kullanır. 1.8.x'teki "Cihaza yaz" paniği bellek kaynaklıydı; hello'daki heap / block izlenmeli.
+- Cihazda Bağlantılar sayfasının alt satırı Wi-Fi durumunu gösterir (ağ, sinyal, bağlanıyor / bağlanamadı); B tuşu Wi-Fi'yi açar / kapatır (ağ kayıtlıysa).
+- Döndürgeci basılı tutmak her ekranda ana sayfaya döner; açık modlar kapanır (ses ayarı, Bağlantılar ve Menü imleci). Eşleştirme modu arka planda süresini doldurur.
+- Medya: A basılı → sessiz aç / kapat, B basılı → ses modu (çevirerek ses; tekrar B basılı ya da 6 sn ile biter). Kısa A / B önceki / sonraki. Diğer ekranlarda A / B'yi basılı tutmak kısa basma gibi çalışır.
+- Ses ve parlaklık: ayar modundan çıkış artık basılı tutma değil; mod 6 sn sonra kendisi kapanır, basılı tutma ana sayfaya götürür. Bağlantılar ve Menü'de imleç basılı tutmayla kapanmak yerine ana sayfaya dönülür.
+- Menü'de sola çevirmek Menü'de bırakır (son uygulamaya geçmez). Menüden açılan bir ekranda sola çevirmek Menü listesine döndürür; sağa çevirmek ana sayfaya.

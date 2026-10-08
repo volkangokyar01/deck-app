@@ -101,12 +101,12 @@ std::vector<Item> items;
 // apps; the menu sits last, one step back from home. subPage = the page open inside the menu (0 = the list).
 uint8_t subPage = 0;
 // One knob step from item i (dir +1 right, -1 left). The menu (always the last item) is reached only by
-// turning left on the first item (home); turning right past the last app goes back to home, not the menu.
+// turning left on the first item (home) and left from it stays there; right past the last app goes home.
 static int wheelStep(int i, int dir) {
   int n = items.size(); if (n < 2) return i;
   bool hasMenu = items[n - 1].kind == K_MENU;
   int last = hasMenu ? n - 2 : n - 1;              // last item of the normal ring
-  if (hasMenu && i == n - 1) return dir > 0 ? 0 : (S.wrap ? last : i);
+  if (hasMenu && i == n - 1) return dir > 0 ? 0 : i;   // left on the menu: stay (1.10.0)
   if (dir < 0) return i > 0 ? i - 1 : (hasMenu ? n - 1 : (S.wrap ? last : i));
   return i < last ? i + 1 : (S.wrap ? 0 : i);
 }
@@ -702,7 +702,7 @@ static void drawMedia() {
     spr.fillRoundRect(240, 150, max(3, 72 * sysSt.vol / 100), 6, 3, sysSt.mute ? SC_DIM : (adjust == 1 ? SC_HL : SC_TEXT));
   } else if (keyFlashWhat == 1 && now - keyFlashAt < 700) text(keyFlash > 0 ? "ses +" : "ses -", 312, 124, FSB12, SC_HL, textdatum_t::middle_right);
   else text("ses", 312, 124, FSB12, SC_DIM, textdatum_t::middle_right);
-  text(adjust == 1 ? "çevir: ses" : "basılı tut: ses", 4, 125, FM9, adjust == 1 ? SC_HL : SC_DIM);
+  text(adjust == 1 ? "çevir: ses · B basılı: bitir" : "B basılı: ses · A basılı: sessiz", 4, 125, FM9, adjust == 1 ? SC_HL : SC_DIM);
   if (companionOn()) text("çift bas: oynatıcı", 4, 140, FM9, SC_DIM);
 }
 
@@ -831,7 +831,7 @@ static void drawConn() {
     st = act != BLE_HS_CONN_HANDLE_NONE ? "Aktif: " + hostName(act) : bt.hasSel ? "Yalnız seçili" : "Açık";
   }
   text(fit(st, connEdit ? 120 : 110, FSB11), 104, 27, FSB11, sc);
-  text(!bleStarted ? "" : connEdit ? "basılı tut: çık" : (bt.off ? "A: aç" : "A: kapat · bas: seç"), 310, 27, FM9, SC_DIM, textdatum_t::middle_right);
+  text(!bleStarted ? "" : connEdit ? "basılı tut: ana sayfa" : (bt.off ? "A: aç" : "A: kapat · bas: seç"), 310, 27, FM9, SC_DIM, textdatum_t::middle_right);
 
   if (bleStarted && btPairing()) {           // pairing mode: what to do on the computer
     spr.fillRoundRect(2, 41, 316, 102, 8, mix(CONN_COL, SC_PANEL, .12f));
@@ -860,11 +860,19 @@ static void drawConn() {
     text(bleStarted ? "Bluetooth kapalı" : "Bluetooth bu ayarda kapalı", 160, 80, FSB12, SC_SUB, textdatum_t::middle_center);
     text(bleStarted ? "A: aç" : "Uygulama → Cihaz → Bağlantı: Otomatik", 160, 104, FM9, SC_DIM, textdatum_t::middle_center);
   }
-  // Wi-Fi: reserved row (the device does not use Wi-Fi yet)
+  // Wi-Fi (1.10.0): set up from the desktop app; B turns it on / off here
   spr.fillRoundRect(2, 145, 316, 23, 8, SC_PANEL);
-  gWifi(16, 155, SC_DIM);
-  text("WI-FI", 28, 157, FB10, SC_DIM);
-  text("Kapalı · yakında", 310, 157, FM9, SC_DIM, textdatum_t::middle_right);
+  const char* ws = wifiStateName();
+  bool wOn = strcmp(ws, "off"), wOk = !strcmp(ws, "connected");
+  gWifi(16, 155, wOk ? SC_GREEN : wOn ? SC_HL : SC_DIM);
+  text("WI-FI", 28, 157, FB10, wOn ? SC_SUB : SC_DIM);
+  String wt; uint16_t wc = SC_DIM;
+  if (!wf.ssid.length()) wt = "Kapalı · uygulamadan ayarla";
+  else if (!wOn) wt = fit(wf.ssid, 150, FM9) + " · kapalı · B: aç";
+  else if (wOk) { int r = WiFi.RSSI(); wt = fit(wf.ssid, 150, FM9) + (r > -60 ? " · güçlü" : r > -72 ? " · iyi" : " · zayıf") + " · B: kapat"; wc = SC_TEXT; }
+  else if (!strcmp(ws, "failed")) { wt = "Bağlanamadı · şifreyi kontrol et"; wc = SC_RED; }
+  else { wt = "Bağlanıyor…"; wc = SC_HL; }
+  text(wt, 310, 157, FM9, wc, textdatum_t::middle_right);
 }
 
 /* ---------- Menü: the pages, each one key away ---------- */
@@ -900,7 +908,7 @@ static void drawMenu() {
     int th = 141 * vis / n, ty = 15 + (141 - th) * first / max(1, n - vis);
     spr.fillRoundRect(316, ty, 2, th, 1, SC_DIM);
   }
-  text(menuPick ? "çevir: seç  ·  bas: aç  ·  basılı tut: çık" : "bas: seç  ·  çevir: gez", 160, 161, FM9, menuPick ? SC_HL : SC_SUB, textdatum_t::middle_center);
+  text(menuPick ? "çevir: seç  ·  bas: aç  ·  basılı tut: ana sayfa" : "bas: seç  ·  çevir: gez", 160, 161, FM9, menuPick ? SC_HL : SC_SUB, textdatum_t::middle_center);
 }
 
 /* ---------- new mail note (1.8.0): full screen, A / B / press opens Outlook on the computer ---------- */

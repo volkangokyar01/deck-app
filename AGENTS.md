@@ -32,7 +32,7 @@ Bu yüzden:
 ## Ürün kuralları
 - Arayüz platforma göre ayrılır: macOS'te yalnız macOS'e, Windows'ta yalnız Windows'a özgü seçenekler görünür.
 - Uygulamalar yalnız masaüstü uygulamasının sistem çağrısıyla açılır. Klavye yöntemleri (Win+R, Başlat, Spotlight) yeni özelliklerde kullanılmaz.
-- Cihaz Wi-Fi kullanmaz; ana sayfa verileri masaüstü uygulamasından USB `stats` ile gelir.
+- Wi-Fi isteğe bağlıdır (firmware 1.10.0): yalnız kullanıcı uygulamadan ağ ayarlarsa açılır ve şimdilik yalnız saat (NTP) için kullanılır. Ana sayfa verileri yine masaüstü uygulamasından USB / Bluetooth `stats` ile gelir. Wi-Fi yığını PSRAM'sız kartta sabit ~20 KB + açıkken ~50 KB iç RAM yer; yeni Wi-Fi özelliği eklemeden önce `hello` içindeki `heap` / `block` değerlerine bak.
 - Kullanıcıya görünen metinler Türkçe ve kısa. Ekran fontlarında yalnız ASCII + Türkçe harf var.
 - Yeni donanım/protokol kararları `docs/kararlar-ve-pinler.md`'ye tarihle yazılır.
 

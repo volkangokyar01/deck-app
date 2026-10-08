@@ -4,6 +4,7 @@
 #include "Store.h"
 #include "Hid.h"
 #include "Stats.h"
+#include "Wifi.h"
 #include "Ui.h"
 #include "Proto.h"
 #include "esp_sleep.h"
@@ -421,6 +422,7 @@ static void handleInput() {
       else if (connEdit && k == K_CONN) {
         int n = connRows().size(); connCur = constrain(connCur + steps, 0, n - 1); connAt = millis(); connConfirmAt = 0; dirty = true;
       }
+      else if (subPage && steps < 0) { subPage = 0; adjust = 0; connEdit = false; menuPick = true; menuAt = millis(); dirty = true; evtSelect(); }   // left: back to the menu list
       else { int i = sel; for (int s = 0; s < abs(steps); s++) i = wheelStep(i, steps > 0 ? 1 : -1); selectIndex(i); }
       evtInput(steps > 0 ? "cw" : "ccw");
     }
@@ -438,30 +440,32 @@ static void handleInput() {
       } else onPress();
     }
   } else if (e == 2) {
+    // hold the knob: home, from every screen (1.10.0); open modes (volume, cursor) close on the way
     wakeUp(); pressPendingAt = 0;
-    uint8_t k = curKind();
-    if (k == K_MEDIA) { adjust = adjust ? 0 : 1; adjustAt = now; dirty = true; }
-    else if (k == K_SYS && adjust) { adjust = 0; dirty = true; }
-    else if (k == K_CONN && (connEdit || btPairing())) { connEdit = false; connConfirmAt = 0; if (btPairing()) btPairStop(); dirty = true; }
-    else if (subPage) { subPage = 0; adjust = 0; menuPick = true; menuAt = now; dirty = true; evtSelect(); }   // back to the menu list
-    else if (k == K_MENU && menuPick) { menuPick = false; dirty = true; }
-    else if (S.homeOn) selectIndex(0);
+    adjust = 0; connEdit = false; connConfirmAt = 0; menuPick = false;
+    if (sel != 0) selectIndex(0);
+    else if (subPage) { subPage = 0; evtSelect(); }
+    dirty = true;
   }
   if (pressPendingAt && now - pressPendingAt >= 330) { pressPendingAt = 0; onPress(); }
 
-  int a = bA.poll(0);
-  if (a == 1 && !wakeUp()) {
+  // A / B: hold on the media page = mute (A) / volume mode (B); elsewhere a hold acts like a press
+  int a = bA.poll(600);
+  if (a == 2 && curKind() == K_MEDIA && !wakeUp()) { evtInput("a_hold"); toggleMute(); dirty = true; }
+  else if ((a == 1 || a == 2) && !wakeUp()) {
     evtInput("a"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("prev", CC_PREV);
     else if (k == K_SYS) { toggleMute(); adjustAt = now; }
     else if (k == K_CONN && bleStarted) { btSetOff(!bt.off); connEdit = false; toast(bt.off ? "Bluetooth kapandı" : "Bluetooth açıldı"); dirty = true; }
     else quickAct(S.quickA);
   }
-  int b = bB.poll(0);
-  if (b == 1 && !wakeUp()) {
+  int b = bB.poll(600);
+  if (b == 2 && curKind() == K_MEDIA && !wakeUp()) { evtInput("b_hold"); adjust = adjust ? 0 : 1; adjustAt = now; dirty = true; }
+  else if ((b == 1 || b == 2) && !wakeUp()) {
     evtInput("b"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("next", CC_NEXT);
     else if (k == K_SYS) { toggleMic(); if (adjust) adjustAt = now; }
+    else if (k == K_CONN && wf.ssid.length()) { wifiSetOn(!wf.on); toast(wf.on ? "Wi-Fi açıldı" : "Wi-Fi kapandı"); dirty = true; }
     else quickAct(S.quickB);
   }
 
@@ -524,6 +528,7 @@ void setup() {
   for (uint8_t p : { PIN_ENC_CLK, PIN_ENC_DT, PIN_ENC_SW, PIN_BTN_A, PIN_BTN_B, PIN_KEY_PWR, PIN_KEY_RST }) pinMode(p, INPUT_PULLUP);
 
   hidBegin();
+  wifiBegin();
   Serial.begin(115200);
   Serial.enableReboot(false);
   protoBegin();
@@ -559,6 +564,8 @@ void loop() {
   if (mailActive() && !screenOff) mailInput();
   crumbSet("input"); handleInput(); crumbClear();
   connPoll();
+  wifiPoll();
+  if (wf.dirty) { wf.dirty = false; if (curKind() == K_CONN) dirty = true; }
 
   uint32_t now = millis();
   static uint32_t tBat = 0, tStatus = 0, tFrame = 0, tTheme = 0;

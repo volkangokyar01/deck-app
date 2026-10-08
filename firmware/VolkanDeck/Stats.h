@@ -27,6 +27,7 @@ static bool wxFresh() { return fresh(st.wx.at, 2 * 3600000UL); }
 static bool fxFresh() { return fresh(st.fx.at, 2 * 3600000UL); }
 
 // local time, kept running from millis() between "time" updates
+void (*tzHook)(int32_t) = nullptr;
 static bool localTime(struct tm& t) {
   if (!st.timeAt) return false;
   time_t s = (time_t)(st.epoch + st.tz + (int64_t)((millis() - st.timeAt) / 1000));
@@ -66,6 +67,7 @@ static void parseStats(JsonObjectConst d) {
   }
   if (d["time"].is<JsonObjectConst>() && d["time"]["epoch"].is<double>()) {
     st.epoch = (int64_t)d["time"]["epoch"].as<double>(); st.tz = (int32_t)(d["time"]["tz"] | 0.0); st.timeAt = millis() | 1;
+    if (tzHook) tzHook(st.tz);                    // Wi-Fi keeps it for NTP time
   }
   statsDirty = true;
 }

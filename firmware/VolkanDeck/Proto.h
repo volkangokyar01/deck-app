@@ -171,7 +171,7 @@ static void handleLine(char* buf, size_t len) {
     r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleMtuOf(replyConn);
     r["anim"] = anim.frames; r["animLight"] = animLight.frames;   // frames stored per theme (0: none)
     r["reset"] = bootReset; if (bootCrash.length()) r["crash"] = bootCrash;
-    r["bonds"] = bleBondCount(); r["btOff"] = bt.off;
+    r["bonds"] = bleBondCount(); r["btOff"] = bt.off; r["wifi"] = wifiStateName();
     r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); r["block"] = (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024);
     sendJson(r);
   }
@@ -328,6 +328,18 @@ static void handleLine(char* buf, size_t len) {
     if (replySrc == SRC_BLE) { replyErr(id, "usb_only"); return; }
     if (bleForget()) replyOk(id); else replyErr(id, "busy");
   }
+  // Wi-Fi (1.10.0): set from the desktop app; the password is stored on the deck and never sent back
+  else if (!strcmp(cmd, "wifi_status")) { JsonDocument r; r["id"] = id; r["ok"] = true; wifiStatusJson(r); sendJson(r); }
+  else if (!strcmp(cmd, "wifi_scan")) {
+    JsonDocument r; r["id"] = id; r["ok"] = true; wifiScan(r["nets"].to<JsonArray>()); sendJson(r);
+  }
+  else if (!strcmp(cmd, "wifi_set")) {
+    String ssid = (const char*)(doc["ssid"] | ""), pass = (const char*)(doc["pass"] | "");
+    if (!ssid.length() || ssid.length() > 32 || pass.length() > 63 || (pass.length() && pass.length() < 8)) { replyErr(id, "invalid"); return; }
+    wifiSet(ssid, pass); replyOk(id);
+  }
+  else if (!strcmp(cmd, "wifi_on")) { wifiSetOn(doc["on"] | true); replyOk(id); }
+  else if (!strcmp(cmd, "wifi_forget")) { wifiForget(); replyOk(id); }
   else if (!strcmp(cmd, "restart")) { replyOk(id); delay(200); ESP.restart(); }
   else replyErr(id, "unknown_cmd");
 }
