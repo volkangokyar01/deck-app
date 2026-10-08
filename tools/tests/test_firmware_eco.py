@@ -61,7 +61,7 @@ int subPage=0; void evtSelect(){} bool menuPick=false; int menuCur=0; unsigned m
 using std::max;
 bool connEdit=false,bleStarted=false;int connCur=0;unsigned connAt=0,connConfirmAt=0;
 struct {bool off=false;} bt; bool btPairing(){return false;} void btPairStop(){} void btSetOff(bool){}
-std::vector<int> connRows(){return {0};} void toast(const char*){}
+std::vector<int> connRows(){return {0};} int connActiveRow(const std::vector<int>&){return 0;} void toast(const char*){}
 int constrain(int n,int lo,int hi){return n<lo?lo:n>hi?hi:n;}
 struct Btn{int event=0;int poll(int){int e=event;event=0;return e;}} bEnc,bA,bB,bPwr,bRst;
 void act(){assert(mhz==240);events.push_back(1);}

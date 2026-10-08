@@ -77,3 +77,11 @@ test('home status row (1.13.1): Bluetooth and Wi-Fi icons differ when connected 
   assert.match(ui, /static const uint16_t BM_BT\[13\]/, 'status-row symbols are pixel bitmaps (1.13.4)');
   assert.match(ino, /uint8_t ic = btIconState\(\) \| wifiIconState\(\) << 2; if \(ic != lastIcons\)/);
 });
+
+test('Bağlantılar (1.13.5): the knob moves the row cursor at once and never leaves the page', () => {
+  const ino = read('firmware/VolkanDeck/VolkanDeck.ino');
+  const enc = ino.slice(ino.indexOf('uint8_t k = curKind();', ino.indexOf('static void handleInput()')), ino.indexOf('evtInput(steps > 0 ? "cw" : "ccw");'));
+  assert.match(enc, /else if \(k == K_CONN\) \{/);
+  assert.match(enc, /if \(!connEdit\) \{ connEdit = true; connCur = connActiveRow\(rows\); \}/);
+  assert.ok(enc.indexOf('k == K_CONN') < enc.indexOf('subPage && steps < 0'), 'turning left on Bağlantılar does not go back to the menu');
+});

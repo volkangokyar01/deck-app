@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.13.4)
+## Firmware (v1.13.5)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -323,3 +323,7 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Medya ve Ses ve parlaklık sayfalarında döndürgeç artık sayfadan çıkmaz: Medya'da çevirince doğrudan ses değişir; Ses ve parlaklık'ta çevirince seçili değer değişir (başta ses, basınca ses ↔ parlaklık). Çıkmak için uzun basılır (ana sayfa) veya ana sayfaya dönüş süresi beklenir. Medya'da "Ana sayfaya dönme" açıksa (varsayılan) beklemekle dönülmez.
 - Medya'da B basılı tutma (ses modu) kaldırıldı; B basılı = B (sonraki şarkı). A basılı = sessiz, aynı kaldı.
 - Ayar sayfasındaki önizleme ve kontrol listesi aynı davranışa ve aynı durum satırına güncellendi.
+
+## 2026-10-08 — Bağlantılar'da da döndürgeç sayfanın içinde (firmware 1.13.5)
+- Bağlantılar sayfasında döndürgeç çevrilince satır imleci hemen açılır (aktif satırdan başlar) ve satırlar arasında gezer; sayfadan çıkmaz, sola çevirmek de menüye dönmez. Basınca seçili satır uygulanır (bilgisayar seç, yeni cihaz, eşleşmeleri sil). Çıkış: uzun bas veya bekle. Bluetooth kapalıyken / eşleştirme sırasında çevirmek bir şey yapmaz.
+- Üst satır ipucu "çevir: seç · A: kapat". Ayar sayfasındaki önizleme ve kontrol listesi güncellendi.

@@ -912,7 +912,7 @@ static void drawConn() {
     st = act != BLE_HS_CONN_HANDLE_NONE ? "Aktif: " + hostName(act) : bt.hasSel ? "Yalnız seçili" : "Açık";
   }
   text(fit(st, connEdit ? 120 : 110, FSB11), 104, 27, FSB11, sc);
-  text(!bleStarted ? "" : connEdit ? "basılı tut: ana sayfa" : (bt.off ? "A: aç" : "A: kapat · bas: seç"), 310, 27, FM9, SC_DIM, textdatum_t::middle_right);
+  text(!bleStarted ? "" : connEdit ? "basılı tut: ana sayfa" : (bt.off ? "A: aç" : "çevir: seç · A: kapat"), 310, 27, FM9, SC_DIM, textdatum_t::middle_right);
 
   if (bleStarted && btPairing()) {           // pairing mode: what to do on the computer
     spr.fillRoundRect(2, 41, 316, 102, 8, mix(CONN_COL, SC_PANEL, .12f));

@@ -420,8 +420,12 @@ static void handleInput() {
       else if (menuPick && k == K_MENU) {
         int n = menuPages().size(); menuCur = constrain(menuCur + steps, 0, max(0, n - 1)); menuAt = millis(); dirty = true;
       }
-      else if (connEdit && k == K_CONN) {
-        int n = connRows().size(); connCur = constrain(connCur + steps, 0, n - 1); connAt = millis(); connConfirmAt = 0; dirty = true;
+      else if (k == K_CONN) {                                      // 1.13.5: the knob moves the row cursor right away, like Medya / Ses
+        if (bleStarted && !bt.off && !btPairing()) {
+          auto rows = connRows(); int n = rows.size();
+          if (!connEdit) { connEdit = true; connCur = connActiveRow(rows); }
+          connCur = constrain(connCur + steps, 0, n - 1); connAt = millis(); connConfirmAt = 0; dirty = true;
+        }
       }
       else if (subPage && steps < 0) { subPage = 0; adjust = 0; connEdit = false; menuPick = true; menuAt = millis(); dirty = true; evtSelect(); }   // left: back to the menu list
       else { int i = sel; for (int s = 0; s < abs(steps); s++) i = wheelStep(i, steps > 0 ? 1 : -1); selectIndex(i); }
