@@ -131,10 +131,6 @@ static void gBt(int cx, int cy, int h, uint16_t c, float w = 1.6f) {
   spr.drawWideLine(cx, cy + t, cx, cy - t, w, c);         spr.drawWideLine(cx, cy - t, cx + q, cy - q, w, c);
   spr.drawWideLine(cx + q, cy - q, cx - q, cy + q, w, c);
 }
-// Wi-Fi fan, about 18 x 13
-static void gWifi(int cx, int cy, uint16_t c) {
-  spr.drawArc(cx, cy + 6, 13, 11, 225, 315, c); spr.drawArc(cx, cy + 6, 8, 6, 225, 315, c); spr.fillSmoothCircle(cx, cy + 5, 2, c);
-}
 static void bubble(bool home, App* a, int x, int y, int r, float alpha, uint8_t kind = 255) {
   if (kind == K_MENU) {                      // 2 x 2 tiles
     uint16_t fill = mix(MENU_COL, SC_BG, alpha), fg = mix(onColor(MENU_COL), SC_BG, alpha);
@@ -762,7 +758,7 @@ static void drawSystem() {
   micRow(131, 37);
 }
 
-/* ---------- Bağlantılar (1.9.0): Bluetooth computers chosen on the device; Wi-Fi row reserved ---------- */
+/* ---------- Bağlantılar (1.9.0): Bluetooth computers chosen on the device (Wi-Fi removed in 1.11.0) ---------- */
 enum : uint8_t { CR_ALL = 0, CR_HOST, CR_PAIR, CR_FORGET };
 struct ConnRow { uint8_t type; uint8_t a[6]; };
 bool connEdit = false; int connCur = 0; uint32_t connAt = 0, connConfirmAt = 0;
@@ -834,7 +830,7 @@ static void drawConn() {
   text(!bleStarted ? "" : connEdit ? "basılı tut: ana sayfa" : (bt.off ? "A: aç" : "A: kapat · bas: seç"), 310, 27, FM9, SC_DIM, textdatum_t::middle_right);
 
   if (bleStarted && btPairing()) {           // pairing mode: what to do on the computer
-    spr.fillRoundRect(2, 41, 316, 102, 8, mix(CONN_COL, SC_PANEL, .12f));
+    spr.fillRoundRect(2, 41, 316, 127, 8, mix(CONN_COL, SC_PANEL, .12f));
     text("Bilgisayarda:", 14, 56, FSB11, SC_SUB);
     text("Bluetooth → Cihaz ekle", 14, 76, FSB12, SC_TEXT);
     text(fit("Listeden \"" + S.name + "\" seç", 292, FSB12), 14, 98, FSB12, SC_TEXT);
@@ -846,33 +842,20 @@ static void drawConn() {
     auto rows = connRows();
     int act = connActiveRow(rows);
     if (connCur >= (int)rows.size()) connCur = rows.size() - 1;
-    int first = 0; const int vis = 5;
+    int first = 0; const int vis = 6;
     int focusRow = connEdit ? connCur : act;
     if (focusRow >= vis) first = focusRow - vis + 1;
     for (int i = 0; i < vis && first + i < (int)rows.size(); i++)
       connRow(41 + i * 21, rows[first + i], connEdit && first + i == connCur, first + i == act);
     if ((int)rows.size() > vis) {           // scroll mark
-      int th = 100 * vis / rows.size(), ty = 42 + (100 - th) * first / max(1, (int)rows.size() - vis);
+      int th = 124 * vis / rows.size(), ty = 42 + (124 - th) * first / max(1, (int)rows.size() - vis);
       spr.fillRoundRect(316, ty, 2, th, 1, SC_DIM);
     }
   } else {
-    spr.fillRoundRect(2, 41, 316, 102, 8, SC_PANEL);
+    spr.fillRoundRect(2, 41, 316, 127, 8, SC_PANEL);
     text(bleStarted ? "Bluetooth kapalı" : "Bluetooth bu ayarda kapalı", 160, 80, FSB12, SC_SUB, textdatum_t::middle_center);
     text(bleStarted ? "A: aç" : "Uygulama → Cihaz → Bağlantı: Otomatik", 160, 104, FM9, SC_DIM, textdatum_t::middle_center);
   }
-  // Wi-Fi (1.10.0): set up from the desktop app; B turns it on / off here
-  spr.fillRoundRect(2, 145, 316, 23, 8, SC_PANEL);
-  const char* ws = wifiStateName();
-  bool wOn = strcmp(ws, "off"), wOk = !strcmp(ws, "connected");
-  gWifi(16, 155, wOk ? SC_GREEN : wOn ? SC_HL : SC_DIM);
-  text("WI-FI", 28, 157, FB10, wOn ? SC_SUB : SC_DIM);
-  String wt; uint16_t wc = SC_DIM;
-  if (!wf.ssid.length()) wt = "Kapalı · uygulamadan ayarla";
-  else if (!wOn) wt = fit(wf.ssid, 150, FM9) + " · kapalı · B: aç";
-  else if (wOk) { int r = WiFi.RSSI(); wt = fit(wf.ssid, 150, FM9) + (r > -60 ? " · güçlü" : r > -72 ? " · iyi" : " · zayıf") + " · B: kapat"; wc = SC_TEXT; }
-  else if (!strcmp(ws, "failed")) { wt = "Bağlanamadı · şifreyi kontrol et"; wc = SC_RED; }
-  else { wt = "Bağlanıyor…"; wc = SC_HL; }
-  text(wt, 310, 157, FM9, wc, textdatum_t::middle_right);
 }
 
 /* ---------- Menü: the pages, each one key away ---------- */

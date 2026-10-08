@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.10.1)
+## Firmware (v1.11.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -256,7 +256,7 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Ayar sayfasının bütün betiklerini derleyen test eklendi (page-syntax.test.js): fazladan bir parantez sayfayı açılışta bozmuştu, işlev testleri yakalamamıştı.
 
 ## 2026-10-08 — Wi-Fi (isteğe bağlı), basılı tutma her yerde ana sayfa, Menü'de sola kalma (firmware 1.10.0)
-- Wi-Fi: kullanıcı isteğiyle eklendi; önceki "cihaz Wi-Fi kullanmaz" kuralı değişti (AGENTS.md). Ağ adı ve şifre ayar sayfasındaki Cihaz ayarları → Wi-Fi kartından gönderilir (wifi_scan, wifi_set, wifi_status, wifi_on, wifi_forget). Şifre yalnız cihazda (NVS vdwifi) durur, hiçbir yanıtta geri gönderilmez; uygulama saklamaz. Şifre boş (açık ağ) ya da 8–63 karakter.
+- Wi-Fi: kullanıcı isteğiyle eklendi; önceki "cihaz Wi-Fi kullanmaz" kuralı değişti (AGENTS.md). 1.11.0'da yeniden kaldırıldı (aşağıda). Ağ adı ve şifre ayar sayfasındaki Cihaz ayarları → Wi-Fi kartından gönderilir (wifi_scan, wifi_set, wifi_status, wifi_on, wifi_forget). Şifre yalnız cihazda (NVS vdwifi) durur, hiçbir yanıtta geri gönderilmez; uygulama saklamaz. Şifre boş (açık ağ) ya da 8–63 karakter.
 - Ağ kaydedilmedikçe radyo kapalı. Bağlanınca NTP (pool.ntp.org, time.google.com) saati verir; masaüstü uygulaması 6 saattir saat göndermediyse cihaz saati NTP'den alır. Yerel saat farkı uygulamanın son "time.tz" değerinden saklanır (varsayılan +3 saat).
 - Bluetooth ile birlikte çalışmak için modem uyku açık kalır (WiFi.setSleep(true); kapatılırsa ESP-IDF çöker). Bağlanamazsa 20 sn sonra "Bağlanamadı", dakikada bir yeniden dener.
 - Bellek: Wi-Fi kütüphanesi bağlanınca statik RAM 75,3 KB'tan 96,0 KB'a çıktı (+20,7 KB, Wi-Fi kapalıyken de); radyo açıkken yığın yaklaşık 50 KB daha kullanır. 1.8.x'teki "Cihaza yaz" paniği bellek kaynaklıydı; hello'daki heap / block izlenmeli.
@@ -271,3 +271,9 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Kart cihazı bekler (1,5 sn'de bir); cihaz bağlı ve firmware ≥ 1.10.0 olunca, Cihaz ayarları sekmesi açıksa ağları kendisi tarar. Liste sinyale göre sıralı; ağa tıklayınca altında şifre alanı ve Bağlan açılır (açık ağda şifre yok). Elle ağ adı alanı kaldırıldı. Eski firmware'de "Firmware yükle" düğmesi çıkar.
 - Tarama sonucu ve açık ağ yeniden çizimlerde korunur; en çok dakikada bir tarama (sayfa her düzenlemede yeniden çiziliyor, cihaz taramada 2–4 sn meşgul).
 - Cihaz Wi-Fi'yi başlatamazsa (bellek) wifi_scan "scan_failed" ve heap döner; sayfa bunu "Cihaz Wi-Fi'yi başlatamadı" diye gösterir.
+
+## 2026-10-08 — Wi-Fi kaldırıldı, saat Wi-Fi'siz korunur, ek bellek teşhisi (firmware 1.11.0)
+- Kullanıcı Wi-Fi'yi deneyemedi: tarama "bellek yetmedi" ile başlamadı. Karar (kullanıcı): Wi-Fi tamamen kaldırıldı. Wifi.h, wifi_* komutları, ayar sayfasındaki Wi-Fi kartı ve Bağlantılar'daki Wi-Fi satırı silindi; Bağlantılar listesi bir satır büyüdü (6 satır). Statik RAM 96,0 KB → 75,3 KB.
+- 1.10.x'te cihaza kaydedilmiş ağ adı ve şifre (NVS vdwifi) açılışta silinir.
+- Saat: uygulamadan gelen her "time" çipin kendi saatini de ayarlar (settimeofday). Bu saat yeniden başlatma, çökme ve derin uykuda ("Kapanıyor") sürer; uygulama bağlanmadan da saat ve otomatik tema doğru açılır. Saat dilimi değişince NVS vdclk/tz'ye yazılır (varsayılan +3 saat). Yalnız pil tamamen biterse uygulama bağlanana kadar saat yok. Derin uykuda çipin iç RC saati kullanıldığından uzun uykudan sonra birkaç dakika kayabilir; uygulama bağlanınca düzelir.
+- Ek bellek teşhisi: hello'da embPsram (çip paketinde PSRAM var mı, esp_chip_info CHIP_FEATURE_EMB_PSRAM), psramInit (esp_psram_is_initialized), chipRev, flashMB. Ayar sayfası Cihaz özetinde "Bellek" çipi ve bağlantı kaydında teşhis satırı. Çipte PSRAM var ama başlamıyorsa yazılım tarafı, yoksa kart PSRAM'sız bir sürüm.

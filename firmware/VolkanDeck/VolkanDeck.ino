@@ -4,7 +4,6 @@
 #include "Store.h"
 #include "Hid.h"
 #include "Stats.h"
-#include "Wifi.h"
 #include "Ui.h"
 #include "Proto.h"
 #include "esp_sleep.h"
@@ -465,7 +464,6 @@ static void handleInput() {
     evtInput("b"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("next", CC_NEXT);
     else if (k == K_SYS) { toggleMic(); if (adjust) adjustAt = now; }
-    else if (k == K_CONN && wf.ssid.length()) { wifiSetOn(!wf.on); toast(wf.on ? "Wi-Fi açıldı" : "Wi-Fi kapandı"); dirty = true; }
     else quickAct(S.quickB);
   }
 
@@ -528,7 +526,7 @@ void setup() {
   for (uint8_t p : { PIN_ENC_CLK, PIN_ENC_DT, PIN_ENC_SW, PIN_BTN_A, PIN_BTN_B, PIN_KEY_PWR, PIN_KEY_RST }) pinMode(p, INPUT_PULLUP);
 
   hidBegin();
-  wifiBegin();
+  { Preferences pr; if (pr.begin("vdwifi", true)) { pr.end(); if (pr.begin("vdwifi", false)) { pr.clear(); pr.end(); } } }   // 1.10.x Wi-Fi network + password: removed in 1.11.0
   Serial.begin(115200);
   Serial.enableReboot(false);
   protoBegin();
@@ -564,8 +562,6 @@ void loop() {
   if (mailActive() && !screenOff) mailInput();
   crumbSet("input"); handleInput(); crumbClear();
   connPoll();
-  wifiPoll();
-  if (wf.dirty) { wf.dirty = false; if (curKind() == K_CONN) dirty = true; }
 
   uint32_t now = millis();
   static uint32_t tBat = 0, tStatus = 0, tFrame = 0, tTheme = 0;

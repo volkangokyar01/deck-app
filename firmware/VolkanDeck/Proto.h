@@ -1,4 +1,6 @@
 #pragma once
+#include "esp_chip_info.h"
+#include "esp_psram.h"
 #include "mbedtls/base64.h"
 #include "esp32-hal-tinyusb.h"
 
@@ -171,7 +173,11 @@ static void handleLine(char* buf, size_t len) {
     r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleMtuOf(replyConn);
     r["anim"] = anim.frames; r["animLight"] = animLight.frames;   // frames stored per theme (0: none)
     r["reset"] = bootReset; if (bootCrash.length()) r["crash"] = bootCrash;
-    r["bonds"] = bleBondCount(); r["btOff"] = bt.off; r["wifi"] = wifiStateName();
+    r["bonds"] = bleBondCount(); r["btOff"] = bt.off;
+    // PSRAM diagnosis (1.11.0): does the chip carry PSRAM at all, and did the startup bring it up?
+    { esp_chip_info_t ci; esp_chip_info(&ci);
+      r["chipRev"] = ci.revision; r["embPsram"] = (ci.features & CHIP_FEATURE_EMB_PSRAM) != 0;
+      r["psramInit"] = esp_psram_is_initialized(); r["flashMB"] = (uint32_t)(ESP.getFlashChipSize() >> 20); }
     r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); r["block"] = (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024);
     sendJson(r);
   }
@@ -328,21 +334,6 @@ static void handleLine(char* buf, size_t len) {
     if (replySrc == SRC_BLE) { replyErr(id, "usb_only"); return; }
     if (bleForget()) replyOk(id); else replyErr(id, "busy");
   }
-  // Wi-Fi (1.10.0): set from the desktop app; the password is stored on the deck and never sent back
-  else if (!strcmp(cmd, "wifi_status")) { JsonDocument r; r["id"] = id; r["ok"] = true; wifiStatusJson(r); sendJson(r); }
-  else if (!strcmp(cmd, "wifi_scan")) {
-    JsonDocument r; r["id"] = id;
-    int n = wifiScan(r["nets"].to<JsonArray>());
-    r["ok"] = n >= 0; if (n < 0) { r["error"] = "scan_failed"; r["heap"] = (uint32_t)(ESP.getFreeHeap() / 1024); }
-    sendJson(r);
-  }
-  else if (!strcmp(cmd, "wifi_set")) {
-    String ssid = (const char*)(doc["ssid"] | ""), pass = (const char*)(doc["pass"] | "");
-    if (!ssid.length() || ssid.length() > 32 || pass.length() > 63 || (pass.length() && pass.length() < 8)) { replyErr(id, "invalid"); return; }
-    wifiSet(ssid, pass); replyOk(id);
-  }
-  else if (!strcmp(cmd, "wifi_on")) { wifiSetOn(doc["on"] | true); replyOk(id); }
-  else if (!strcmp(cmd, "wifi_forget")) { wifiForget(); replyOk(id); }
   else if (!strcmp(cmd, "restart")) { replyOk(id); delay(200); ESP.restart(); }
   else replyErr(id, "unknown_cmd");
 }

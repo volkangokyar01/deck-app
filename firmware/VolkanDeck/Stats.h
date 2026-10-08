@@ -1,5 +1,7 @@
 #pragma once
 #include <time.h>
+#include <sys/time.h>
+#include <Preferences.h>
 
 /* ---------- home-screen widget data, pushed by the desktop app ({"cmd":"stats"}, firmware 1.4.0) ----------
    Each group replaces its previous values; every field may be null (NAN / "" here = unknown, drawn as "-").
@@ -26,11 +28,29 @@ static bool netFresh() { return fresh(st.net.at, 5000); }
 static bool wxFresh() { return fresh(st.wx.at, 2 * 3600000UL); }
 static bool fxFresh() { return fresh(st.fx.at, 2 * 3600000UL); }
 
-// local time, kept running from millis() between "time" updates
-void (*tzHook)(int32_t) = nullptr;
+// Local time (1.11.0, no Wi-Fi): every "time" from the desktop app also sets the chip's own clock
+// (settimeofday). That clock keeps running through restarts, crashes and deep sleep ("Kapanıyor"),
+// so the deck shows the time before the app connects again; only a fully empty battery loses it.
+// The time zone is saved in NVS (vdclk/tz) when it changes; Türkiye (+3 h) until the app sends one.
+static int32_t clockTz = 10800;
+static bool clockLoaded = false;
+static void clockLoad() {
+  if (clockLoaded) return; clockLoaded = true;
+  Preferences pr; if (pr.begin("vdclk", true)) { clockTz = pr.getInt("tz", 10800); pr.end(); }
+}
+static void clockSet(int64_t epoch, int32_t tz) {
+  struct timeval tv = { (time_t)epoch, 0 }; settimeofday(&tv, nullptr);
+  clockLoad();
+  if (tz != clockTz) { clockTz = tz; Preferences pr; if (pr.begin("vdclk", false)) { pr.putInt("tz", tz); pr.end(); } }
+}
 static bool localTime(struct tm& t) {
-  if (!st.timeAt) return false;
-  time_t s = (time_t)(st.epoch + st.tz + (int64_t)((millis() - st.timeAt) / 1000));
+  time_t s;
+  if (st.timeAt) s = (time_t)(st.epoch + st.tz + (int64_t)((millis() - st.timeAt) / 1000));
+  else {                                          // no app yet: the chip's clock, if it was ever set
+    time_t now = time(nullptr);
+    if (now < 1700000000) return false;
+    clockLoad(); s = now + clockTz;
+  }
   gmtime_r(&s, &t);
   return true;
 }
@@ -67,7 +87,7 @@ static void parseStats(JsonObjectConst d) {
   }
   if (d["time"].is<JsonObjectConst>() && d["time"]["epoch"].is<double>()) {
     st.epoch = (int64_t)d["time"]["epoch"].as<double>(); st.tz = (int32_t)(d["time"]["tz"] | 0.0); st.timeAt = millis() | 1;
-    if (tzHook) tzHook(st.tz);                    // Wi-Fi keeps it for NTP time
+    clockSet(st.epoch, st.tz);
   }
   statsDirty = true;
 }

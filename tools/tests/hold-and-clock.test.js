@@ -22,16 +22,16 @@ test('media page: A hold mutes, B hold toggles the volume mode; other screens tr
   assert.match(ino, /else if \(\(b == 1 \|\| b == 2\) && !wakeUp\(\)\)/);
 });
 
-test('Wi-Fi: off until a network is saved, password never echoed, settings page keeps no password', () => {
-  const w = read('firmware/VolkanDeck/Wifi.h'), proto = read('firmware/VolkanDeck/Proto.h'), web = read('web/body.html');
-  assert.match(w, /if \(wf\.on && wf\.ssid\.length\(\)\) wifiStart\(\);/);
-  assert.match(w, /WiFi\.setSleep\(true\);/, 'modem sleep is required with Bluetooth on');
-  const status = w.slice(w.indexOf('static void wifiStatusJson('));
-  assert.ok(!/pass/.test(status), 'status never carries the password');
-  for (const c of ['wifi_status', 'wifi_scan', 'wifi_set', 'wifi_on', 'wifi_forget']) assert.ok(proto.includes('"' + c + '"'), c);
-  assert.match(proto, /pass\.length\(\) && pass\.length\(\) < 8/);
-  assert.match(web, /await send\(\{cmd:"wifi_set",ssid,pass:pv\},4000,true\); passInp\.value="";/);
-  assert.match(web, /if\(ready\(\)&&shownNow\)\{ fwBtn\.hidden=true; refresh\(\)\.then\(scan\); return; \}/, 'networks are listed by themselves once the deck is ready');
-  assert.ok(!/id:"wifiSsid"/.test(web), 'no network name to type');
-  assert.ok(!/cfg\.[a-z.]*pass/i.test(web), 'the password is not part of the saved config');
+test('Wi-Fi removed (1.11.0): no Wi-Fi code, the clock survives without it, old credentials are wiped', () => {
+  const fw = ['Hid.h', 'Proto.h', 'Stats.h', 'Ui.h', 'VolkanDeck.ino'].map(f => read('firmware/VolkanDeck/' + f)).join('\n');
+  assert.ok(!fs.existsSync(path.join(root, 'firmware/VolkanDeck/Wifi.h')));
+  assert.ok(!/#include <WiFi\.h>|wifiScan|wifi_set|WiFi\./.test(fw));
+  const web = read('web/body.html');
+  assert.ok(!/wifi_scan|wifi_set|cardWifi/.test(web));
+  const stats = read('firmware/VolkanDeck/Stats.h');
+  assert.match(stats, /settimeofday\(&tv, nullptr\);/, 'app time also sets the chip clock');
+  assert.match(stats, /time_t now = time\(nullptr\);\n    if \(now < 1700000000\) return false;/, 'chip clock used until the app sends time');
+  assert.match(stats, /clockSet\(st\.epoch, st\.tz\);/);
+  assert.match(read('firmware/VolkanDeck/VolkanDeck.ino'), /pr\.begin\("vdwifi", false\)\) \{ pr\.clear\(\);/);
+  assert.match(read('firmware/VolkanDeck/Proto.h'), /r\["embPsram"\] = \(ci\.features & CHIP_FEATURE_EMB_PSRAM\) != 0;/);
 });
