@@ -1558,6 +1558,12 @@ function moveApp(from,to,after){
   const [a]=cfg.apps.splice(i,1); let j=cfg.apps.findIndex(x=>x.id===to); if(j<0){ cfg.apps.splice(i,0,a); return; }
   cfg.apps.splice(after?j+1:j,0,a); save(); selectApp(a.id);
 }
+// Move an app to a position in the list (0 = first, Infinity = last); the device wheel follows this order
+function moveAppTo(id,to){
+  const i=cfg.apps.findIndex(a=>a.id===id); if(i<0) return;
+  const j=Math.max(0,Math.min(cfg.apps.length-1,to)); if(i===j) return;
+  const [a]=cfg.apps.splice(i,1); cfg.apps.splice(j,0,a); save(); selectApp(a.id);
+}
 function renderTplMenu(){
   const m=$("#tplMenu"); m.replaceChildren();
   TEMPLATES.filter(t=>!window.deck||deck.platform!=="darwin"||!["Counter-Strike 2","Dosya Gezgini","Ayarlar","Görev Yöneticisi","Hesap Makinesi","Terminal"].includes(t.name)).forEach(t=>m.append(el("button",{class:"btn sm ghost",onclick:()=>{
@@ -1692,10 +1698,12 @@ function renderEditor(){
       return el("button",{class:"btn sm","aria-pressed":on?"true":"false",title:on?"":other?other.name+" yerine bu uygulama":"",onclick:()=>{cfg.quick[k] = on?null:a.id; changed();}}, k.toUpperCase()+" tuşu"+(on?" ✓":"")); })),
     el("p",{class:"hint"},"A veya B'ye basınca bu uygulama hemen açılır; döndürgeçte nerede olduğun önemli değil.")));
   const i=cfg.apps.indexOf(a), n=cfg.apps.length;
-  place.append(el("div",{class:"row"},
-    el("button",{class:"btn sm",disabled:i===0,onclick:()=>{[cfg.apps[i-1],cfg.apps[i]]=[cfg.apps[i],cfg.apps[i-1]]; selectApp(a.id); save();}},"↑ Yukarı"),
-    el("button",{class:"btn sm",disabled:i===n-1,onclick:()=>{[cfg.apps[i+1],cfg.apps[i]]=[cfg.apps[i],cfg.apps[i+1]]; selectApp(a.id); save();}},"↓ Aşağı"),
-    el("span",{class:"hint"},"ya da soldaki listede sürükle")));
+  place.append(el("div",{class:"field"},el("span",{},"Sıra",el("small",{class:"mono"}," "+(i+1)+" / "+n)),el("div",{class:"row"},
+    el("button",{class:"btn sm",disabled:i===0,title:"Uygulamaların en başına al",onclick:()=>moveAppTo(a.id,0)},"⤒ Başa al"),
+    el("button",{class:"btn sm",disabled:i===0,onclick:()=>moveAppTo(a.id,i-1)},"↑ Yukarı"),
+    el("button",{class:"btn sm",disabled:i===n-1,onclick:()=>moveAppTo(a.id,i+1)},"↓ Aşağı"),
+    el("button",{class:"btn sm",disabled:i===n-1,title:"Uygulamaların en sonuna al",onclick:()=>moveAppTo(a.id,n-1)},"⤓ Sona al")),
+    el("p",{class:"hint"},"Cihazda döndürgeç bu sırayla gider. Soldaki listede sürükleyerek de taşıyabilirsin.")));
   body.append(place);
   if(window.deck) body.append(fallback);
   body.append(el("div",{class:"row",style:"justify-content:flex-end"},

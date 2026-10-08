@@ -283,6 +283,19 @@ test('dragging an app moves it before or after the target', () => {
   ctx.moveApp('x', 'b', false); assert.equal(order(), 'dbca');
 });
 
+test('an app can be moved to the start or the end of the list (Başa al / Sona al)', () => {
+  const start = source.indexOf('function moveApp(');
+  const ctx = vm.createContext({ cfg: { apps: ['a', 'b', 'c', 'd'].map(id => ({ id })) }, save() {}, selectApp() {} });
+  vm.runInContext(source.slice(start, source.indexOf('\nfunction renderTplMenu(', start)), ctx);
+  const order = () => ctx.cfg.apps.map(a => a.id).join('');
+  ctx.moveAppTo('c', 0); assert.equal(order(), 'cabd');
+  ctx.moveAppTo('a', 3); assert.equal(order(), 'cbda');
+  ctx.moveAppTo('b', 99); assert.equal(order(), 'cdab');
+  ctx.moveAppTo('d', -5); assert.equal(order(), 'dcab');
+  ctx.moveAppTo('x', 0); assert.equal(order(), 'dcab');
+  assert.match(source, /"⤒ Başa al"/); assert.match(source, /"⤓ Sona al"/);
+});
+
 test('GIF with its own timing: fps comes from the shortest frame, so long pauses do not freeze the power-saving speed', async () => {
   const { ctx } = page('darwin');
   // 12 s pause + 40-60 ms motion frames (e.g. the Spider-Man GIF): the average frame would be ~1 fps
