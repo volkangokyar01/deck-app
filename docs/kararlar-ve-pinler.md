@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.14.0)
+## Firmware (v1.14.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -357,3 +357,10 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Hızlı tuş kimliklerine `__mic` (mikrofonu kapat / aç) ve `__mute` (bilgisayarın ses çıkışını, kulaklık / hoparlör, kapat / aç) eklendi. Uygulama ve menü ekranı seçimlerinin yanında Buton A / B düzenleyicisinde seçilir.
 - Mikrofon yalnız masaüstü uygulamasıyla çalışır (klavyede standart tuşu yok); ses kapatma uygulama yoksa sessiz medya tuşunu gönderir. Basınca kısa bildirim çıkar ("Mikrofon kapalı / açık", "Ses kapalı / açık").
 - Ana ekranda ve uygulama ekranlarında A / B satırı küçük mikrofon / hoparlör rozeti gösterir; kapalıyken rozet ve yazı kırmızı ("Mikrofon kapalı", "Ses kapalı"). Medya ve Ses ve parlaklık sayfalarında A / B o sayfanın kendi işini yapmaya devam eder.
+
+## 2026-10-10 — Yuvarlak, arka planı görünmeyen uygulama ikonları (firmware 1.14.1)
+- Sorun: ayar sayfası program ikonlarını koyu #1E232C kareye oturtup gönderiyordu; açık temada her ikonun arkasında koyu kare görünüyordu.
+- Ayar sayfası artık ikonun saydam piksellerini tam #1E232C (RGB565 0x1905) yapar, yarı saydam kenarları koyuya karıştırmaz (alfa ≥ 128 opak, altı saydam). Gerçek bir piksel aynı renge düşerse bir adım kaydırılır. Biçim değişmedi: eski firmware aynı görüntüyü gösterir.
+- Firmware 0x1905 ve 0xF81F piksellerini çizmez, ikonu 40 px karenin içinde 16,4 px yarıçaplı daireye keser (kare ve yuvarlak köşeli ikonlar da daire olur) ve dış halkayı balon rengine yumuşatır. Böylece ikon her iki temada temanın kendi balon rengi üzerinde durur. Ana ekrandaki 14 px küçük ikon da yuvarlak ve saydam köşeli.
+- Ayar sayfasındaki önizleme ve uygulama listesi ikonları da yuvarlak (listede bütün ikonlar daire).
+- Cihazdaki ikonlar "Cihaza yaz" ile yeniden gönderilir; eski ikonlarda saydam bölgeler zaten 0x1905 olduğu için güncellemeden sonra kareler hemen kaybolur, yalnız kenarda ince koyu çizgi kalabilir (bir kez Cihaza yaz ile düzelir).

@@ -1,6 +1,6 @@
 #pragma once
 // LilyGO T-Display-S3 + KY-040 + 2 buttons
-#define FW_VERSION "1.14.0"
+#define FW_VERSION "1.14.1"
 #include "esp_heap_caps.h"
 
 // PSRAM (1.12.1): without BOARD_HAS_PSRAM Arduino 3.x compiles its PSRAM layer out and the 8 MB is never used.

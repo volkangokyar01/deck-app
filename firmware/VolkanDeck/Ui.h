@@ -85,12 +85,26 @@ static void blendMask(const uint8_t* m, int W, int cx, int cy, uint16_t col, uin
 }
 
 // 40x40 RGB565 icon scaled to size, faded toward bg by alpha
-static void drawPix(const uint16_t* pix, int cx, int cy, int size, float alpha, uint16_t bg) {
+// App icons (40 x 40 RGB565) are round with see-through corners (1.14.1). The settings page flattens the
+// icon's transparent pixels onto #1E232C (0x1905); that colour and 0xF81F are skipped, and everything outside
+// the inscribed circle too, so the theme's own bubble shows through in light and dark mode alike.
+static inline bool pixClear(uint16_t c) { return c == 0x1905 || c == 0xF81F; }
+static void drawPix(const uint16_t* pix, int cx, int cy, int size, float alpha, uint16_t bg, uint16_t edge) {
+  // round mask a little inside the 40 px square, so square and rounded-square program icons become circles;
+  // the outer pixel ring is blended into the bubble colour (edge) for a smooth rim
   int x0 = cx - size / 2, y0 = cy - size / 2;
-  if (size == 40 && alpha >= 1) { spr.pushImage(x0, y0, 40, 40, (const lgfx::rgb565_t*)pix); return; }
-  for (int y = 0; y < size; y++) for (int x = 0; x < size; x++) {
-    uint16_t c = pix[(y * 40 / size) * 40 + (x * 40 / size)];
-    spr.drawPixel(x0 + x, y0 + y, alpha >= 1 ? c : mix(c, bg, alpha));
+  float rr = size * 0.41f, lim = (rr + 0.5f) * (rr + 0.5f) * 4;
+  for (int y = 0; y < size; y++) {
+    int dy = 2 * y + 1 - size;
+    for (int x = 0; x < size; x++) {
+      int dx = 2 * x + 1 - size, q = dx * dx + dy * dy;
+      if (q > lim) continue;                                         // outside the circle
+      uint16_t c = pix[(y * 40 / size) * 40 + (x * 40 / size)];
+      if (pixClear(c)) continue;
+      if (alpha < 1) c = mix(c, bg, alpha);
+      float cov = rr + 0.5f - sqrtf((float)q) / 2;
+      spr.drawPixel(x0 + x, y0 + y, cov >= 1 ? c : mix(c, edge, cov));
+    }
   }
 }
 
@@ -165,7 +179,7 @@ static void bubble(bool home, App* a, int x, int y, int r, float alpha, uint8_t 
     spr.fillSmoothCircle(x, y, r, bgc);
     if (r >= 15) spr.fillArc(x, y, r - (r > 20 ? 2 : 1), r, 0, 360, mix(col, SC_BG, alpha));
     int sz = r >= 25 ? 40 : (int)(r * 1.3f);
-    drawPix(px, x, y, sz, alpha, SC_BG);
+    drawPix(px, x, y, sz, alpha, SC_BG, bgc);
   } else {
     uint16_t fill = mix(col, SC_BG, alpha);
     spr.fillSmoothCircle(x, y, r, fill);
@@ -345,14 +359,21 @@ static void drawAppView() {
 }
 
 /* ---------- small 14 px app icon (box-filtered from the 40 px image) ---------- */
-static void miniIcon(App* a, int cx, int cy) {
+static void miniIcon(App* a, int cx, int cy, uint16_t bg = SC_PANEL) {
   const int N = 14; int x0 = cx - N / 2, y0 = cy - N / 2;
   uint16_t* px = appPix(a);
-  if (px) {
+  if (px) {                                       // round, see-through corners (1.14.1); partly covered pixels blend into bg
     for (int y = 0; y < N; y++) for (int x = 0; x < N; x++) {
-      int sx0 = x * 40 / N, sx1 = (x + 1) * 40 / N, sy0 = y * 40 / N, sy1 = (y + 1) * 40 / N, r = 0, g = 0, b = 0, n = 0;
-      for (int yy = sy0; yy < sy1; yy++) for (int xx = sx0; xx < sx1; xx++) { uint16_t c = px[yy * 40 + xx]; r += c >> 11; g += (c >> 5) & 63; b += c & 31; n++; }
-      spr.drawPixel(x0 + x, y0 + y, ((r / n) << 11) | ((g / n) << 5) | (b / n));
+      int sx0 = x * 40 / N, sx1 = (x + 1) * 40 / N, sy0 = y * 40 / N, sy1 = (y + 1) * 40 / N, r = 0, g = 0, b = 0, n = 0, all = 0;
+      for (int yy = sy0; yy < sy1; yy++) for (int xx = sx0; xx < sx1; xx++) {
+        all++;
+        int dx = 2 * xx + 1 - 40, dy = 2 * yy + 1 - 40; if (dx * dx + dy * dy > 1076) continue;   // radius 16.4, as drawPix
+        uint16_t c = px[yy * 40 + xx]; if (pixClear(c)) continue;
+        r += c >> 11; g += (c >> 5) & 63; b += c & 31; n++;
+      }
+      if (!n) continue;
+      uint16_t c = ((r / n) << 11) | ((g / n) << 5) | (b / n);
+      spr.drawPixel(x0 + x, y0 + y, n == all ? c : mix(c, bg, (float)n / all));
     }
   } else {
     spr.fillSmoothCircle(cx, cy, 7, a->color);
