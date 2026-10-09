@@ -107,8 +107,9 @@ static int wheelStep(int i, int dir) {
   bool hasMenu = items[n - 1].kind == K_MENU;
   int last = hasMenu ? n - 2 : n - 1;              // last item of the normal ring
   if (hasMenu && i == n - 1) return dir > 0 ? 0 : i;   // left on the menu: stay (1.10.0)
-  if (dir < 0) return i > 0 ? i - 1 : (hasMenu ? n - 1 : (S.wrap ? last : i));
-  return i < last ? i + 1 : (S.wrap ? 0 : i);
+  // 1.13.9: the list has ends. Right on the last app stays there (no jump to home); left on home opens the menu.
+  if (dir < 0) return i > 0 ? i - 1 : (hasMenu ? n - 1 : i);
+  return i < last ? i + 1 : i;
 }
 
 static void buildItems() {

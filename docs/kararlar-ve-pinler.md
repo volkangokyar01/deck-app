@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.13.8)
+## Firmware (v1.13.9)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -349,3 +349,6 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Otomatik bağlantıda USB, kablonun ucunda bilgisayar olduğu bilinince önceliklidir: masaüstü uygulaması (veya ayar sayfası) USB seri üzerinden bir satır gönderdiyse (`usbPcSeen`) ya da bir program seri portu açtıysa (`Serial`). Şarj aleti, TV, konsol, monitör portu cihazı yalnız besler / tanır; o zaman Bluetooth bağlıysa tuşlar ve olaylar Bluetooth'tan gider. Bluetooth da yoksa USB'ye düşer (eskisi gibi).
 - `usbPcSeen` her yeni USB oturumunda (STARTED) ve kablo çıkınca (STOPPED) sıfırlanır. "Sadece USB" / "Sadece Bluetooth" ayarları değişmedi.
 - Sınır: uygulaması kapalı bir bilgisayara takılı kabloda da Bluetooth öne geçer (bilgisayarı başka cihazdan ayırt edecek sinyal yok); uygulama açılınca USB'ye döner.
+
+## 2026-10-09 — Döndürgeç listenin sonunda durur (firmware 1.13.9)
+- Sağa çevirirken son uygulamaya gelince liste orada durur; ana sayfaya atlamaz. Sola: ana sayfada menü açılır (menü varsa), menüde kalır. "Listenin sonundan başa dön" ayarı kaldırıldı (yapılandırmadaki `wrap` alanı geriye uyumluluk için duruyor, kullanılmıyor). Ana sayfaya dönmek için uzun bas veya bekle.

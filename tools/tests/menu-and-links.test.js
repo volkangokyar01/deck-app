@@ -47,7 +47,7 @@ test('web site shortcut: addresses are normalised, only http(s) is accepted, the
   assert.match(web, /launch:\{method:"run",value:url\}, targets:\{win:url,mac:url\}/);
 });
 
-test('knob: the menu opens only by turning left on home and keeps you there; right past the last app goes home', () => {
+test('knob: the menu opens only by turning left on home and keeps you there; right on the last app stays (1.13.9)', () => {
   const ui = read('firmware/VolkanDeck/Ui.h'), web = read('web/body.html');
   const fw = ui.slice(ui.indexOf('static int wheelStep('), ui.indexOf('static void buildItems()'));
   const js = fw.replace('static int wheelStep(int i, int dir)', 'function step(i, dir)').replace(/int n = /, 'let n = ')
@@ -59,7 +59,7 @@ test('knob: the menu opens only by turning left on home and keeps you there; rig
     const step = vm.runInNewContext(js + ';step', ctx);
     assert.strictEqual(step(0, -1), 5, 'left on home → menu');
     assert.strictEqual(step(5, 1), 0, 'right on menu → home');
-    assert.strictEqual(step(4, 1), wrap ? 0 : 4, 'right on the last app never enters the menu');
+    assert.strictEqual(step(4, 1), 4, 'right on the last app stays there: no menu, no jump home');
     assert.strictEqual(step(5, -1), 5, 'left on the menu stays there');
     assert.strictEqual(step(2, 1), 3); assert.strictEqual(step(2, -1), 1);
   }
