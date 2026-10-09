@@ -75,6 +75,19 @@ test('A / B can open a menu page; config keeps the page ids', () => {
   const q = ino.slice(ino.indexOf('static void quickAct('), ino.indexOf('// press on the menu list'));
   assert.match(q, /if \(!pg\) \{ doLaunch\(appById\(id\)\); return; \}/);
   assert.match(q, /openPage\(pg\);/);
-  assert.match(web, /qref=v=>\["__media","__system","__connections"\]\.includes\(v\)\?v:ref\(v\)/, 'device projection keeps page ids');
-  assert.match(web, /!\["__media","__system","__connections"\]\.includes\(c\.quick\[k\]\) && !c\.apps\.some/, 'migration keeps page ids');
+  assert.match(web, /qref=v=>\["__media","__system","__connections","__mic","__mute"\]\.includes\(v\)\?v:ref\(v\)/, 'device projection keeps page ids');
+  assert.match(web, /!\["__media","__system","__connections","__mic","__mute"\]\.includes\(c\.quick\[k\]\) && !c\.apps\.some/, 'migration keeps page ids');
+});
+
+test('A / B toggle the microphone or the sound output (1.14.0)', () => {
+  const ino = read('firmware/VolkanDeck/VolkanDeck.ino'), ui = read('firmware/VolkanDeck/Ui.h'), web = read('web/body.html');
+  assert.match(ui, /return id == "__mic" \? QA_MIC : id == "__mute" \? QA_MUTE : QA_NONE;/);
+  const q = ino.slice(ino.indexOf('static void quickAct('), ino.indexOf('// press on the menu list'));
+  assert.match(q, /if \(t == QA_MIC\) \{ toggleMic\(\);/);
+  assert.match(q, /else \{ toggleMute\(\);/);
+  assert.ok(q.indexOf('quickToggle(id)') < q.indexOf('quickPage(id)'), 'toggles are handled before pages and apps');
+  assert.equal((ui.match(/quickToggleIcon\(t, /g) || []).length, 2, 'home and app screens show the toggle');
+  assert.match(web, /qref=v=>\["__media","__system","__connections","__mic","__mute"\]\.includes\(v\)/);
+  assert.match(web, /QUICK_ACTS\.find\(q=>q\.id===id\)/);
+  assert.ok(!/^\s*mic:/m.test(web.slice(web.indexOf('const ICONS = {'), web.indexOf('const XICONS'))), 'mic is not offered as an app icon (the device has no such line icon)');
 });

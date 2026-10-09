@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.13.9)
+## Firmware (v1.14.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -352,3 +352,8 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 
 ## 2026-10-09 — Döndürgeç listenin sonunda durur (firmware 1.13.9)
 - Sağa çevirirken son uygulamaya gelince liste orada durur; ana sayfaya atlamaz. Sola: ana sayfada menü açılır (menü varsa), menüde kalır. "Listenin sonundan başa dön" ayarı kaldırıldı (yapılandırmadaki `wrap` alanı geriye uyumluluk için duruyor, kullanılmıyor). Ana sayfaya dönmek için uzun bas veya bekle.
+
+## 2026-10-10 — A / B'ye mikrofon ve ses kapatma (firmware 1.14.0)
+- Hızlı tuş kimliklerine `__mic` (mikrofonu kapat / aç) ve `__mute` (bilgisayarın ses çıkışını, kulaklık / hoparlör, kapat / aç) eklendi. Uygulama ve menü ekranı seçimlerinin yanında Buton A / B düzenleyicisinde seçilir.
+- Mikrofon yalnız masaüstü uygulamasıyla çalışır (klavyede standart tuşu yok); ses kapatma uygulama yoksa sessiz medya tuşunu gönderir. Basınca kısa bildirim çıkar ("Mikrofon kapalı / açık", "Ses kapalı / açık").
+- Ana ekranda ve uygulama ekranlarında A / B satırı küçük mikrofon / hoparlör rozeti gösterir; kapalıyken rozet ve yazı kırmızı ("Mikrofon kapalı", "Ses kapalı"). Medya ve Ses ve parlaklık sayfalarında A / B o sayfanın kendi işini yapmaya devam eder.

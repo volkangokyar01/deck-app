@@ -222,7 +222,13 @@ static void openPage(uint8_t k) {                // open Medya / Ses ve parlakl�
 }
 // A / B: an app, or a page of the menu
 static void doLaunch(App* a);
+static void toggleMic(); static void toggleMute();
 static void quickAct(const String& id) {
+  if (uint8_t t = quickToggle(id)) {                // 1.14.0: microphone / sound (headphones) on A / B
+    if (t == QA_MIC) { toggleMic(); if (sysLive() && sysSt.mic >= 0) toast(sysSt.mic ? "Mikrofon kapalı" : "Mikrofon açık"); }
+    else { toggleMute(); toast(sysLive() && sysSt.vol >= 0 ? (sysSt.mute ? "Ses kapalı" : "Ses açık") : String("Sessiz tuşu gönderildi")); }
+    dirty = true; return;
+  }
   uint8_t pg = quickPage(id);
   if (!pg) { doLaunch(appById(id)); return; }
   bool on = pg == K_MEDIA ? S.mediaOn : pg == K_SYS ? S.sysOn : S.connOn;

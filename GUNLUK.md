@@ -4,6 +4,7 @@ Her push'tan önce en üste bir satır eklenir. Kurallar `GUNCELLEME.md` → 5. 
 
 | Tarih / saat (TSİ) | İmza | Tür | Güncelleme | Özet |
 |---|---|---|---|---|
+| 2026-10-10 01:05 | volkangokyar01 | uygulama / ayar sayfası / firmware / belge | Evet | Firmware 1.14.0: A / B tuşlarına mikrofonu kapat / aç ve sesi (kulaklık) kapat / aç atanabilir; ana ekranda durum kırmızı gösterilir, önizleme de aynı. Firmware derlendi ve gömüldü; 192 Node / 31 Python testi geçti, headless Chrome'da seçim denendi. Donanımda denenmedi |
 | 2026-10-09 22:10 | volkangokyar01 | uygulama / ayar sayfası / firmware / belge | Evet | Firmware 1.13.9: döndürgeç sağa çevrilirken son uygulamada durur, ana sayfaya atlamaz; "Listenin sonundan başa dön" ayarı kaldırıldı, önizleme de aynı. Firmware derlendi ve gömüldü; 191 Node / 31 Python testi geçti. Donanımda denenmedi |
 | 2026-10-09 00:45 | volkangokyar01 | uygulama / ayar sayfası / firmware / belge | Evet | Firmware 1.13.8: USB yalnız bilgisayara (Game Deck uygulaması USB'den konuşunca) takılıyken öne geçer; şarj aleti / TV / konsolda Bluetooth devrede kalır. Ayar sayfasındaki Bağlantı açıklaması güncellendi. Firmware derlendi ve gömüldü; yeni bağlantı seçimi testi dahil 191 Node / 31 Python testi geçti. Donanımda denenmedi |
 | 2026-10-09 00:25 | volkangokyar01 | uygulama / firmware / belge | Evet | Firmware 1.13.7: ekran kararmış / kapalıyken basılan tuş veya çevrilen döndürgeç ekranı uyandırır ve işlemi hemen yapar (ilk dokunuş yutulmaz). Firmware derlendi ve gömüldü; 191 Node / 30 Python testi geçti. Donanımda denenmedi |
