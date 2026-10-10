@@ -370,3 +370,7 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Ayar sayfası ikonu göndermeden önce saydam kenar boşluğunu kırpar (alfa ≥ 128 piksellerin kutusu, kare, ortalanmış), böylece çizim balonu doldurur. Önizleme de aynı kırpmayı ve dolguyu kullanır.
 - Biçim aynı (40×40 RGB565). Kenar kırpması için "Cihaza yaz" ile ikonlar bir kez yeniden gönderilmeli; göndermeden de ikonlar büyür ama kenar boşluğu kalır.
 - Bedel: 40 px'ten 62 px'e büyütme biraz yumuşak görünür; daha keskin olması için ikon çözünürlüğü (biçim) ileride artırılabilir.
+
+## 2026-10-10 — Kare ikonlar da tam daire (ayar sayfası, firmware değişmedi)
+- Cihaz 40 px ikonun iç teğet dairesini halkanın içine çizer (1.14.2); ikonun bu daireyi kaplaması gerekir. Ayar sayfası ikonu gönderirken (ve önizlemede) artık: 1) saydam kenar boşluğunu kırpar; 2) kare, yuvarlak köşeli kare, macOS tarzı ikonu dairenin %98,5'ini kaplayana kadar en çok 1,3 kat yakınlaştırır (köşeler zaten görünmez); 3) bu yetmiyorsa (arka planı olmayan logo) ikonu uygulamanın rengiyle dolu bir dairenin üstüne %70 boyutla koyar; renk logoya çok yakınsa koyu (#2A2F38) ya da açık (#F2F3F5) zemin seçilir.
+- Uygulama listesindeki ikonlar da bu sonucu gösterir. Cihaza "Cihaza yaz" ile gider.

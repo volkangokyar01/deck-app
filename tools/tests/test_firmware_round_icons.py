@@ -54,6 +54,11 @@ int main(){
         self.assertIn('if(p[i+3]<128){ p[i]=0x1E; p[i+1]=0x23; p[i+2]=0x2C; }', fn)
         ui = (ROOT / 'firmware/VolkanDeck/Ui.h').read_text()
         self.assertIn('return c == 0x1905 || c == 0xF81F;', ui)
+        # 1.14.3: square / rounded icons are zoomed until they cover the circle, cut-out logos sit on a filled disc
+        trim = web[web.index('function trimIcon('):web.index('function iconImg(')]
+        self.assertIn('if(cover(z)>=0.985)', trim)
+        self.assertIn('o.fillStyle=bg; o.fillRect(0,0,size,size);', trim)
+        self.assertIn('x.drawImage(trimIcon(im,ICON_PX,color),0,0);', fn)
 
 
 if __name__ == '__main__':

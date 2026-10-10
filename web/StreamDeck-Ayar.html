@@ -910,21 +910,38 @@ function fit(t,max,font){ cx.font=font; t=String(t); if(cx.measureText(t).width<
 function drawIcon(id,x,y,size,color){ cx.save(); cx.translate(x,y); cx.scale(size/24,size/24); cx.strokeStyle=color; cx.lineWidth=2.2; cx.lineCap="round"; cx.lineJoin="round"; cx.stroke(new Path2D(ICONS[id]||XICONS[id]||ICONS.star)); cx.restore(); }
 const ICON_BG="#1E232C", ICON_PX=40;
 const iconCache=new Map();
-// 1.14.2: the icon's see-through margin is cut away, so the drawing fills the round bubble (device and preview)
-function trimIcon(im,size){
+// Round icons (1.14.2 / 1.14.3). The device draws the 40 px square as a circle inside the coloured ring, so the
+// picture has to cover that circle: 1) the see-through margin is cut away; 2) a full-bleed icon (square, rounded
+// square, squircle) is zoomed in a little until its shape covers the whole circle; 3) a cut-out logo (a shape on
+// nothing) is set on a filled disc in the app's colour, or a contrasting one, at a size that fits inside.
+const lum=(r,g,b)=>(0.2126*r+0.7152*g+0.0722*b)/255;
+const hexRgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+function trimIcon(im,size,color){
   const W=160, t=document.createElement("canvas"); t.width=t.height=W; const tx=t.getContext("2d",{willReadFrequently:true});
-  tx.drawImage(im,0,0,W,W); const d=tx.getImageData(0,0,W,W).data;
+  tx.drawImage(im,0,0,W,W); let d=tx.getImageData(0,0,W,W).data;
   let x0=W,y0=W,x1=-1,y1=-1;
   for(let y=0;y<W;y++) for(let x=0;x<W;x++) if(d[(y*W+x)*4+3]>=128){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
-  const c=document.createElement("canvas"); c.width=c.height=size; const cx2=c.getContext("2d",{willReadFrequently:true});
-  if(x1<0){ cx2.drawImage(im,0,0,size,size); return c; }
+  const c=document.createElement("canvas"); c.width=c.height=size; const o=c.getContext("2d",{willReadFrequently:true}); o.imageSmoothingQuality="high";
+  if(x1<0){ o.drawImage(im,0,0,size,size); return c; }
+  // the trimmed square, centred
   const side=Math.max(x1-x0+1,y1-y0+1), mx=(x0+x1+1)/2, my=(y0+y1+1)/2;
-  cx2.imageSmoothingQuality="high"; cx2.drawImage(t,mx-side/2,my-side/2,side,side,0,0,size,size); return c;
+  const q=document.createElement("canvas"); q.width=q.height=W; const qx=q.getContext("2d",{willReadFrequently:true});
+  qx.imageSmoothingQuality="high"; qx.drawImage(t,mx-side/2,my-side/2,side,side,0,0,W,W); d=qx.getImageData(0,0,W,W).data;
+  // share of the circle (radius R/z, centred) the icon covers
+  const cover=z=>{ const R=W/2/z; let n=0,k=0; for(let y=0;y<W;y+=2) for(let x=0;x<W;x+=2){ const dx=x+1-W/2, dy=y+1-W/2; if(dx*dx+dy*dy>R*R) continue; n++; if(d[(y*W+x)*4+3]>=128) k++; } return n?k/n:0; };
+  for(let z=1;z<=1.3001;z+=0.02) if(cover(z)>=0.985){ const s2=W/z; o.drawImage(q,(W-s2)/2,(W-s2)/2,s2,s2,0,0,size,size); return c; }
+  // cut-out logo: average colour of the drawing decides the disc colour
+  let r=0,g=0,b=0,n=0; for(let i=0;i<d.length;i+=4) if(d[i+3]>=128){ r+=d[i]; g+=d[i+1]; b+=d[i+2]; n++; }
+  const L=n?lum(r/n,g/n,b/n):0.5, ac=hexRgb(/^#[0-9a-f]{6}$/i.test(color||"")?color:"#64748B");
+  const bg=Math.abs(lum(...ac)-L)>=0.3?color:(L>0.5?"#2A2F38":"#F2F3F5");
+  o.fillStyle=bg; o.fillRect(0,0,size,size);                 // the device only shows the inscribed circle
+  const f=size*0.70; o.drawImage(q,(size-f)/2,(size-f)/2,f,f);
+  return c;
 }
 function iconImg(a){
   if(!a.iconData) return null;
   let e=iconCache.get(a.id);
-  if(!e||e.src!==a.iconData){ const im=new Image(); e={src:a.iconData,im,trim:null}; im.onload=()=>{ e.trim=trimIcon(im,96); drawScreen(); }; im.src=a.iconData; iconCache.set(a.id,e); }
+  if(!e||e.src!==a.iconData||e.color!==a.color){ const im=new Image(); e={src:a.iconData,color:a.color,im,trim:null}; im.onload=()=>{ e.trim=trimIcon(im,96,a.color); drawScreen(); renderList(); }; im.src=a.iconData; iconCache.set(a.id,e); }
   return e.trim;
 }
 function appBubble(a,x,y,r,alpha){
@@ -942,7 +959,7 @@ function appBubble(a,x,y,r,alpha){
   cx.restore();
 }
 function icoEl(a){
-  if(a.iconData) return el("span",{class:"pg-ico img"},el("img",{src:a.iconData,alt:""}));
+  if(a.iconData){ const t=iconImg(a); return el("span",{class:"pg-ico img"},el("img",{src:t?t.toDataURL():a.iconData,alt:""})); }
   return el("span",{class:"pg-ico",style:`background:${a.color}`},svgIcon(a.icon));
 }
 function drawScreen(){
@@ -2678,10 +2695,10 @@ function refreshConfigDiff(){
 }
 $("#showDiff").onclick=()=>{ const wasHidden=$("#diffList").hidden; if(wasHidden) refreshConfigDiff(); const list=$("#diffList"); list.hidden=!list.hidden; $("#showDiff").setAttribute("aria-expanded",String(!list.hidden)); $("#showDiff").textContent=list.hidden?"Farkları göster":"Farkları gizle"; };
 
-async function iconTo565(dataUrl){
+async function iconTo565(dataUrl,color){
   const im=new Image(); im.src=dataUrl; await im.decode();
   const c=document.createElement("canvas"); c.width=c.height=ICON_PX; const x=c.getContext("2d",{willReadFrequently:true});
-  x.drawImage(trimIcon(im,ICON_PX),0,0);   // 1.14.2: margin cut away, the drawing fills the bubble
+  x.drawImage(trimIcon(im,ICON_PX,color),0,0);   // 1.14.2 / 1.14.3: round, fills the bubble
   // 1.14.1: see-through pixels become exactly ICON_BG (0x1905), which the device skips, so the icon sits on the
   // theme's own bubble in light and dark mode. No half-blending into the dark colour (that left a dark rim).
   const d=x.getImageData(0,0,ICON_PX,ICON_PX), p=d.data;
@@ -2692,7 +2709,7 @@ async function iconTo565(dataUrl){
 }
 async function sendIcons(b){
   const list=cfg.apps.filter(a=>a.iconData);
-  for(let i=0;i<list.length;i++){ b.textContent=`İkonlar ${i+1}/${list.length}`; const raw=await iconTo565(list[i].iconData);
+  for(let i=0;i<list.length;i++){ b.textContent=`İkonlar ${i+1}/${list.length}`; const raw=await iconTo565(list[i].iconData,list[i].color);
     await send({cmd:"icon_set",app:list[i].id,w:ICON_PX,h:ICON_PX,data:b64(raw)},4000,true); }
   return list.length;
 }
