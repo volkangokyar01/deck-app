@@ -85,24 +85,33 @@ static void blendMask(const uint8_t* m, int W, int cx, int cy, uint16_t col, uin
 }
 
 // 40x40 RGB565 icon scaled to size, faded toward bg by alpha
-// App icons (40 x 40 RGB565) are round with see-through corners (1.14.1). The settings page flattens the
-// icon's transparent pixels onto #1E232C (0x1905); that colour and 0xF81F are skipped, and everything outside
-// the inscribed circle too, so the theme's own bubble shows through in light and dark mode alike.
+// App icons (40 x 40 RGB565, 1.14.2): the 40 px square is drawn as a circle of the given diameter, filling the
+// bubble inside its coloured ring. Bilinear scaling (the big bubble is 62 px across), the inscribed circle as mask
+// with a soft rim. The settings page flattens see-through pixels onto #1E232C (0x1905); that colour and 0xF81F
+// are skipped (their share of a pixel blends into the bubble colour), so the theme's bubble shows through.
 static inline bool pixClear(uint16_t c) { return c == 0x1905 || c == 0xF81F; }
 static void drawPix(const uint16_t* pix, int cx, int cy, int size, float alpha, uint16_t bg, uint16_t edge) {
-  // round mask a little inside the 40 px square, so square and rounded-square program icons become circles;
-  // the outer pixel ring is blended into the bubble colour (edge) for a smooth rim
   int x0 = cx - size / 2, y0 = cy - size / 2;
-  float rr = size * 0.41f, lim = (rr + 0.5f) * (rr + 0.5f) * 4;
+  float R = size / 2.0f, sc = 40.0f / size;
   for (int y = 0; y < size; y++) {
-    int dy = 2 * y + 1 - size;
+    float py = y + 0.5f - R;
     for (int x = 0; x < size; x++) {
-      int dx = 2 * x + 1 - size, q = dx * dx + dy * dy;
-      if (q > lim) continue;                                         // outside the circle
-      uint16_t c = pix[(y * 40 / size) * 40 + (x * 40 / size)];
-      if (pixClear(c)) continue;
+      float px = x + 0.5f - R, d = sqrtf(px * px + py * py);
+      float rim = R - d + 0.5f; if (rim <= 0) continue;               // outside the circle
+      // bilinear sample of the 40 px source (pixel centres)
+      float sx = (x + 0.5f) * sc - 0.5f, sy = (y + 0.5f) * sc - 0.5f;
+      int ix = (int)floorf(sx), iy = (int)floorf(sy); float fx = sx - ix, fy = sy - iy;
+      float r = 0, g = 0, b = 0, w = 0;
+      for (int k = 0; k < 4; k++) {
+        int xx = constrain(ix + (k & 1), 0, 39), yy = constrain(iy + (k >> 1), 0, 39);
+        float wk = ((k & 1) ? fx : 1 - fx) * ((k >> 1) ? fy : 1 - fy);
+        uint16_t c = pix[yy * 40 + xx]; if (pixClear(c) || wk <= 0) continue;
+        r += (c >> 11) * wk; g += ((c >> 5) & 63) * wk; b += (c & 31) * wk; w += wk;
+      }
+      if (w < 0.02f) continue;
+      uint16_t c = ((uint16_t)(r / w + 0.5f) << 11) | ((uint16_t)(g / w + 0.5f) << 5) | (uint16_t)(b / w + 0.5f);
       if (alpha < 1) c = mix(c, bg, alpha);
-      float cov = rr + 0.5f - sqrtf((float)q) / 2;
+      float cov = min(1.0f, rim) * min(1.0f, w);                       // circle rim and see-through share
       spr.drawPixel(x0 + x, y0 + y, cov >= 1 ? c : mix(c, edge, cov));
     }
   }
@@ -176,10 +185,10 @@ static void bubble(bool home, App* a, int x, int y, int r, float alpha, uint8_t 
   uint16_t* px = (!home && a) ? appPix(a) : nullptr;
   if (px) {
     uint16_t bgc = mix(ICON_BG, SC_BG, alpha);
+    int ring = r >= 15 ? (r > 20 ? 2 : 1) : 0;
     spr.fillSmoothCircle(x, y, r, bgc);
-    if (r >= 15) spr.fillArc(x, y, r - (r > 20 ? 2 : 1), r, 0, 360, mix(col, SC_BG, alpha));
-    int sz = r >= 25 ? 40 : (int)(r * 1.3f);
-    drawPix(px, x, y, sz, alpha, SC_BG, bgc);
+    drawPix(px, x, y, 2 * (r - ring) + (ring ? 2 : 0), alpha, SC_BG, bgc);   // 1.14.2: fills the ring's inside; the ring covers its soft rim
+    if (ring) spr.fillArc(x, y, r - ring, r, 0, 360, mix(col, SC_BG, alpha));
   } else {
     uint16_t fill = mix(col, SC_BG, alpha);
     spr.fillSmoothCircle(x, y, r, fill);
@@ -362,12 +371,12 @@ static void drawAppView() {
 static void miniIcon(App* a, int cx, int cy, uint16_t bg = SC_PANEL) {
   const int N = 14; int x0 = cx - N / 2, y0 = cy - N / 2;
   uint16_t* px = appPix(a);
-  if (px) {                                       // round, see-through corners (1.14.1); partly covered pixels blend into bg
+  if (px) {                                       // round, the whole 14 px circle (1.14.2); partly covered pixels blend into bg
     for (int y = 0; y < N; y++) for (int x = 0; x < N; x++) {
       int sx0 = x * 40 / N, sx1 = (x + 1) * 40 / N, sy0 = y * 40 / N, sy1 = (y + 1) * 40 / N, r = 0, g = 0, b = 0, n = 0, all = 0;
       for (int yy = sy0; yy < sy1; yy++) for (int xx = sx0; xx < sx1; xx++) {
         all++;
-        int dx = 2 * xx + 1 - 40, dy = 2 * yy + 1 - 40; if (dx * dx + dy * dy > 1076) continue;   // radius 16.4, as drawPix
+        int dx = 2 * xx + 1 - 40, dy = 2 * yy + 1 - 40; if (dx * dx + dy * dy > 1600) continue;   // the inscribed circle, as drawPix
         uint16_t c = px[yy * 40 + xx]; if (pixClear(c)) continue;
         r += c >> 11; g += (c >> 5) & 63; b += c & 31; n++;
       }

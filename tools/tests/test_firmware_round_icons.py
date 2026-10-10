@@ -1,4 +1,4 @@
-"""App icons are round with see-through corners in both themes (firmware 1.14.1)."""
+"""App icons are round, fill the bubble and have see-through corners in both themes (firmware 1.14.1 / 1.14.2)."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -19,6 +19,9 @@ class RoundIconTest(unittest.TestCase):
 #include <cstdint>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
+using std::min;
+template<class T> T constrain(T v, T a, T b){ return v < a ? a : v > b ? b : v; }
 static uint16_t screen[60][60];
 struct { void drawPixel(int x, int y, uint16_t c){ screen[y][x] = c; } } spr;
 static uint16_t mix(uint16_t a, uint16_t b, float t){ return t >= 0.5f ? a : b; }

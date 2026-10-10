@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.14.1)
+## Firmware (v1.14.2)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -364,3 +364,9 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Firmware 0x1905 ve 0xF81F piksellerini çizmez, ikonu 40 px karenin içinde 16,4 px yarıçaplı daireye keser (kare ve yuvarlak köşeli ikonlar da daire olur) ve dış halkayı balon rengine yumuşatır. Böylece ikon her iki temada temanın kendi balon rengi üzerinde durur. Ana ekrandaki 14 px küçük ikon da yuvarlak ve saydam köşeli.
 - Ayar sayfasındaki önizleme ve uygulama listesi ikonları da yuvarlak (listede bütün ikonlar daire).
 - Cihazdaki ikonlar "Cihaza yaz" ile yeniden gönderilir; eski ikonlarda saydam bölgeler zaten 0x1905 olduğu için güncellemeden sonra kareler hemen kaybolur, yalnız kenarda ince koyu çizgi kalabilir (bir kez Cihaza yaz ile düzelir).
+
+## 2026-10-10 — İkon balonun içini doldurur (firmware 1.14.2)
+- 1.14.1'de ikon 40 px karenin içinde 16,4 px yarıçapla kesiliyor, büyük balonda (66 px) küçük ve kırpılmış kalıyordu. Artık ikon renkli halkanın içini tamamen doldurur: büyük balonda 62 px, yandaki balonlarda 38 px çapında daire; 40 px kaynak çift doğrusal (bilinear) büyütülür, kenar yumuşak, halka ikonun kenarını örter. Ana ekrandaki 14 px ikon da daireyi doldurur.
+- Ayar sayfası ikonu göndermeden önce saydam kenar boşluğunu kırpar (alfa ≥ 128 piksellerin kutusu, kare, ortalanmış), böylece çizim balonu doldurur. Önizleme de aynı kırpmayı ve dolguyu kullanır.
+- Biçim aynı (40×40 RGB565). Kenar kırpması için "Cihaza yaz" ile ikonlar bir kez yeniden gönderilmeli; göndermeden de ikonlar büyür ama kenar boşluğu kalır.
+- Bedel: 40 px'ten 62 px'e büyütme biraz yumuşak görünür; daha keskin olması için ikon çözünürlüğü (biçim) ileride artırılabilir.
