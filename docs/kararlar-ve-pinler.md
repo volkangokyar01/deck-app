@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.15.0)
+## Firmware (v1.15.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -386,3 +386,8 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Sorun: cihaz yeniden başlatılınca / kapatılıp açılınca masaüstü uygulaması Bluetooth'a dönmüyordu, uygulamayı kapatıp açmak gerekiyordu.
 - Nedenler: 1) `send()` yanıt süresini yazma bittikten sonra başlatıyordu; yeniden başlayan cihaza Bluetooth yazması asılı kalınca `connect()` ve otomatik bağlanma döngüsü (`connecting`) sonsuza kadar bekliyordu. 2) `openBlePort` adımlarında (cihaz arama, gatt.connect, servis, bildirim, yazma) süre sınırı yoktu. 3) Yarı açık kalan bağlantı (hiçbir şey gelmiyor) hiç fark edilmiyordu; port dolu göründüğü için yeniden bağlanılmıyordu. 4) Başarısız denemeler 12 sn → 30 sn → 1 dk → 5 dk geri çekiliyordu.
 - Çözüm: `send()` süresi yazmadan önce başlar; Bluetooth adımlarına süre sınırı (20/15/10/5/10 sn, yazma 6 sn) — aşılırsa bağlantı kapatılır. Bekçi: Bluetooth'ta 10 sn hiçbir satır gelmezse `hello` sorulur, yanıt yoksa bağlantı kapatılıp yeniden kurulur. Bağlantı düşünce 3 dakika boyunca 4 sn'de bir denenir (geri çekilme sıfırlanır). 60 sn'den uzun süren bağlanma denemesi sıfırlanır.
+
+## 2026-10-11 — Ana sayfada saat, üç kart; Kartlar ekranı listeden açılıp kapanır (firmware 1.15.1)
+- Ana sayfanın durum satırında sayfa numarası (ve renkli nokta) yerine saat (SS:DD) yazar; diğer ekranlarda numara kalır. Tasarruf modunda dakika değişince yalnız bu alan (x 134–211) yenilenir.
+- `home.cards` 2 veya 3 kart alır. Üçüncü kart seçilince kartlar alt alta 49 / 49 / 51 px yüksekliğinde sıkışık çizilir (CPU / GPU: sıcaklık, eğri, çubuk; Ağ: indirme büyük, yükleme sağda, ping üstte; Saat, Hava, Döviz için de sıkışık düzen). Eski firmware ilk iki kartı okur.
+- Ayar sayfası: Ana sayfa → Kartlar'da "Kart 3 · isteğe bağlı" (Yok / kart seçimi). Soldaki listede Kartlar satırında aç / kapat anahtarı (`pages.widgets.enabled`, "Döndürgeç listesinde göster" ile aynı ayar).

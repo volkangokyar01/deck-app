@@ -287,9 +287,19 @@ static void drawBattery() {
     spr.fillTriangle(278, 6, 282, 6, 277, 13, SC_GREEN);
   }
 }
+// 1.15.1: home shows the time where the other screens show the page number (x0 .. x0 + 78; the BT / Wi-Fi icons follow)
+static void drawStatusClock(int x0) {
+  spr.fillRect(x0, 0, 78, 14, SC_BG);
+  struct tm t; if (!localTime(t)) return;
+  char b[8]; snprintf(b, sizeof b, "%02d:%02d", t.tm_hour, t.tm_min);
+  text(b, x0 + 2, 7, FSB11, SC_TEXT);
+}
 static void drawStatus(uint16_t dot, const char* link, int x0 = 2) {
-  spr.fillSmoothCircle(x0 + 4, 7, 4, dot);     // page colour (was a 3 px bar across the top)
-  text(items.size() ? String(sel + 1) + "/" + String(items.size()) : String("0/0"), x0 + 12, 7, FSB11, SC_SUB);
+  if (x0 > 2) drawStatusClock(x0);             // home
+  else {
+    spr.fillSmoothCircle(x0 + 4, 7, 4, dot);     // page colour (was a 3 px bar across the top)
+    text(items.size() ? String(sel + 1) + "/" + String(items.size()) : String("0/0"), x0 + 12, 7, FSB11, SC_SUB);
+  }
   // Link (1.13.2): a symbol instead of "usb" / "ble". Home already shows Bluetooth's state, so a BLE link adds nothing there.
   bool usb = !strcmp(link, "usb"), ble = !strcmp(link, "ble");
   bool linkIcon = !(x0 > 2 && ble);
@@ -407,6 +417,11 @@ static void tri(int cx, int cy, bool up, uint16_t c) {   // small ▲ / ▼
   else spr.fillTriangle(cx - 4, cy - 2, cx + 4, cy - 2, cx, cy + 3, c);
 }
 // big value (36 px) with a small unit raised beside it, like "54 °C"
+// compact value for the three-card home layout (cards 49 px high, 1.15.1)
+static void midValue(const String& v, const String& unit, int x, int y, uint16_t col) {
+  text(v, x, y, FB26, col);
+  if (unit.length()) text(unit, x + 2 + textW(v, FB26), y - 4, FSB12, col);
+}
 static void bigValue(const String& v, const String& unit, int x, int y, uint16_t col) {
   text(v, x, y, FN36, col);
   if (unit.length()) text(unit, x + 2 + textW(v, FN36), y - 8, FSB12, col);
@@ -447,6 +462,18 @@ static void drawPcCard(int x, int y, int w, int h, bool gpu) {
       if (!isnan(p.vram)) extra += (extra.length() ? " · " : "") + fmtNum(p.vram, 1) + (!isnan(p.vramTotal) ? "/" + String((int)roundf(p.vramTotal)) : String("")) + " GB";
     } else if (!isnan(p.clock)) extra = fmtNum(p.clock, 1) + " GHz";
   }
+  if (h < 60) {                                    // compact (three cards on home): value, trend, bar
+    if (hasT) midValue(String((int)roundf(p.temp)), "°C", x + 8, y + 30, col);
+    else if (hasL) midValue(String((int)roundf(p.load)), "%", x + 8, y + 30, col);
+    else midValue("--", "°C", x + 8, y + 30, SC_DIM);
+    if (hasT) trend(gpu ? st.gpuT : st.cpuT, x + w - 78, y + 21, 70, 16, lineCol, false);
+    else if (!ok) text(fit(waitText(), w - 90, FM9), x + w - 8, y + 30, FM9, SC_DIM, textdatum_t::middle_right);
+    int bx = x + 8, bw = w - 16, by = y + h - 6;
+    spr.fillRoundRect(bx, by, bw, 3, 1, SC_LINE);
+    float frac = hasT ? p.temp / 110.0f : hasL ? p.load / 100.0f : -1;
+    if (frac >= 0) spr.fillRoundRect(bx, by, max(3, (int)(bw * min(1.0f, frac))), 3, 1, lineCol);
+    return;
+  }
   String name = gpu ? S.gpuLabel : S.cpuLabel;
   if (!name.length()) name = p.name;
   if (!ok) name = waitText();
@@ -467,6 +494,14 @@ static void drawPcCard(int x, int y, int w, int h, bool gpu) {
 static void drawClockCard(int x, int y, int w, int h) {
   spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
   struct tm t;
+  if (h < 60) {                                    // compact: time left, date right
+    if (localTime(t)) {
+      char b[8]; snprintf(b, sizeof b, "%02d:%02d", t.tm_hour, t.tm_min);
+      text(b, x + 10, y + h / 2, FB26, SC_TEXT);
+      text(String(DAY_TR[t.tm_wday]) + " " + String(t.tm_mday) + " " + MON_TR[t.tm_mon], x + w - 10, y + h / 2, FSB12, SC_SUB, textdatum_t::middle_right);
+    } else { text("--:--", x + 10, y + h / 2, FB26, SC_DIM); text(fit(waitText(), w - 90, FM9), x + w - 10, y + h / 2, FM9, SC_DIM, textdatum_t::middle_right); }
+    return;
+  }
   if (localTime(t)) {
     char b[8]; snprintf(b, sizeof b, "%02d:%02d", t.tm_hour, t.tm_min);
     text(b, x + w / 2, y + 31, FN36, SC_TEXT, textdatum_t::middle_center);
@@ -525,6 +560,15 @@ static void drawWeatherCard(int x, int y, int w, int h) {
   text(rain, x + w - 8, y + 9, FSB11, SC_SUB, textdatum_t::middle_right);
   text(fit(city, w - 24 - textW(rain, FSB11), FB10), x + 8, y + 9, FB10, SC_SUB);
   uint8_t k = ok ? wxKind(st.wx.code) : (uint8_t)WX_NONE;
+  if (h < 60) {                                    // compact: icon, temperature, hi / lo
+    wxIcon(k, x + 22, y + 31);
+    bool hasT = ok && !isnan(st.wx.temp);
+    midValue(hasT ? String((int)roundf(st.wx.temp)) : String("--"), "°", x + 42, y + 31, hasT ? SC_TEXT : SC_DIM);
+    auto deg = [&](float v) { return ok && !isnan(v) ? String((int)roundf(v)) + "°" : String("-"); };
+    String hl = deg(st.wx.hi) + " / " + deg(st.wx.lo);
+    text(ok ? hl : fit(waitText(), w - 100, FM9), x + w - 8, y + 31, ok ? FSB12 : FM9, ok ? SC_SUB : SC_DIM, textdatum_t::middle_right);
+    return;
+  }
   text(fit(ok ? String(WX_NAME[k]) : waitText(), w - 16, FM9), x + 8, y + 20, FM9, SC_DIM);
   wxIcon(k, x + 23, y + 47);
   bool hasT = ok && !isnan(st.wx.temp);
@@ -543,12 +587,12 @@ static void drawFxCard(int x, int y, int w, int h) {
   bool ok = fxFresh();
   spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
   for (int i = 0; i < 2; i++) {
-    int ry = i ? y + h - 20 : y + 20;
+    int ry = h < 60 ? (i ? y + h - 13 : y + 14) : (i ? y + h - 20 : y + 20);   // compact: two tight rows
     float v = i ? st.fx.eur : st.fx.usd, chg = i ? st.fx.eurChg : st.fx.usdChg;
     text(i ? "EUR" : "USD", x + 8, ry, FB11, SC_SUB);
     bool has = ok && !isnan(v);
     String vs = has ? fmtNum(v, 2) : String("-");
-    bool narrow = w < 180;                       // half-width card on the widgets page
+    bool narrow = w < 180 || h < 60;             // half-width card on the widgets page, or three cards on home
     UFont& vf = narrow ? FB18 : FB26;
     text(vs, x + 42, ry, vf, has ? SC_TEXT : SC_DIM);
     if (has && !narrow) text("TL", x + 45 + textW(vs, vf), ry + 4, FM9, SC_DIM);
@@ -582,6 +626,17 @@ static void drawNetCard(int x, int y, int w, int h) {
     text(ps, x + w - 8, y + 9, FSB11, p < 40 ? SC_GREEN : p < 100 ? SC_HL : SC_RED, textdatum_t::middle_right);
     text("ping", x + w - 12 - textW(ps, FSB11), y + 9, FM9, SC_DIM, textdatum_t::middle_right);
   } else text("ping -", x + w - 8, y + 9, FSB11, SC_DIM, textdatum_t::middle_right);
+  if (h < 60) {                                    // compact: download big, upload right
+    String v, u; rate(ok ? st.net.down : NAN, v, u);
+    tri(x + 11, y + 30, false, SC_ACC);
+    midValue(v, u, x + 18, y + 30, ok && !isnan(st.net.down) ? SC_TEXT : SC_DIM);
+    if (!ok) { text(fit(waitText(), w - 110, FM9), x + w - 8, y + 30, FM9, SC_DIM, textdatum_t::middle_right); return; }
+    rate(st.net.up, v, u);
+    String up = v == "--" ? String("-") : v + " " + u;
+    text(up, x + w - 8, y + 30, FSB12, SC_SUB, textdatum_t::middle_right);
+    tri(x + w - 15 - textW(up, FSB12), y + 30, true, SC_SUB);
+    return;
+  }
   if (!ok) text(fit(waitText(), w - 16, FM9), x + 8, y + 20, FM9, SC_DIM);
   else { tri(x + 11, y + 20, false, SC_ACC); text("indirme", x + 18, y + 20, FM9, SC_DIM); }
   String v, u;
@@ -686,10 +741,14 @@ static void drawWidgets() {
   }
 }
 
+// home cards: two (76 + 75 px) or three (49 + 49 + 51 px) stacked right of the animation
+static void homeCardRect(int i, int& y, int& h) {
+  if (S.ccount >= 3) { static const int16_t Y[3] = { 15, 66, 117 }, H[3] = { 49, 49, 51 }; y = Y[i]; h = H[i]; }
+  else { y = i ? 93 : 15; h = i ? 75 : 76; }
+}
 static void drawHome() {
   drawAnim(2, 2, 128, 128, millis());               // top-left corner; the status row sits to its right
-  drawCard(S.cards[0], 132, 15, 186, 76);   // the two widget slots (home.cards)
-  drawCard(S.cards[1], 132, 93, 186, 75);
+  for (int i = 0; i < S.ccount; i++) { int y, h; homeCardRect(i, y, h); drawCard(S.cards[i], 132, y, 186, h); }   // 2 or 3 cards (1.15.1)
   // A / B under the animation, one row each (A on top): letter, the app's icon, name
   const String* q[2] = { &S.quickA, &S.quickB };
   for (int i = 0; i < 2; i++) {
@@ -714,7 +773,8 @@ static void renderEcoAnim(uint32_t now) {
 static void renderEcoClock() {
   if (items.empty() || mailActive()) return;
   if (items[sel].home) {
-    for (int i = 0; i < 2; i++) if (S.cards[i] == W_CLOCK) { int y = i ? 93 : 15; drawClockCard(132, y, 186, 76); pushRegion(132, y, 186, 76); }
+    drawStatusClock(134); pushRegion(134, 0, 78, 14);   // the time in the status row (1.15.1)
+    for (int i = 0; i < S.ccount; i++) if (S.cards[i] == W_CLOCK) { int y, h; homeCardRect(i, y, h); drawClockCard(132, y, 186, h); pushRegion(132, y, 186, h); }
   } else if (items[sel].kind == K_WIDGETS) {
     // drawWidgets shares the layout; only clock rectangles reach the LCD.
     drawWidgets();

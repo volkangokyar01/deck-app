@@ -43,7 +43,7 @@ struct Settings {
   bool kbFallback = false;   // type Win+R / Start / Spotlight when the desktop app is not running (off by default)      // keyboard fallback style: Windows (Win+R / Start) or macOS (Spotlight)
   // home
   bool homeOn = true;
-  uint8_t cards[2] = { W_CPU, W_GPU };   // the two home-screen slots
+  uint8_t cards[3] = { W_CPU, W_GPU, W_NET }, ccount = 2;   // home-screen slots: two, or three (1.15.1)
   String cpuLabel, gpuLabel;              // "" = name from stats
   String wxCity;                          // home.weather.city: label until the app sends weather
   int cpuWarn = 85, cpuCrit = 95, gpuWarn = 80, gpuCrit = 87;
@@ -228,9 +228,9 @@ static void applyConfig(JsonObjectConst c) {
   N.animFps = constrain(an["fps"] | 15, 1, 30);
 
   JsonArrayConst cards = h["cards"];          // unknown / missing entries keep the defaults (cpu, gpu)
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < 3; i++) {
     const char* w = cards[i] | "";
-    for (uint8_t k = 0; k < 6; k++) if (!strcmp(w, WIDGET_IDS[k])) N.cards[i] = k;
+    for (uint8_t k = 0; k < 6; k++) if (!strcmp(w, WIDGET_IDS[k])) { N.cards[i] = k; if (i == 2) N.ccount = 3; }
   }
   N.wxCity = (const char*)(h["weather"]["city"] | "");
 
