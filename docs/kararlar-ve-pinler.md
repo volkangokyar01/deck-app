@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.14.2)
+## Firmware (v1.15.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -374,3 +374,10 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 ## 2026-10-10 — Kare ikonlar da tam daire (ayar sayfası, firmware değişmedi)
 - Cihaz 40 px ikonun iç teğet dairesini halkanın içine çizer (1.14.2); ikonun bu daireyi kaplaması gerekir. Ayar sayfası ikonu gönderirken (ve önizlemede) artık: 1) saydam kenar boşluğunu kırpar; 2) kare, yuvarlak köşeli kare, macOS tarzı ikonu dairenin %98,5'ini kaplayana kadar en çok 1,3 kat yakınlaştırır (köşeler zaten görünmez); 3) bu yetmiyorsa (arka planı olmayan logo) ikonu uygulamanın rengiyle dolu bir dairenin üstüne %70 boyutla koyar; renk logoya çok yakınsa koyu (#2A2F38) ya da açık (#F2F3F5) zemin seçilir.
 - Uygulama listesindeki ikonlar da bu sonucu gösterir. Cihaza "Cihaza yaz" ile gider.
+
+## 2026-10-10 — 64 px ikonlar: cihaz önizlemeyle aynı (firmware 1.15.0)
+- Sorun: önizleme ikonu yüksek çözünürlüklü kaynaktan çiziyordu, cihaz ise 40×40 veriyi 62 px'e büyütüyordu; cihazdaki ikon önizlemeden belirgin biçimde bulanık ve farklıydı.
+- İkon biçimi 64×64 RGB565 (8192 bayt) oldu; büyük balonda (62 px) neredeyse 1:1 çizilir. `icon_set` 64 veya 40 kabul eder (boyuttan anlaşılır: 8192 / 3200 bayt), `/icons/<id>.bin` dosya boyutuyla okunur, `App.pixN` kenarı tutar. Eski 40 px ikonlar çalışmaya devam eder.
+- Ayar sayfası cihaz 1.15.0 veya yeniyse 64 px, değilse 40 px gönderir. Yeni eklenen ikonlar 128 px saklanır (önce 80 px). Önizleme cihaza giden aynı 64 px pikselleri kullanır; cihazın çizimi tarayıcıda taklit edilerek önizlemeyle karşılaştırıldı.
+- Bellek: PSRAM'de ikon başına 8 KB (16 uygulama 128 KB); PSRAM yoksa ekrandaki 6 ikon iç RAM'de (en çok 48 KB). Komut satırı tamponu 128 KB, ikon satırı ~11 KB.
+- Cihazdaki ikonların keskinleşmesi için firmware yüklendikten sonra "Cihaza yaz" gerekir (ikonlar 64 px yeniden gönderilir).

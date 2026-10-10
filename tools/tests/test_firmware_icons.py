@@ -26,14 +26,14 @@ String operator+(const char* a, const String& b){ return String(std::string(a)+b
 uint32_t ms=1000; uint32_t millis(){ return ms++; }
 bool psram=false; bool psramOk(){ return psram; } void* ps_malloc(size_t n){ return malloc(n); }
 int reads=0, mallocs=0; std::vector<void*> freed;
-struct File { bool ok; explicit operator bool() const { return ok; } size_t read(uint8_t* d, size_t n){ memset(d,7,n); reads++; return n; } void close(){} };
+struct File { bool ok; explicit operator bool() const { return ok; } size_t size() const { return 8192; } size_t read(uint8_t* d, size_t n){ memset(d,7,n); reads++; return n; } void close(){} };   // 64 px icons (1.15.0)
 struct { File open(const String& p, const char*){ return File{p.find("missing")==std::string::npos}; } } LittleFS;
-struct App { String id; bool img=true; uint16_t* pix=nullptr; };
+struct App { String id; bool img=true; uint16_t* pix=nullptr; uint8_t pixN=40; };
 struct { std::vector<App> apps; } S;
 ''' + code + r'''
 int main(){
   S.apps.resize(10); for(int i=0;i<10;i++) S.apps[i].id=String("a")+std::to_string(i);
-  for(int i=0;i<6;i++) assert(appPix(&S.apps[i]));            // fills the 6 slots
+  for(int i=0;i<6;i++) assert(appPix(&S.apps[i]) && S.apps[i].pixN==64);   // fills the 6 slots, side from the file size
   assert(reads==6);
   assert(appPix(&S.apps[0])==S.apps[0].pix && reads==6);      // cached: no read
   assert(appPix(&S.apps[6]));                                   // evicts the least recent (apps[1])

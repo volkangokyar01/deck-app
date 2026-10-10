@@ -31,7 +31,7 @@ int main(){
   for (int i = 0; i < 1600; i++) pix[i] = 0x07E0;          // opaque green square
   for (int i = 0; i < 40; i++) pix[20 * 40 + i] = 0x1905;  // a see-through row (flattened background)
   memset(screen, 0, sizeof screen);
-  drawPix(pix, 30, 30, 40, 1, 0, 0);
+  drawPix(pix, 40, 30, 30, 40, 1, 0, 0);
   assert(screen[10][10] == 0);        // top-left corner of the 40 px square: outside the circle
   assert(screen[14][30] == 0x07E0);   // near the top middle: inside the circle (radius 16.4)
   assert(screen[30][10] == 0);        // icon row 20 is see-through
@@ -58,8 +58,19 @@ int main(){
         trim = web[web.index('function trimIcon('):web.index('function iconImg(')]
         self.assertIn('if(cover(z)>=0.985)', trim)
         self.assertIn('o.fillStyle=bg; o.fillRect(0,0,size,size);', trim)
-        self.assertIn('x.drawImage(trimIcon(im,ICON_PX,color),0,0);', fn)
+        self.assertIn('x.drawImage(trimIcon(im,N,color),0,0);', fn)
 
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class HiResIconTest(unittest.TestCase):
+    def test_64px_icons_for_new_firmware_40px_stays_readable(self):
+        proto = (ROOT / 'firmware/VolkanDeck/Proto.h').read_text()
+        store = (ROOT / 'firmware/VolkanDeck/Store.h').read_text()
+        web = (ROOT / 'web/body.html').read_text()
+        self.assertIn('static uint8_t iconSide(size_t bytes) { return bytes == 8192 ? 64 : bytes == 3200 ? 40 : 0; }', store)
+        self.assertIn('uint8_t side = iconSide(n);', proto)
+        self.assertIn('const iconPx = () => deviceInfo?.fw && verGE(deviceInfo.fw, ICON_HI_FW) ? ICON_PX_HI : ICON_PX;', web)
+        self.assertIn('const N=iconPx(), raw=await iconTo565(list[i].iconData,list[i].color,N);', web)

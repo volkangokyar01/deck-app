@@ -214,22 +214,31 @@ static void handleLine(char* buf, size_t len) {
     Launch L; parseLaunch(doc["launch"], L);
     if (runLaunch(L, L.value)) replyOk(id); else replyErr(id, "no_host");
   }
-  else if (!strcmp(cmd, "icon_set")) {
+  else if (!strcmp(cmd, "icon_set")) {              // 1.15.0: 64 x 64 (8192 bytes) or 40 x 40 (3200)
     String aid = (const char*)(doc["app"] | "");
     const char* data = doc["data"] | "";
-    static uint8_t tmp[3300];
-    size_t n = b64decode(data, tmp, sizeof(tmp));
-    if (n != 3200 || !aid.length()) { replyErr(id, "bad_icon"); return; }
+    uint8_t* tmp = (uint8_t*)bigAlloc(8300);
+    if (!tmp) { replyErr(id, "no_mem"); return; }
+    size_t n = b64decode(data, tmp, 8300);
+    uint8_t side = iconSide(n);
+    if (!side || !aid.length()) { free(tmp); replyErr(id, "bad_icon"); return; }
     LittleFS.mkdir("/icons");
     File f = LittleFS.open("/icons/" + aid + ".bin", "w");
-    if (!f) { replyErr(id, "fs"); return; }
-    f.write(tmp, 3200); f.close();
+    if (!f) { free(tmp); replyErr(id, "fs"); return; }
+    f.write(tmp, n); f.close();
     App* a = appById(aid);
     if (a) {
       a->img = true;
-      if (!a->pix && psramOk()) a->pix = (uint16_t*)ps_malloc(3200);   // without PSRAM: loaded when drawn
-      if (a->pix) memcpy(a->pix, tmp, 3200);
+      if (a->pix) {                                     // drop the old pixels (size may change)
+        bool cached = false;
+        for (auto& s : iconSlots) if (s.p == a->pix) { s.a = nullptr; cached = true; }
+        if (!cached) free(a->pix);
+        a->pix = nullptr;
+      }
+      a->pixN = side;
+      if (psramOk()) { a->pix = (uint16_t*)ps_malloc(n); if (a->pix) memcpy(a->pix, tmp, n); }   // without PSRAM: loaded when drawn
     }
+    free(tmp);
     replyOk(id);
   }
   else if (!strcmp(cmd, "anim_begin")) {            // written straight to flash (/anim.tmp), no big RAM buffer needed

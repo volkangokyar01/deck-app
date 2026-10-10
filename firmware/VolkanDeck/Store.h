@@ -23,7 +23,8 @@ struct App {
   bool     img = false;
   bool     inWheel = true;
   Launch   launch;
-  uint16_t* pix = nullptr;   // 40x40 RGB565 (PSRAM) when img
+  uint16_t* pix = nullptr;   // pixN x pixN RGB565 (PSRAM) when img
+  uint8_t  pixN = 40;        // 1.15.0: 64 (sharp in the 62 px bubble) or 40 (older settings pages)
 };
 
 struct Settings {
@@ -129,7 +130,7 @@ static void parseLaunch(JsonObjectConst o, Launch& L) {
   L.path = (const char*)(o["path"] | ""); L.mac = (const char*)(o["mac"] | "");
 }
 
-/* App icons (40 x 40 RGB565, 3.2 KB each, /icons/<id>.bin). With PSRAM every icon stays loaded there.
+/* App icons (64 x 64 RGB565, 8 KB each since 1.15.0; 40 x 40, 3.2 KB from older settings pages; /icons/<id>.bin). With PSRAM every icon stays loaded there.
    Without PSRAM (1.12.0) only the icons on screen are in RAM: a small cache filled when an icon is drawn
    (16 apps used to hold ~51 KB of internal RAM, which left too little for "Cihaza yaz"). */
 static const int ICON_CACHE = 6;
@@ -140,44 +141,52 @@ static void freeAppPix() {
   for (auto& a : S.apps) { if (a.pix && !iconInCache(a.pix)) free(a.pix); a.pix = nullptr; }
   for (auto& s : iconSlots) { if (s.p) free(s.p); s = IconSlot(); }   // given back too: set_config needs the heap
 }
-static bool readIcon(const String& id, uint16_t* dst) {
+// icon side from the file size: 8192 bytes = 64 x 64 (1.15.0), 3200 = 40 x 40; 0 = no usable file
+static uint8_t iconSide(size_t bytes) { return bytes == 8192 ? 64 : bytes == 3200 ? 40 : 0; }
+static uint8_t iconFileSide(const String& id) {
+  File f = LittleFS.open("/icons/" + id + ".bin", "r"); if (!f) return 0;
+  uint8_t n = iconSide(f.size()); f.close(); return n;
+}
+static bool readIcon(const String& id, uint16_t* dst, uint8_t n) {
   File f = LittleFS.open("/icons/" + id + ".bin", "r"); if (!f) return false;
-  bool ok = f.read((uint8_t*)dst, 3200) == 3200; f.close(); return ok;
+  size_t b = (size_t)n * n * 2; bool ok = f.size() == b && f.read((uint8_t*)dst, b) == b; f.close(); return ok;
 }
 // the icon's pixels, loading them when needed; nullptr = draw the line icon instead
 static uint16_t* appPix(App* a) {
   if (!a || !a->img) return nullptr;
   uint32_t now = millis() | 1;
   if (a->pix) { for (auto& s : iconSlots) if (s.a == a) s.used = now; return a->pix; }
+  uint8_t n = iconFileSide(a->id); if (!n) { a->img = false; return nullptr; }
+  a->pixN = n;
   if (psramOk()) {
-    a->pix = (uint16_t*)ps_malloc(3200);
-    if (a->pix && !readIcon(a->id, a->pix)) { free(a->pix); a->pix = nullptr; a->img = false; }
+    a->pix = (uint16_t*)ps_malloc((size_t)n * n * 2);
+    if (a->pix && !readIcon(a->id, a->pix, n)) { free(a->pix); a->pix = nullptr; a->img = false; }
     return a->pix;
   }
   IconSlot* s = &iconSlots[0];
   for (auto& c : iconSlots) { if (!c.a) { s = &c; break; } if (c.used < s->used) s = &c; }
   if (s->a) s->a->pix = nullptr;                 // evict the least recently drawn icon
   s->a = nullptr;
-  if (!s->p) s->p = (uint16_t*)malloc(3200);
+  if (s->p) free(s->p);                          // sized for this icon (40 or 64 px)
+  s->p = (uint16_t*)malloc((size_t)n * n * 2);
   if (!s->p) return nullptr;
-  if (!readIcon(a->id, s->p)) { a->img = false; return nullptr; }
+  if (!readIcon(a->id, s->p, n)) { a->img = false; return nullptr; }
   s->a = a; s->used = now; a->pix = s->p;
   return a->pix;
 }
 
 static void loadAppIcons() {
   if (!psramOk()) {                               // no PSRAM: only check the files, load on first draw
-    for (auto& a : S.apps) if (a.img && !LittleFS.exists("/icons/" + a.id + ".bin")) a.img = false;
+    for (auto& a : S.apps) if (a.img && !iconFileSide(a.id)) a.img = false;
     return;
   }
   for (auto& a : S.apps) {
     if (!a.img) continue;
-    String p = "/icons/" + a.id + ".bin";
-    File f = LittleFS.open(p, "r");
-    if (!f) { a.img = false; continue; }
-    a.pix = (uint16_t*)(psramOk() ? ps_malloc(3200) : malloc(3200)); if (!a.pix) a.pix = (uint16_t*)malloc(3200);
-    if (a.pix && f.read((uint8_t*)a.pix, 3200) != 3200) { free(a.pix); a.pix = nullptr; a.img = false; }
-    f.close();
+    uint8_t n = iconFileSide(a.id);
+    if (!n) { a.img = false; continue; }
+    size_t b = (size_t)n * n * 2; a.pixN = n;
+    a.pix = (uint16_t*)ps_malloc(b); if (!a.pix) a.pix = (uint16_t*)malloc(b);
+    if (a.pix && !readIcon(a.id, a.pix, n)) { free(a.pix); a.pix = nullptr; a.img = false; }
   }
 }
 
