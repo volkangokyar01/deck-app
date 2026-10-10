@@ -2563,16 +2563,21 @@ async function send(obj,timeout=2500,quiet=false){
   // Firmware 1.0.0 has a 256-byte receive buffer: feed it slowly. 1.0.1+ reads on its own task.
   const fast = deviceInfo?.fw && verGE(deviceInfo.fw,"1.0.1");
   const CH = fast ? 4096 : 128;
-  await withWrite(async()=>{ for(let i=0;i<bytes.length;i+=CH){ await writer.write(bytes.subarray(i,i+CH)); if(!fast && bytes.length>CH) await new Promise(r=>setTimeout(r,15)); } });
+  // the timer starts before writing: a Bluetooth write to a deck that just rebooted can hang, and the caller
+  // (connect, the auto-connect loop) must not wait for it forever (2026-10-10)
   setTimeout(()=>{ if(pending.has(id)){ pending.delete(id); rejFn(new Error("Cihaz yanıt vermedi")); } },timeout);
+  const w=withWrite(async()=>{ for(let i=0;i<bytes.length;i+=CH){ await writer.write(bytes.subarray(i,i+CH)); if(!fast && bytes.length>CH) await new Promise(r=>setTimeout(r,15)); } });
+  await Promise.race([w, p.catch(()=>{})]);
+  w.catch(()=>{});
   return p;
 }
 function portLabel(){ try{ const i=port.getInfo(); return (i.usbVendorId!=null?i.usbVendorId.toString(16).padStart(4,"0"):"?")+":"+(i.usbProductId!=null?i.usbProductId.toString(16).padStart(4,"0"):"?"); }catch(e){ return "?"; } }
 function verGE(a,b){ const x=a.split(".").map(Number), y=b.split(".").map(Number); for(let i=0;i<3;i++){ if((x[i]||0)!==(y[i]||0)) return (x[i]||0)>(y[i]||0); } return true; }
 let rxBytes=0, rxSample="", lastStatus=null;
 const ESP_VID=0x303a;
+let lastRxAt=0;   // last line from the deck (Bluetooth watchdog)
 function onLine(line){
-  rxBytes+=line.length+1; if(rxSample.length<120) rxSample+=line.slice(0,120-rxSample.length)+" ";
+  lastRxAt=Date.now(); rxBytes+=line.length+1; if(rxSample.length<120) rxSample+=line.slice(0,120-rxSample.length)+" ";
   line=line.trim(); if(!line) return;
   if(line[0]!=="{"){ log("","  "+line); return; }
   let m; try{ m=JSON.parse(line); }catch(e){ log("er","← (bozuk) "+line); return; }
@@ -2609,18 +2614,25 @@ function bleErrorText(e){
   if(e&&e.name==="NotSupportedError") return "Bluetooth kullanılamıyor: "+m;
   return (e&&e.name?e.name+": ":"")+m;
 }
+// a step that does not finish in time fails (Windows can leave gatt.connect / a write hanging after the deck rebooted)
+const bleWithin=(pr,ms,what)=>{ let t; return Promise.race([pr,new Promise((_,rej)=>{ t=setTimeout(()=>rej(Object.assign(new Error(what+" zaman aşımı"),{name:"TimeoutError"})),ms); })]).finally(()=>clearTimeout(t)); };
 async function openBlePort(){
-  const dev=await navigator.bluetooth.requestDevice({filters:[{services:[VD_SVC]}]});
-  const gatt=await dev.gatt.connect();
-  const svc=await gatt.getPrimaryService(VD_SVC);
-  const rx=await svc.getCharacteristic(VD_RX), tx=await svc.getCharacteristic(VD_TX);
+  const dev=await bleWithin(navigator.bluetooth.requestDevice({filters:[{services:[VD_SVC]}]}),20000,"cihaz arama");
+  let gatt, svc, rx, tx;
+  try{
+    gatt=await bleWithin(dev.gatt.connect(),15000,"bağlanma");
+    svc=await bleWithin(gatt.getPrimaryService(VD_SVC),10000,"servis");
+    rx=await bleWithin(svc.getCharacteristic(VD_RX),5000,"yazma kanalı"); tx=await bleWithin(svc.getCharacteristic(VD_TX),5000,"okuma kanalı");
+  }catch(e){ try{ dev.gatt.disconnect(); }catch(_){} throw e; }
   const on={disconnect:[]}; let ctrl=null, closed=false;
   const P={isBle:true, chunk:20, name:dev.name||""};
   P.readable=new ReadableStream({start(c){ ctrl=c; }});
   tx.addEventListener("characteristicvaluechanged",e=>{ const v=e.target.value; try{ ctrl.enqueue(new Uint8Array(v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength))); }catch(_){} });
-  await tx.startNotifications();
-  P.writable=new WritableStream({ async write(chunk){ for(let i=0;i<chunk.length;i+=P.chunk) await rx.writeValueWithResponse(chunk.slice(i,i+P.chunk)); } });
-  const gone=()=>{ if(closed) return; closed=true; try{ ctrl.close(); }catch(_){} on.disconnect.forEach(f=>{ try{ f(); }catch(_){} }); };
+  try{ await bleWithin(tx.startNotifications(),10000,"bildirim"); }catch(e){ try{ dev.gatt.disconnect(); }catch(_){} throw e; }
+  P.writable=new WritableStream({ async write(chunk){
+    try{ for(let i=0;i<chunk.length;i+=P.chunk) await bleWithin(rx.writeValueWithResponse(chunk.slice(i,i+P.chunk)),6000,"yazma"); }
+    catch(e){ try{ dev.gatt.disconnect(); }catch(_){} gone(); throw e; } } });
+  const gone=()=>{ if(closed) return; closed=true; try{ ctrl.close(); }catch(_){} on.disconnect.forEach(f=>{ try{ f(); }catch(_){} }); window.onBleDropped?.(); };
   dev.addEventListener("gattserverdisconnected",gone);
   P.addEventListener=(t,f)=>{ (on[t]||=[]).push(f); };
   P.getInfo=()=>({bluetooth:true});

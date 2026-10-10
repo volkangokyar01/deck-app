@@ -75,6 +75,10 @@
   /* ---- automatic connection (main process picks the deck's port, no chooser) ---- */
   // USB first; with no cable to this computer, the deck's Bluetooth data channel (firmware 1.6.0+)
   let bleReady = null, bleTriedAt = 0, bleFails = 0, bleUnpairedNote = false;
+  // 2026-10-10: after a Bluetooth link drops (deck restarted or switched off and on) try again every 4 s for 3 minutes,
+  // instead of the slow back-off, so the app is back by itself without being restarted
+  let bleFastUntil = 0, connectingAt = 0;
+  window.onBleDropped = () => { bleFails = 0; bleTriedAt = 0; bleFastUntil = Date.now() + 180e3; };
   // Is the deck plugged into this computer? getPorts() may be empty until a port was picked once,
   // so ask the main process too (it answers requestPort without a chooser).
   const usbDeck = async () => {
@@ -82,8 +86,9 @@
     try { return !!(await navigator.serial.requestPort({ filters: [{ usbVendorId: ESP_VID }] })); } catch (e) { return false; }
   };
   window.__deckAutoConnect = async () => {
+    if (connecting && Date.now() - connectingAt > 60e3) { log('er', '  Bağlantı denemesi takıldı, yeniden deneniyor'); connecting = false; try { await disconnect(); } catch (e) {} }
     if (connecting || busy || (port && !port.isBle)) return;
-    connecting = true;
+    connecting = true; connectingAt = Date.now();
     try {
       if (port) {                                               // on Bluetooth: move to USB as soon as the cable is here
         if (!(await usbDeck())) return;
@@ -92,7 +97,7 @@
       await connect(true);                                      // USB always first
       // No cable to this computer: the deck's Bluetooth data channel
       // after failed tries wait longer (12 s, 30 s, 1 min, then 5 min) so Windows isn't asked to pair over and over
-      const bleWait = [12e3, 30e3, 60e3][bleFails] || 300e3;
+      const bleWait = Date.now() < bleFastUntil ? 4e3 : [12e3, 30e3, 60e3][bleFails] || 300e3;
       const bleDue = !port && cfg.device.connection !== 'usb' && Date.now() - bleTriedAt > bleWait;
       if (bleDue) {
         if (!('bluetooth' in navigator)) { if (bleReady !== false) log('er', '  Bluetooth: bu pencerede Web Bluetooth yok'); bleReady = false; }
@@ -366,6 +371,16 @@
     } catch (e) {} finally { statsPolling = false; }
   }
   setInterval(() => pollStats(), 1000);
+  // Bluetooth watchdog (2026-10-10): a deck that restarted can leave the link half open (nothing arrives, writes
+  // hang). The deck answers every second's stats; 10 s of silence → ask hello, no answer → drop and reconnect.
+  let bleProbe = false;
+  setInterval(async () => {
+    if (!port || !port.isBle || bleProbe || busy || connecting || Date.now() - lastRxAt < 10e3) return;
+    bleProbe = true;
+    try { await send({ cmd: 'hello' }, 2000, true); }
+    catch (e) { log('er', '  Bluetooth: cihaz yanıt vermiyor, yeniden bağlanılıyor'); try { await disconnect(); } catch (_) {} window.onBleDropped(); }
+    finally { bleProbe = false; }
+  }, 3000);
 
   /* ---- media + volume/brightness pages (firmware 1.3.0+): this computer feeds the deck ---- */
   const MEDIA_FW = '1.3.0';

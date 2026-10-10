@@ -381,3 +381,8 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Ayar sayfası cihaz 1.15.0 veya yeniyse 64 px, değilse 40 px gönderir. Yeni eklenen ikonlar 128 px saklanır (önce 80 px). Önizleme cihaza giden aynı 64 px pikselleri kullanır; cihazın çizimi tarayıcıda taklit edilerek önizlemeyle karşılaştırıldı.
 - Bellek: PSRAM'de ikon başına 8 KB (16 uygulama 128 KB); PSRAM yoksa ekrandaki 6 ikon iç RAM'de (en çok 48 KB). Komut satırı tamponu 128 KB, ikon satırı ~11 KB.
 - Cihazdaki ikonların keskinleşmesi için firmware yüklendikten sonra "Cihaza yaz" gerekir (ikonlar 64 px yeniden gönderilir).
+
+## 2026-10-10 — Cihaz yeniden başlayınca uygulama Bluetooth'a kendisi döner (uygulama, firmware değişmedi)
+- Sorun: cihaz yeniden başlatılınca / kapatılıp açılınca masaüstü uygulaması Bluetooth'a dönmüyordu, uygulamayı kapatıp açmak gerekiyordu.
+- Nedenler: 1) `send()` yanıt süresini yazma bittikten sonra başlatıyordu; yeniden başlayan cihaza Bluetooth yazması asılı kalınca `connect()` ve otomatik bağlanma döngüsü (`connecting`) sonsuza kadar bekliyordu. 2) `openBlePort` adımlarında (cihaz arama, gatt.connect, servis, bildirim, yazma) süre sınırı yoktu. 3) Yarı açık kalan bağlantı (hiçbir şey gelmiyor) hiç fark edilmiyordu; port dolu göründüğü için yeniden bağlanılmıyordu. 4) Başarısız denemeler 12 sn → 30 sn → 1 dk → 5 dk geri çekiliyordu.
+- Çözüm: `send()` süresi yazmadan önce başlar; Bluetooth adımlarına süre sınırı (20/15/10/5/10 sn, yazma 6 sn) — aşılırsa bağlantı kapatılır. Bekçi: Bluetooth'ta 10 sn hiçbir satır gelmezse `hello` sorulur, yanıt yoksa bağlantı kapatılıp yeniden kurulur. Bağlantı düşünce 3 dakika boyunca 4 sn'de bir denenir (geri çekilme sıfırlanır). 60 sn'den uzun süren bağlanma denemesi sıfırlanır.
