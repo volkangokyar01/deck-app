@@ -401,3 +401,6 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Uygulama: `win-stats.ps1` ön plandaki pencerenin süreç kimliğini de gönderir (`{nics, fg}`); `pickFps` o sürecin değerini seçer (Game Deck, Explorer ve kabuk süreçleri hariç, 4 sn'den eski veri yok sayılır). Cihaza `stats` içinde `fps: {fps, low, app}` grubu, saniyede bir.
 - Cihaz: yeni kart `fps` (Ana sayfa 2 / 3 kartı ve Kartlar ekranı). Büyük FPS (<30 kırmızı, <60 turuncu), oyun adı, "1% low", sağ üstte ağ kartındaki gibi renkli ping, FPS eğrisi; sıkışık (3 kartlı) düzende FPS, oyun adı ve 1% low tek satırda. Oyun yoksa "Oyun yok", veri hiç gelmiyorsa (macOS, kurulum yok) "FPS verisi yok".
 - Mevcut sensör kurulumları PresentMon içermez; Cihaz ayarlarında "Oyun FPS ölçümünü ekle" düğmesi kurulumu bir kez daha çalıştırır.
+
+## 2026-10-12 — Sensör kurulumu "PawnIO kurulumu başarısız (183)" vermiyor
+- PawnIO bilgisayarda zaten kuruluysa (önceki sensör kurulumu ya da başka program) kurucusu 183 (ERROR_ALREADY_EXISTS) döndürüyordu; betik bunu hata saydığı için "Sensör kurulumunu yenile" ve "Oyun FPS ölçümünü ekle" hep başarısız oluyordu. Artık PawnIO varsa kurucu çalıştırılmaz (sahiplik kaydı eskisi gibi), 183 de başarı sayılır.

@@ -40,3 +40,9 @@ test('firmware and settings page know the fps card; it shows ping too', () => {
   assert.match(web, /\["fps","FPS"\]\];/);
   assert.match(web, /else if \(id==="fps"\) drawFpsCard\(x,y,w,h\);/);
 });
+
+test('sensor setup keeps an existing PawnIO (exit 183 "already exists" no longer fails the refresh / FPS step)', () => {
+  const setup = read('app/sensor-setup.ps1');
+  assert.match(setup, /if \(-not \$pawnioPresent\) \{\n    \$p = Start-Process -FilePath \$signedSetup/);
+  assert.match(setup, /\$p\.ExitCode -notin @\(0, 3010, 183\)/);
+});

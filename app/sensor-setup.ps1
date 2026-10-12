@@ -54,8 +54,12 @@ try {
   $signedSetup = Join-Path $install 'PawnIO_setup.exe'
   Copy-Item -LiteralPath $Installer -Destination $signedSetup -Force
   Assert-Hash $signedSetup '1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032'
-  $p = Start-Process -FilePath $signedSetup -ArgumentList '-install', '-silent' -Wait -PassThru
-  if ($p.ExitCode -notin @(0, 3010)) { throw "PawnIO kurulumu başarısız ($($p.ExitCode))." }
+  # PawnIO already on this PC (an earlier install, or another program): keep it. Its setup answers 183
+  # (ERROR_ALREADY_EXISTS) then, which made "refresh" and the FPS step fail (2026-10-12).
+  if (-not $pawnioPresent) {
+    $p = Start-Process -FilePath $signedSetup -ArgumentList '-install', '-silent' -Wait -PassThru
+    if ($p.ExitCode -notin @(0, 3010, 183)) { throw "PawnIO kurulumu başarısız ($($p.ExitCode))." }
+  }
   # Record immediately, so a later task/DLL failure can still be uninstalled safely.
   @{ pawnioInstalledByUs = [bool]$owned; version = '2.2.0'; fps = 'presentmon-2.6.0'; date = [DateTimeOffset]::UtcNow.ToString('o') } |
     ConvertTo-Json -Compress | Set-Content -LiteralPath $markerFile -Encoding UTF8
