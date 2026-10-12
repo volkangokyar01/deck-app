@@ -61,10 +61,23 @@ try {
     Unregister-ScheduledTask -TaskName $taskName -TaskPath '\' -Confirm:$false
   }
 } catch { $failures.Add('Sensör görevi silinemedi: ' + $_.Exception.Message) }
+# In-game FPS task (2026-10-12): stop it, its PresentMon and the ETW session before the folder is removed
+$fpsTask = 'VolkanDeckFPS-' + $UserSid
+try {
+  $task = Get-ScheduledTask -TaskName $fpsTask -TaskPath '\' -ErrorAction SilentlyContinue
+  if ($task) { Stop-ScheduledTask -InputObject $task; Unregister-ScheduledTask -TaskName $fpsTask -TaskPath '\' -Confirm:$false }
+} catch { $failures.Add('FPS görevi silinemedi: ' + $_.Exception.Message) }
+try {
+  $pm = Join-Path $install 'PresentMon.exe'
+  foreach ($process in Get-CimInstance Win32_Process -Filter "Name = 'PresentMon.exe'") {
+    if ($process.ExecutablePath -and $process.ExecutablePath -ieq $pm) { Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue }
+  }
+  & (Join-Path $env:SystemRoot 'System32\logman.exe') stop GameDeckFPS -ets 2>$null | Out-Null
+} catch {}
 $stopped = $false
 try {
-  $helper = Join-Path $install 'win-sensors.ps1'
-  $pattern = '(?i)(?:^|\s)-File\s+"' + [regex]::Escape($helper) + '"(?:\s|$)'
+  $helpers = @((Join-Path $install 'win-sensors.ps1'), (Join-Path $install 'win-fps.ps1'))
+  $pattern = '(?i)(?:^|\s)-File\s+"(?:' + (($helpers | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')"(?:\s|$)'
   foreach ($process in Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'") {
     if ($process.ProcessId -ne $PID -and $process.CommandLine -match $pattern) {
       # Target this user's exact helper path; never kill all PowerShell processes.

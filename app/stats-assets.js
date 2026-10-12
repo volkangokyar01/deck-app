@@ -6,7 +6,9 @@ const cp = require('child_process');
 const ASSETS = {
   macmon: { version: '0.8.2', file: 'macmon-v0.8.2.tar.gz', url: 'https://github.com/vladkens/macmon/releases/download/v0.8.2/macmon-v0.8.2.tar.gz', sha256: '588d5bde79885ba36f693e5150911c10c3ad208a2e418a3f2aa827ac84a2d973' },
   lhm: { version: '0.9.6', file: 'LibreHardwareMonitor.zip', url: 'https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.6/LibreHardwareMonitor.zip', sha256: '086d9f1b5a99e643edc2cfaaac16051685b551e4c5ac0b32a57c58c0e529c001' },
-  pawnio: { version: '2.2.0', file: 'PawnIO_setup.exe', url: 'https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe', sha256: '1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032' }
+  pawnio: { version: '2.2.0', file: 'PawnIO_setup.exe', url: 'https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe', sha256: '1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032' },
+  // in-game FPS (2026-10-12): Intel PresentMon console, signed by Intel; checked again (hash + signature) by sensor-setup.ps1
+  presentmon: { version: '2.6.0', file: 'PresentMon-2.6.0-x64.exe', url: 'https://github.com/GameTechDev/PresentMon/releases/download/v2.6.0/PresentMon-2.6.0-x64.exe', sha256: 'b2a706bc6ad475749e3b7e3409263aa1e6906d45bdcf993f6dbc0f660188f1af' }
 };
 const hash = data => crypto.createHash('sha256').update(data).digest('hex');
 function run(file, args, timeout = 10000) {

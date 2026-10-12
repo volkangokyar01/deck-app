@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.15.2)
+## Firmware (v1.16.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -394,3 +394,10 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 
 ## 2026-10-12 — Saat bütün ekranlarda, sayfa numarası kaldırıldı (firmware 1.15.2)
 - Durum satırının solundaki sayfa numarası ("3/12") ve renkli nokta bütün ekranlardan kaldırıldı; yerine ana sayfadaki gibi saat (SS:DD) yazar. Dakika değişince ekran yeniden çizilir; tasarruf modunda yalnız saat alanı yenilenir. Önizleme aynı.
+
+## 2026-10-12 — Oyun içi FPS kartı, yanında ping (firmware 1.16.0, Windows)
+- Kaynak: Intel PresentMon 2.6.0 konsol aracı (`PresentMon-2.6.0-x64.exe`, SHA-256 `b2a706bc…88f1af`, Intel imzalı). Kare olayları (ETW) yönetici yetkisi istediği için sensör kurulumuyla aynı tek UAC adımında kurulur: uygulama indirip SHA-256'yı doğrular; yükseltilmiş `sensor-setup.ps1` kopyayı korumalı `Program Files\VolkanDeckSensors\<SID>`'e alır, hash'i ve Intel imzasını (O=Intel Corporation) yeniden doğrular ve `VolkanDeckFPS-<SID>` görevini (SYSTEM, oturum açılışında) kurar. Kaldırma görevi, PresentMon'u ve `GameDeckFPS` ETW oturumunu da kapatır.
+- `win-fps.ps1` (SYSTEM): PresentMon'u `--output_stdout --no_console_stats --no_track_gpu --no_track_input --no_track_display --exclude dwm.exe` ile çalıştırır, `MsBetweenPresents` sütunundan süreç başına son 1 sn'nin FPS'ini ve son 60 sn'nin %1 low'unu (99. yüzdelik kare süresi) hesaplar, her saniye `ProgramData\VolkanDeckSensors\<SID>\fps.json`'a yazar (yalnız son 2 sn'de kare gönderen süreçler).
+- Uygulama: `win-stats.ps1` ön plandaki pencerenin süreç kimliğini de gönderir (`{nics, fg}`); `pickFps` o sürecin değerini seçer (Game Deck, Explorer ve kabuk süreçleri hariç, 4 sn'den eski veri yok sayılır). Cihaza `stats` içinde `fps: {fps, low, app}` grubu, saniyede bir.
+- Cihaz: yeni kart `fps` (Ana sayfa 2 / 3 kartı ve Kartlar ekranı). Büyük FPS (<30 kırmızı, <60 turuncu), oyun adı, "1% low", sağ üstte ağ kartındaki gibi renkli ping, FPS eğrisi; sıkışık (3 kartlı) düzende FPS, oyun adı ve 1% low tek satırda. Oyun yoksa "Oyun yok", veri hiç gelmiyorsa (macOS, kurulum yok) "FPS verisi yok".
+- Mevcut sensör kurulumları PresentMon içermez; Cihaz ayarlarında "Oyun FPS ölçümünü ekle" düğmesi kurulumu bir kez daha çalıştırır.

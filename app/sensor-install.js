@@ -19,7 +19,9 @@ function createSensorInstaller({ fetch, cacheDir }) {
     const marker = sid && path.join(process.env.ProgramFiles || 'C:\\Program Files', 'VolkanDeckSensors', sid, 'install.json');
     let live = false;
     try { const age = Date.now() - JSON.parse(fs.readFileSync(file, 'utf8')).epoch * 1000; live = !sensorDisabled && age >= 0 && age < 5000; } catch (_) {}
-    return { installed: !!sid && (fs.existsSync(marker) || fs.existsSync(outputDir())), live };
+    // in-game FPS (2026-10-12): installed with the sensors; older installs lack PresentMon and need one more install
+    const fps = !!sid && fs.existsSync(path.join(process.env.ProgramFiles || 'C:\\Program Files', 'VolkanDeckSensors', sid, 'PresentMon.exe'));
+    return { installed: !!sid && (fs.existsSync(marker) || fs.existsSync(outputDir())), live, fps };
   }
   async function elevate(script, parameters) {
     fs.mkdirSync(cacheDir, { recursive: true });
@@ -106,9 +108,10 @@ exit 0
       const dir = path.join(cacheDir, 'windows-sensors');
       const installer = await download(fetch, ASSETS.pawnio, dir);
       const archive = await download(fetch, ASSETS.lhm, dir);
+      const presentmon = await download(fetch, ASSETS.presentmon, dir);
       const signature = await run(powershell(), ['-NoProfile', '-NonInteractive', '-Command', '(Get-AuthenticodeSignature -LiteralPath ' + quotePS(installer) + ').Status.ToString()']);
       if (signature.trim() !== 'Valid') throw new Error('PawnIO kurulum dosyasının imzası geçerli değil.');
-      const result = await elevate('sensor-setup.ps1', { Installer: installer, Archive: archive, Helper: path.join(__dirname, 'win-sensors.ps1') });
+      const result = await elevate('sensor-setup.ps1', { Installer: installer, Archive: archive, Helper: path.join(__dirname, 'win-sensors.ps1'), PresentMon: presentmon, FpsHelper: path.join(__dirname, 'win-fps.ps1') });
       if (result.ok) sensorDisabled = false;
       return result;
     } catch (e) { return { ok: false, message: 'Sensör kurulamadı: ' + e.message }; }
@@ -126,6 +129,7 @@ exit 0
     if (operation) return Promise.resolve({ ok: false, message: 'Sensör işlemi sürüyor; bitince tekrar deneyin.' });
     operation = action().finally(() => { operation = null; }); return operation;
   }
-  return { init, status, install: () => start(installOnce), uninstall: () => start(uninstallOnce), sensorFile: () => !sensorDisabled && outputDir() ? path.join(outputDir(), 'readings.json') : null };
+  return { init, status, install: () => start(installOnce), uninstall: () => start(uninstallOnce), sensorFile: () => !sensorDisabled && outputDir() ? path.join(outputDir(), 'readings.json') : null,
+    fpsFile: () => !sensorDisabled && outputDir() ? path.join(outputDir(), 'fps.json') : null };
 }
 module.exports = { createSensorInstaller };

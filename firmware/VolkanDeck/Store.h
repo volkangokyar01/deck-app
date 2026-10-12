@@ -5,8 +5,8 @@
 
 enum LaunchMethod : uint8_t { M_RUN = 0, M_SEARCH, M_TASKBAR, M_KEY };
 enum AnimKind : uint8_t { A_FAN = 0, A_RADAR, A_PULSE, A_EQ, A_CUSTOM, A_NONE };
-enum Widget : uint8_t { W_CPU = 0, W_GPU, W_CLOCK, W_WEATHER, W_FX, W_NET };
-static const char* WIDGET_IDS[6] = { "cpu", "gpu", "clock", "weather", "fx", "net" };
+enum Widget : uint8_t { W_CPU = 0, W_GPU, W_CLOCK, W_WEATHER, W_FX, W_NET, W_FPS };
+static const char* WIDGET_IDS[7] = { "cpu", "gpu", "clock", "weather", "fx", "net", "fps" };
 
 struct Launch {
   uint8_t method = M_RUN;
@@ -230,7 +230,7 @@ static void applyConfig(JsonObjectConst c) {
   JsonArrayConst cards = h["cards"];          // unknown / missing entries keep the defaults (cpu, gpu)
   for (int i = 0; i < 3; i++) {
     const char* w = cards[i] | "";
-    for (uint8_t k = 0; k < 6; k++) if (!strcmp(w, WIDGET_IDS[k])) { N.cards[i] = k; if (i == 2) N.ccount = 3; }
+    for (uint8_t k = 0; k < 7; k++) if (!strcmp(w, WIDGET_IDS[k])) { N.cards[i] = k; if (i == 2) N.ccount = 3; }
   }
   N.wxCity = (const char*)(h["weather"]["city"] | "");
 
@@ -252,7 +252,7 @@ static void applyConfig(JsonObjectConst c) {
     N.wcount = 0;
     for (JsonVariantConst v : wc) {
       const char* w = v | "";
-      for (uint8_t k = 0; k < 6; k++) if (!strcmp(w, WIDGET_IDS[k]) && N.wcount < 4) { N.wcards[N.wcount++] = k; break; }
+      for (uint8_t k = 0; k < 7; k++) if (!strcmp(w, WIDGET_IDS[k]) && N.wcount < 4) { N.wcards[N.wcount++] = k; break; }
     }
     if (!N.wcount) { N.wcards[0] = W_CPU; N.wcount = 1; }
   }

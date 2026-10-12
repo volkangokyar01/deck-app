@@ -5,7 +5,7 @@ const path = require('path');
 const cp = require('child_process');
 const tcp = require('net');
 const assets = require('./stats-assets');
-const RATES = { cpu: 1000, gpu: 1000, net: 1000, time: 60000, weather: 900000, fx: 1800000 };
+const RATES = { cpu: 1000, gpu: 1000, net: 1000, fps: 1000, time: 60000, weather: 900000, fx: 1800000 };
 const number = v => v !== null && v !== undefined && String(v).trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null;
 const range = (v, min, max) => { const n = number(v); return n !== null && n >= min && n <= max ? n : null; };
 const cpuName = s => String(s || '').replace(/\((R|TM)\)|\bCPU\b|@\s*[\d.]+\s*GHz/gi, '').replace(/\s+/g, ' ').trim() || null;
@@ -105,8 +105,22 @@ async function resolveWeatherLocation(fetch, geo, lastSystemLocation = null) {
   const ip = await resolveLocation(fetch);
   return ip ? { ...ip, source: 'ip' } : null;
 }
-function createStats({ fetch, cacheDir, platform = process.platform, arch = process.arch, sensorFile } = {}) {
+// In-game FPS (2026-10-12): fps.json from the SYSTEM PresentMon task lists every process that is presenting frames;
+// the one that owns the foreground window is the game. The app itself, Explorer and the shell are never shown.
+const FPS_SKIP = new Set(['game deck.exe', 'volkan deck.exe', 'explorer.exe', 'dwm.exe', 'searchhost.exe', 'shellexperiencehost.exe', 'startmenuexperiencehost.exe', 'textinputhost.exe']);
+function pickFps(data, fgPid, now = Date.now()) {
+  const none = { fps: null, low: null, app: null };
+  if (!data || !Array.isArray(data.procs) || !(now - data.epoch * 1000 < 4000 && now - data.epoch * 1000 >= -2000)) return none;
+  const p = data.procs.find(x => Number(x.pid) === Number(fgPid));
+  if (!p || FPS_SKIP.has(String(p.name || '').toLowerCase())) return none;
+  const fps = range(p.fps, 0, 2000), low = range(p.low, 0, 2000);
+  if (fps === null) return none;
+  return { fps, low, app: String(p.name || '').replace(/\.exe$/i, '').slice(0, 24) };
+}
+function createStats({ fetch, cacheDir, platform = process.platform, arch = process.arch, sensorFile, fpsFile } = {}) {
   const cache = { cpu: { name: cpuName(os.cpus()[0]?.model), temp: null, load: null, power: null, clock: null }, gpu: gpuEmpty(), net: { down: null, up: null, ping: null }, fx: { usd: null, eur: null, usdChg: null, eurChg: null } };
+  if (platform === 'win32') cache.fps = { fps: null, low: null, app: null };
+  let fgPid = 0;
   let running = false, previousCpu = null, previousNet = null, netAt = 0, netSeen = 0, sensorAt = 0, pingAt = 0;
   let weather = null, weatherKey = '', weatherGeneration = 0, weatherBusy = false, fxBusy = false, weatherAt = 0, fxAt = 0;
   let macSample = null, macAt = 0;
@@ -167,6 +181,11 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
       } catch (_) {} // absent/partial/stale output always leaves temp and power null
     }
     if (platform === 'win32' && Date.now() - sensorAt >= 5000) cache.gpu = gpuEmpty();
+    if (platform === 'win32') {
+      let data = null;
+      try { const f = typeof fpsFile === 'function' ? fpsFile() : fpsFile; if (f) data = JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch (_) {}
+      cache.fps = pickFps(data, fgPid);
+    }
     if (Date.now() - netSeen >= 5000) Object.assign(cache.net, { down: null, up: null });
   }
   function network(next) {
@@ -290,7 +309,11 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
       }).catch(() => {});
     }
     if (platform === 'win32') {
-      stream('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-stats.ps1')], line => { network(JSON.parse(line)); return true; });
+      stream('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-stats.ps1')], line => {
+        const j = JSON.parse(line);
+        if (j && j.nics) { fgPid = Number(j.fg) || 0; network(j.nics); } else network(j);   // older helper: counters only
+        return true;
+      });
       findNvidia().then(binary => {
         // TODO: AMD ADLX / Intel IGCL GPUs. For now every unsupported field stays null.
         if (running && binary) stream(binary, ['--id=0', '--query-gpu=name,temperature.gpu,utilization.gpu,power.draw,fan.speed,memory.used,memory.total', '--format=csv,noheader,nounits', '-lms', '1000'], line => {
@@ -302,4 +325,4 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
   function stop() { running = false; locationGeneration++; for (const t of timers) clearInterval(t); timers.clear(); for (const c of children) c.kill(); children.clear(); for (const s of sockets) s.destroy(); sockets.clear(); }
   return { start, stop, get, refreshWeather, refreshFx, refreshLocation };
 }
-module.exports = { createStats, RATES, parseNvidia, parseMacmon, parseNetstat, netDelta, cpuName, parseLocation, resolveLocation, parseReverseLocation, reverseLocation, resolveWeatherLocation };
+module.exports = { createStats, pickFps, RATES, parseNvidia, parseMacmon, parseNetstat, netDelta, cpuName, parseLocation, resolveLocation, parseReverseLocation, reverseLocation, resolveWeatherLocation };

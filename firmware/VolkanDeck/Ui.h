@@ -647,6 +647,36 @@ static void drawNetCard(int x, int y, int w, int h) {
   text("yükleme", x + 22 + textW(up, FSB12), y + h - 10, FM9, SC_DIM);
 }
 
+// fps (1.16.0): in-game FPS of the foreground game (Windows, PresentMon), 1 % low, game name, ping, trend
+static void pingText(int x, int y, int w) {          // "ping 18 ms" right-aligned, coloured like the network card
+  if (netFresh() && !isnan(st.net.ping)) {
+    float p = st.net.ping; String ps = String((int)roundf(p)) + " ms";
+    text(ps, x + w - 8, y, FSB11, p < 40 ? SC_GREEN : p < 100 ? SC_HL : SC_RED, textdatum_t::middle_right);
+    text("ping", x + w - 12 - textW(ps, FSB11), y, FM9, SC_DIM, textdatum_t::middle_right);
+  } else text("ping -", x + w - 8, y, FSB11, SC_DIM, textdatum_t::middle_right);
+}
+static void drawFpsCard(int x, int y, int w, int h) {
+  spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
+  bool ok = fpsFresh(), has = ok && !isnan(st.fps.fps);
+  text("FPS", x + 8, y + 9, FB10, SC_SUB);
+  pingText(x, y + 9, w);
+  uint16_t col = !has ? SC_DIM : st.fps.fps < 30 ? SC_RED : st.fps.fps < 60 ? SC_HL : SC_TEXT;
+  String v = has ? String((int)roundf(st.fps.fps)) : String("--");
+  String low = has && !isnan(st.fps.low) ? "1% " + String((int)roundf(st.fps.low)) : String("");
+  String note = has ? st.fps.app : ok ? String("Oyun yok") : String("FPS verisi yok");
+  if (h < 60) {                                   // compact (three cards on home)
+    midValue(v, has ? "fps" : "", x + 8, y + 30, col);
+    int lx = x + w - 8;
+    if (low.length()) { text(low, lx, y + 30, FSB12, SC_SUB, textdatum_t::middle_right); lx -= textW(low, FSB12) + 8; }
+    int vx = x + 14 + textW(v, FB26) + (has ? textW("fps", FSB12) + 4 : 0);
+    if (lx - vx > 20) text(fit(note, lx - vx, FM9), lx, y + 31, FM9, SC_DIM, textdatum_t::middle_right);
+    return;
+  }
+  text(fit(note, w - 16 - (low.length() ? textW(low, FM9) + 8 : 0), FM9), x + 8, y + 20, FM9, SC_DIM);
+  if (low.length()) text(low, x + w - 8, y + 20, FM9, SC_SUB, textdatum_t::middle_right);
+  bigValue(v, has ? "fps" : "", x + 7, y + 45, col);
+  if (has) trend(st.fpsH, x + w - 72, y + 30, 64, 26, SC_ACC, true);
+}
 static void drawCard(uint8_t wdg, int x, int y, int w, int h) {
   switch (wdg) {
     case W_GPU: drawPcCard(x, y, w, h, true); break;
@@ -654,6 +684,7 @@ static void drawCard(uint8_t wdg, int x, int y, int w, int h) {
     case W_WEATHER: drawWeatherCard(x, y, w, h); break;
     case W_FX: drawFxCard(x, y, w, h); break;
     case W_NET: drawNetCard(x, y, w, h); break;
+    case W_FPS: drawFpsCard(x, y, w, h); break;
     default: drawPcCard(x, y, w, h, false);
   }
 }

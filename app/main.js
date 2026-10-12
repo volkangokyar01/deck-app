@@ -30,7 +30,7 @@ if (IS_MAC || IS_WIN) {
 app.setPath('userData', path.join(app.getPath('appData'), 'Volkan Deck'));
 app.setName('Game Deck');
 const sensorInstaller = createSensorInstaller({ fetch: (...args) => net.fetch(...args), cacheDir: path.join(app.getPath('userData'), 'stats-cache') });
-const stats = createStats({ fetch: (...args) => net.fetch(...args), cacheDir: path.join(app.getPath('userData'), 'stats-cache'), sensorFile: sensorInstaller.sensorFile });
+const stats = createStats({ fetch: (...args) => net.fetch(...args), cacheDir: path.join(app.getPath('userData'), 'stats-cache'), sensorFile: sensorInstaller.sensorFile, fpsFile: sensorInstaller.fpsFile });
 if (IS_WIN) app.setAppUserModelId('com.volkan.deck');
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 

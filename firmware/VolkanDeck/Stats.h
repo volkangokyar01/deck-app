@@ -16,8 +16,9 @@ struct Stats {
   struct { float down = NAN, up = NAN, ping = NAN; uint32_t at = 0; } net;
   struct { String city; float temp = NAN, hi = NAN, lo = NAN, rain = NAN; int code = -1; uint32_t at = 0; } wx;
   struct { float usd = NAN, eur = NAN, usdChg = NAN, eurChg = NAN; uint32_t at = 0; } fx;
+  struct { float fps = NAN, low = NAN; String app; uint32_t at = 0; } fps;   // 1.16.0: in-game FPS (Windows, PresentMon)
   int64_t epoch = 0; int32_t tz = 0; uint32_t timeAt = 0;   // UTC seconds + local offset, at millis() timeAt
-  Hist cpuT, gpuT, netD;
+  Hist cpuT, gpuT, netD, fpsH;
 } st;
 bool statsDirty = false;
 
@@ -27,6 +28,7 @@ static bool gpuFresh() { return fresh(st.gpu.at, 5000); }
 static bool netFresh() { return fresh(st.net.at, 5000); }
 static bool wxFresh() { return fresh(st.wx.at, 2 * 3600000UL); }
 static bool fxFresh() { return fresh(st.fx.at, 2 * 3600000UL); }
+static bool fpsFresh() { return fresh(st.fps.at, 5000); }
 
 // Local time (1.11.0, no Wi-Fi): every "time" from the desktop app also sets the chip's own clock
 // (settimeofday). That clock keeps running through restarts, crashes and deep sleep ("Kapanıyor"),
@@ -84,6 +86,11 @@ static void parseStats(JsonObjectConst d) {
     JsonObjectConst o = d["fx"];
     st.fx.usd = num(o["usd"]); st.fx.eur = num(o["eur"]); st.fx.usdChg = num(o["usdChg"]); st.fx.eurChg = num(o["eurChg"]);
     st.fx.at = millis() | 1;
+  }
+  if (d["fps"].is<JsonObjectConst>()) {
+    JsonObjectConst o = d["fps"];
+    st.fps.fps = num(o["fps"]); st.fps.low = num(o["low"]); st.fps.app = (const char*)(o["app"] | ""); st.fps.at = millis() | 1;
+    st.fpsH.push(st.fps.fps);
   }
   if (d["time"].is<JsonObjectConst>() && d["time"]["epoch"].is<double>()) {
     st.epoch = (int64_t)d["time"]["epoch"].as<double>(); st.tz = (int32_t)(d["time"]["tz"] | 0.0); st.timeAt = millis() | 1;

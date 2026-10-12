@@ -172,8 +172,8 @@
 
   /* ---- optional Windows CPU sensor driver: explicit consent and one UAC ---- */
   if (OS === 'win32') {
-    let sensorWorking = false, sensorInstalled = false, sensorStatusRevision = 0;
-    const sensorNote = el('p', { class: 'hint', role: 'status', 'aria-live': 'polite', style: 'white-space:pre-line' }, 'CPU sıcaklığı için bir kez yönetici onayı gerekir.');
+    let sensorWorking = false, sensorInstalled = false, sensorFps = false, sensorStatusRevision = 0;
+    const sensorNote = el('p', { class: 'hint', role: 'status', 'aria-live': 'polite', style: 'white-space:pre-line' }, 'CPU sıcaklığı ve oyun içi FPS için bir kez yönetici onayı gerekir.');
     const consentText = el('p', { class: 'hint' });
     const consentConfirm = el('button', { class: 'btn primary' });
     const consentCancel = el('button', { class: 'btn', onclick: () => { sensorConsent.hidden = true; } }, 'Vazgeç');
@@ -181,7 +181,7 @@
     function renderSensorButtons() {
       sensorButton.disabled = sensorWorking; sensorRemove.disabled = sensorWorking;
       sensorRemove.hidden = !sensorInstalled;
-      sensorButton.textContent = sensorInstalled ? 'Sensör kurulumunu yenile' : 'CPU sıcaklığı için sürücüyü kur';
+      sensorButton.textContent = !sensorInstalled ? 'CPU sıcaklığı ve FPS için kur' : sensorFps ? 'Sensör kurulumunu yenile' : 'Oyun FPS ölçümünü ekle';
     }
     async function performSensorAction(remove) {
       if (sensorWorking) return;
@@ -193,7 +193,7 @@
         sensorNote.textContent = r.message;
         if (r.ok) sensorInstalled = !remove;
         // Check partial installs/removals too, without replacing the detailed result.
-        try { const s = await deck.sensorStatus(); sensorInstalled = s.installed; } catch (_) {}
+        try { const s = await deck.sensorStatus(); sensorInstalled = s.installed; sensorFps = !!s.fps; } catch (_) {}
       } catch (e) { sensorNote.textContent = (remove ? 'Sensör kaldırılamadı: ' : 'Sensör kurulamadı: ') + e.message; }
       finally { sensorWorking = false; renderSensorButtons(); }
     }
@@ -201,7 +201,7 @@
       if (sensorWorking) return;
       consentText.textContent = remove
         ? 'Bu kullanıcıya ait sensör görevi ve dosyaları kaldırılacak. PawnIO yalnız Game Deck (Volkan Deck) kurduysa ve başka bir Windows kullanıcısının sensör görevi yoksa kaldırılır. CPU sıcaklığı “—” görünecek. Devam edilsin mi?'
-        : 'Windows CPU sıcaklığını yalnız bir sürücü üzerinden okuyabildiği için imzalı, açık kaynaklı ve çekirdek düzeyinde çalışan PawnIO sürücüsü kurulacak. Bu kullanıcı her oturum açtığında sensörü yönetici yetkileriyle okuyan bir başlangıç görevi de kurulacak. Ağda dinleyen hiçbir hizmet yoktur. Kurulumu “Kaldır” düğmesiyle kaldırabilirsiniz.';
+        : 'Windows CPU sıcaklığını yalnız bir sürücü üzerinden okuyabildiği için imzalı, açık kaynaklı ve çekirdek düzeyinde çalışan PawnIO sürücüsü kurulacak. Oyun içi FPS için Intel\'in imzalı, açık kaynaklı PresentMon aracı kurulur; oyuna hiçbir şey eklemez, Windows\'un kare olaylarını okur. Bu kullanıcı her oturum açtığında sensörü ve FPS\'i yönetici yetkileriyle okuyan iki başlangıç görevi kurulacak. Ağda dinleyen hiçbir hizmet yoktur. Kurulumu “Kaldır” düğmesiyle kaldırabilirsiniz.';
       consentConfirm.textContent = remove ? 'Kaldır' : 'Anladım, kur';
       consentConfirm.onclick = () => performSensorAction(remove);
       sensorConsent.hidden = false; consentConfirm.focus();
@@ -209,15 +209,16 @@
     const sensorButton = el('button', { class: 'btn', onclick: () => askSensorConsent(false) }, 'CPU sıcaklığı için sürücüyü kur');
     const sensorRemove = el('button', { class: 'btn', hidden: true, onclick: () => askSensorConsent(true) }, 'Sensör sürücüsünü kaldır');
     const sensorBox = el('div', { class: 'panel', id: 'sensorPanel' },
-      el('div', { class: 'panel-h' }, el('h2', {}, 'CPU sıcaklığı')),
+      el('div', { class: 'panel-h' }, el('h2', {}, 'CPU sıcaklığı ve oyun FPS')),
       el('div', { class: 'panel-b' }, sensorNote, el('div', { class: 'row' }, sensorButton, sensorRemove), sensorConsent,
-        el('p', { class: 'hint' }, 'PawnIO sürücüsü ve yalnız sensör okuyan bir oturum açılış görevi kurulur. Kurmazsan CPU yükü çalışır; sıcaklık “—” görünür.')));
+        el('p', { class: 'hint' }, 'PawnIO sürücüsü, Intel PresentMon ve yalnız okuma yapan iki oturum açılış görevi kurulur. Kurmazsan CPU yükü çalışır; sıcaklık ve FPS “—” görünür. FPS kartı ön plandaki oyunun FPS\'ini gösterir.')));
     updateBox.after(sensorBox);
     const revision = sensorStatusRevision;
     deck.sensorStatus().then(s => {
       if (revision !== sensorStatusRevision) return;
-      sensorInstalled = s.installed; renderSensorButtons();
-      if (s.installed) sensorNote.textContent = s.live ? 'Sensör görevi çalışıyor.' : 'Sensör kurulmuş; değer bekleniyor. Gerekirse kurulumu yenile.';
+      sensorInstalled = s.installed; sensorFps = !!s.fps; renderSensorButtons();
+      if (s.installed && !s.fps) sensorNote.textContent = 'Oyun içi FPS için kurulumu bir kez daha çalıştır (“Oyun FPS ölçümünü ekle”, yönetici onayı ister).';
+      else if (s.installed) sensorNote.textContent = s.live ? 'Sensör ve FPS görevleri çalışıyor.' : 'Sensör kurulmuş; değer bekleniyor. Gerekirse kurulumu yenile.';
     }).catch(() => {});
   }
 
@@ -344,7 +345,7 @@
   pollLocation(); setInterval(pollLocation, 5000);
 
   /* ---- cached widget groups (firmware 1.4.0+), full snapshot after reconnect ---- */
-  const statsRates = { cpu: 1000, gpu: 1000, net: 1000, time: 60000, weather: 900000, fx: 1800000 };
+  const statsRates = { cpu: 1000, gpu: 1000, net: 1000, fps: 1000, time: 60000, weather: 900000, fx: 1800000 };
   let statsPolling = false, statsPort = null, statsWriter = null;
   let statsSent = {}, statsSlow = {};
   async function pollStats(full = false) {

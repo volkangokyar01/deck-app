@@ -2,6 +2,8 @@
 param([Parameter(Mandatory=$true)][string]$Installer,
       [Parameter(Mandatory=$true)][string]$Archive,
       [Parameter(Mandatory=$true)][string]$Helper,
+      [Parameter(Mandatory=$true)][string]$PresentMon,
+      [Parameter(Mandatory=$true)][string]$FpsHelper,
       [Parameter(Mandatory=$true)][ValidatePattern('^S-1-5-21-[0-9-]+$')][string]$UserSid)
 $ErrorActionPreference = 'Stop'
 function Assert-Hash($file, $hash) {
@@ -30,6 +32,8 @@ try {
   Assert-Hash $Installer '1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032'
   Assert-Hash $Archive '086d9f1b5a99e643edc2cfaaac16051685b551e4c5ac0b32a57c58c0e529c001'
   if ((Get-AuthenticodeSignature -LiteralPath $Installer).Status -ne 'Valid') { throw 'PawnIO imzası geçerli değil.' }
+  $pmHash = 'b2a706bc6ad475749e3b7e3409263aa1e6906d45bdcf993f6dbc0f660188f1af'   # PresentMon 2.6.0 x64 (Intel)
+  Assert-Hash $PresentMon $pmHash
   $root = Join-Path $env:ProgramFiles 'VolkanDeckSensors'
   Protect-Directory $root $null
   $install = Join-Path $root $UserSid
@@ -53,7 +57,7 @@ try {
   $p = Start-Process -FilePath $signedSetup -ArgumentList '-install', '-silent' -Wait -PassThru
   if ($p.ExitCode -notin @(0, 3010)) { throw "PawnIO kurulumu başarısız ($($p.ExitCode))." }
   # Record immediately, so a later task/DLL failure can still be uninstalled safely.
-  @{ pawnioInstalledByUs = [bool]$owned; version = '2.2.0'; date = [DateTimeOffset]::UtcNow.ToString('o') } |
+  @{ pawnioInstalledByUs = [bool]$owned; version = '2.2.0'; fps = 'presentmon-2.6.0'; date = [DateTimeOffset]::UtcNow.ToString('o') } |
     ConvertTo-Json -Compress | Set-Content -LiteralPath $markerFile -Encoding UTF8
   $zip = Join-Path $install 'lhm.zip'
   Copy-Item -LiteralPath $Archive -Destination $zip -Force
@@ -65,6 +69,15 @@ try {
   # Keep release dependencies/licenses, remove UI and any legacy driver payloads.
   Get-ChildItem -LiteralPath $lhm -Recurse -File | Where-Object { $_.Extension -in @('.exe', '.sys') -or $_.Name -like '*WinRing0*' } | Remove-Item -Force
   Copy-Item -LiteralPath $Helper -Destination (Join-Path $install 'win-sensors.ps1') -Force
+  # In-game FPS (2026-10-12): Intel PresentMon, pinned by hash and checked for Intel's signature, run by its own task
+  $fpsTask = 'VolkanDeckFPS-' + $UserSid
+  if (Get-ScheduledTask -TaskName $fpsTask -ErrorAction SilentlyContinue) { Stop-ScheduledTask -TaskName $fpsTask; Start-Sleep -Seconds 1 }
+  $pmExe = Join-Path $install 'PresentMon.exe'
+  Copy-Item -LiteralPath $PresentMon -Destination $pmExe -Force
+  Assert-Hash $pmExe $pmHash
+  $sig = Get-AuthenticodeSignature -LiteralPath $pmExe
+  if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Intel Corporation') { throw 'PresentMon imzası geçerli değil.' }
+  Copy-Item -LiteralPath $FpsHelper -Destination (Join-Path $install 'win-fps.ps1') -Force
   $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   $args = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + (Join-Path $install 'win-sensors.ps1') + '" -OutputDir "' + $output + '"'
   $action = New-ScheduledTaskAction -Execute $ps -Argument $args -WorkingDirectory $install
@@ -73,5 +86,9 @@ try {
   $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
   Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
   Start-ScheduledTask -TaskName $taskName
-  @{ ok = $true; message = 'CPU sıcaklığı sürücüsü ve sensör görevi kuruldu. Sonraki açılışlarda yönetici onayı istenmez; değer gelmezse bilgisayarı yeniden başlat.' }
+  $fpsArgs = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + (Join-Path $install 'win-fps.ps1') + '" -OutputDir "' + $output + '"'
+  $fpsAction = New-ScheduledTaskAction -Execute $ps -Argument $fpsArgs -WorkingDirectory $install
+  Register-ScheduledTask -TaskName $fpsTask -Action $fpsAction -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+  Start-ScheduledTask -TaskName $fpsTask
+  @{ ok = $true; message = 'CPU sıcaklığı sürücüsü, sensör görevi ve oyun FPS ölçümü kuruldu. Sonraki açılışlarda yönetici onayı istenmez; değer gelmezse bilgisayarı yeniden başlat.' }
 } catch { @{ ok = $false; message = 'Sensör kurulamadı: ' + $_.Exception.Message } }
