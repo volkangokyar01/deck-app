@@ -120,7 +120,7 @@ function pickFps(data, fgPid, now = Date.now()) {
 function createStats({ fetch, cacheDir, platform = process.platform, arch = process.arch, sensorFile, fpsFile } = {}) {
   const cache = { cpu: { name: cpuName(os.cpus()[0]?.model), temp: null, load: null, power: null, clock: null }, gpu: gpuEmpty(), net: { down: null, up: null, ping: null }, fx: { usd: null, eur: null, usdChg: null, eurChg: null } };
   if (platform === 'win32') cache.fps = { fps: null, low: null, app: null };
-  let fgPid = 0;
+  let fgPid = 0, fgAt = 0;
   let running = false, previousCpu = null, previousNet = null, netAt = 0, netSeen = 0, sensorAt = 0, pingAt = 0;
   let weather = null, weatherKey = '', weatherGeneration = 0, weatherBusy = false, fxBusy = false, weatherAt = 0, fxAt = 0;
   let macSample = null, macAt = 0;
@@ -185,6 +185,10 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
       let data = null;
       try { const f = typeof fpsFile === 'function' ? fpsFile() : fpsFile; if (f) data = JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch (_) {}
       cache.fps = pickFps(data, fgPid);
+      // diagnostics for the settings page (not sent to the deck): is the task writing, what presents, what is in front
+      const age = data && Number.isFinite(data.epoch) ? Math.round(Date.now() / 1000 - data.epoch) : null;
+      cache.fpsInfo = { file: !!data, age, fg: fgPid, fgSeen: fgAt > 0 && Date.now() - fgAt < 5000,
+        procs: data && Array.isArray(data.procs) ? data.procs.slice(0, 8).map(x => ({ pid: Number(x.pid), name: String(x.name || '').slice(0, 40), fps: range(x.fps, 0, 5000) })) : [] };
     }
     if (Date.now() - netSeen >= 5000) Object.assign(cache.net, { down: null, up: null });
   }
@@ -311,7 +315,7 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
     if (platform === 'win32') {
       stream('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-stats.ps1')], line => {
         const j = JSON.parse(line);
-        if (j && j.nics) { fgPid = Number(j.fg) || 0; network(j.nics); } else network(j);   // older helper: counters only
+        if (j && j.nics) { fgPid = Number(j.fg) || 0; fgAt = Date.now(); network(j.nics); } else network(j);   // older helper: counters only
         return true;
       });
       findNvidia().then(binary => {

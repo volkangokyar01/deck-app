@@ -3090,6 +3090,21 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
       el('div', { class: 'panel-h' }, el('h2', {}, 'CPU sıcaklığı ve oyun FPS')),
       el('div', { class: 'panel-b' }, sensorNote, el('div', { class: 'row' }, sensorButton, sensorRemove), sensorConsent,
         el('p', { class: 'hint' }, 'PawnIO sürücüsü, Intel PresentMon ve yalnız okuma yapan iki oturum açılış görevi kurulur. Kurmazsan CPU yükü çalışır; sıcaklık ve FPS “—” görünür. FPS kartı ön plandaki oyunun FPS\'ini gösterir.')));
+    // FPS diagnostics (2026-10-12): which step is missing when the card stays empty
+    const fpsLine = el('p', { class: 'hint mono', style: 'white-space:pre-line' }, '');
+    sensorBox.querySelector('.panel-b').append(fpsLine);
+    window.onFpsInfo = (info, fps) => {
+      if (!sensorInstalled) { fpsLine.textContent = ''; return; }
+      if (!sensorFps) { fpsLine.textContent = 'FPS: PresentMon kurulu değil → “Oyun FPS ölçümünü ekle”.'; return; }
+      if (!info) { fpsLine.textContent = 'FPS: bilgi yok'; return; }
+      const lines = [];
+      if (!info.file) lines.push('FPS görevi: fps.json yok (görev hiç yazmadı; oturumu kapatıp açmayı ya da kurulumu yenilemeyi dene).');
+      else lines.push('FPS görevi: son yazma ' + info.age + ' sn önce' + (info.age > 4 ? ' (şu an kare gönderen program yok ya da görev durdu)' : ''));
+      lines.push('Ön plandaki süreç: ' + (info.fgSeen ? (info.fg || '?') : 'okunamıyor'));
+      if (info.procs.length) lines.push('Kare gönderenler: ' + info.procs.map(p => p.name + ' (' + p.pid + ', ' + Math.round(p.fps) + ' fps)').join(', '));
+      lines.push('Karta giden: ' + (fps && fps.fps != null ? Math.round(fps.fps) + ' fps · ' + fps.app : 'yok'));
+      fpsLine.textContent = lines.join('\n');
+    };
     updateBox.after(sensorBox);
     const revision = sensorStatusRevision;
     deck.sensorStatus().then(s => {
@@ -3233,6 +3248,7 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
     const link = writer, connectedPort = port;
     try {
       const snapshot = await deck.stats({ weather: cfg.home?.weather || null });
+      window.onFpsInfo?.(snapshot.fpsInfo, snapshot.fps);
       if (writer !== link || port !== connectedPort || busy || !deviceInfo?.fw || !verGE(deviceInfo.fw, '1.4.0')) return;
       if (statsPort !== port || statsWriter !== writer) { full = true; statsSent = {}; statsSlow = {}; statsPort = port; statsWriter = writer; }
       const now = Date.now(), groups = {};
