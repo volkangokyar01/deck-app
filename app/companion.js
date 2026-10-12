@@ -172,7 +172,7 @@
 
   /* ---- optional Windows CPU sensor driver: explicit consent and one UAC ---- */
   if (OS === 'win32') {
-    let sensorWorking = false, sensorInstalled = false, sensorFps = false, sensorStatusRevision = 0;
+    let sensorWorking = false, sensorInstalled = false, sensorFps = false, sensorFpsOld = false, sensorStatusRevision = 0;
     const sensorNote = el('p', { class: 'hint', role: 'status', 'aria-live': 'polite', style: 'white-space:pre-line' }, 'CPU sıcaklığı ve oyun içi FPS için bir kez yönetici onayı gerekir.');
     const consentText = el('p', { class: 'hint' });
     const consentConfirm = el('button', { class: 'btn primary' });
@@ -181,7 +181,7 @@
     function renderSensorButtons() {
       sensorButton.disabled = sensorWorking; sensorRemove.disabled = sensorWorking;
       sensorRemove.hidden = !sensorInstalled;
-      sensorButton.textContent = !sensorInstalled ? 'CPU sıcaklığı ve FPS için kur' : sensorFps ? 'Sensör kurulumunu yenile' : 'Oyun FPS ölçümünü ekle';
+      sensorButton.textContent = !sensorInstalled ? 'CPU sıcaklığı ve FPS için kur' : !sensorFps ? 'Oyun FPS ölçümünü ekle' : sensorFpsOld ? 'FPS ölçümünü güncelle' : 'Sensör kurulumunu yenile';
     }
     async function performSensorAction(remove) {
       if (sensorWorking) return;
@@ -193,7 +193,7 @@
         sensorNote.textContent = r.message;
         if (r.ok) sensorInstalled = !remove;
         // Check partial installs/removals too, without replacing the detailed result.
-        try { const s = await deck.sensorStatus(); sensorInstalled = s.installed; sensorFps = !!s.fps; } catch (_) {}
+        try { const s = await deck.sensorStatus(); sensorInstalled = s.installed; sensorFps = !!s.fps; sensorFpsOld = !!s.fpsOld; } catch (_) {}
       } catch (e) { sensorNote.textContent = (remove ? 'Sensör kaldırılamadı: ' : 'Sensör kurulamadı: ') + e.message; }
       finally { sensorWorking = false; renderSensorButtons(); }
     }
@@ -231,8 +231,9 @@
     const revision = sensorStatusRevision;
     deck.sensorStatus().then(s => {
       if (revision !== sensorStatusRevision) return;
-      sensorInstalled = s.installed; sensorFps = !!s.fps; renderSensorButtons();
-      if (s.installed && !s.fps) sensorNote.textContent = 'Oyun içi FPS için kurulumu bir kez daha çalıştır (“Oyun FPS ölçümünü ekle”, yönetici onayı ister).';
+      sensorInstalled = s.installed; sensorFps = !!s.fps; sensorFpsOld = !!s.fpsOld; renderSensorButtons();
+      if (s.installed && s.fps && s.fpsOld) sensorNote.textContent = 'FPS ölçümünün yeni sürümü var: “FPS ölçümünü güncelle” (yönetici onayı ister) daha düzgün ölçer.';
+      else if (s.installed && !s.fps) sensorNote.textContent = 'Oyun içi FPS için kurulumu bir kez daha çalıştır (“Oyun FPS ölçümünü ekle”, yönetici onayı ister).';
       else if (s.installed) sensorNote.textContent = s.live ? 'Sensör ve FPS görevleri çalışıyor.' : 'Sensör kurulmuş; değer bekleniyor. Gerekirse kurulumu yenile.';
     }).catch(() => {});
   }

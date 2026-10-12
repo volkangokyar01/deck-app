@@ -1,6 +1,6 @@
 # In-game FPS (2026-10-12). Runs as SYSTEM from the protected sensor directory (the ETW frame events that
 # PresentMon reads need administrator rights). No network. Every second it writes fps.json: frames per
-# second and the 1 % low of the last 60 s for each process that presented frames in the last 2 s.
+# second and the 1 % low of the last 60 s for each process that presented frames in the last 3 s.
 # The desktop app picks the process that owns the foreground window (it runs in the user's session).
 param([Parameter(Mandatory=$true)][string]$OutputDir)
 $ErrorActionPreference = 'Stop'
@@ -51,11 +51,13 @@ while ($true) {
       foreach ($id in @($seen.Keys)) {
         $e = $seen[$id]
         while ($e.t.Count -and $now - $e.t.Peek() -gt 60000) { [void]$e.t.Dequeue(); [void]$e.f.Dequeue() }
-        if (-not $e.t.Count -or $now - ($e.t.ToArray()[-1]) -gt 2000) { if (-not $e.t.Count) { $seen.Remove($id) }; continue }
+        if (-not $e.t.Count -or $now - ($e.t.ToArray()[-1]) -gt 3000) { if (-not $e.t.Count) { $seen.Remove($id) }; continue }
         $t = $e.t.ToArray(); $f = $e.f.ToArray()
+        # FPS from the newest frames covering ~1 s of frame time (their own durations), not from when the lines
+        # arrived: PresentMon's piped output comes in bursts, which made some seconds look empty (2026-10-12)
         $sum = 0.0; $n = 0
-        for ($i = $t.Length - 1; $i -ge 0 -and $now - $t[$i] -le 1000; $i--) { $sum += $f[$i]; $n++ }
-        if ($n -lt 2) { continue }
+        for ($i = $f.Length - 1; $i -ge 0 -and $sum -lt 1000; $i--) { $sum += $f[$i]; $n++ }
+        if ($n -lt 2 -or $sum -le 0) { continue }
         $sorted = [double[]]$f.Clone(); [Array]::Sort($sorted)
         $p99 = $sorted[[Math]::Min($sorted.Length - 1, [int][Math]::Floor($sorted.Length * 0.99))]
         $out.Add(@{ pid = $id; name = $e.name; fps = [Math]::Round(1000.0 * $n / $sum, 1); low = [Math]::Round(1000.0 / $p99, 1) })

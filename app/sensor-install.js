@@ -20,8 +20,12 @@ function createSensorInstaller({ fetch, cacheDir }) {
     let live = false;
     try { const age = Date.now() - JSON.parse(fs.readFileSync(file, 'utf8')).epoch * 1000; live = !sensorDisabled && age >= 0 && age < 5000; } catch (_) {}
     // in-game FPS (2026-10-12): installed with the sensors; older installs lack PresentMon and need one more install
-    const fps = !!sid && fs.existsSync(path.join(process.env.ProgramFiles || 'C:\\Program Files', 'VolkanDeckSensors', sid, 'PresentMon.exe'));
-    return { installed: !!sid && (fs.existsSync(marker) || fs.existsSync(outputDir())), live, fps };
+    const dir = sid && path.join(process.env.ProgramFiles || 'C:\\Program Files', 'VolkanDeckSensors', sid);
+    const fps = !!sid && fs.existsSync(path.join(dir, 'PresentMon.exe'));
+    // the task runs a protected copy of win-fps.ps1: an app update does not reach it, the user refreshes the install
+    let fpsOld = false;
+    try { if (fps) { const h = f => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex'); fpsOld = h(path.join(dir, 'win-fps.ps1')) !== h(path.join(__dirname, 'win-fps.ps1')); } } catch (_) {}
+    return { installed: !!sid && (fs.existsSync(marker) || fs.existsSync(outputDir())), live, fps, fpsOld };
   }
   async function elevate(script, parameters) {
     fs.mkdirSync(cacheDir, { recursive: true });

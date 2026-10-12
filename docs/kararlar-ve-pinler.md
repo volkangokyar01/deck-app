@@ -404,3 +404,8 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 
 ## 2026-10-12 — Sensör kurulumu "PawnIO kurulumu başarısız (183)" vermiyor
 - PawnIO bilgisayarda zaten kuruluysa (önceki sensör kurulumu ya da başka program) kurucusu 183 (ERROR_ALREADY_EXISTS) döndürüyordu; betik bunu hata saydığı için "Sensör kurulumunu yenile" ve "Oyun FPS ölçümünü ekle" hep başarısız oluyordu. Artık PawnIO varsa kurucu çalıştırılmaz (sahiplik kaydı eskisi gibi), 183 de başarı sayılır.
+
+## 2026-10-12 — FPS değeri yanıp sönmüyor
+- Neden: uygulama fps.json'u SYSTEM görevi tam değiştirirken okuyunca okuma başarısız oluyor ya da dosyanın yarısını görüyordu, o saniye kartta "Oyun yok" çıkıyordu; ayrıca PresentMon'un boruya yazdığı çıktı topluca geldiği için bazı saniyelerde "son 1 sn'de kare yok" sayılıyordu.
+- Uygulama: okunamayan dosyada son iyi dosya kullanılır; değer kaybolursa son değer 3 sn tutulur.
+- FPS görevi (`win-fps.ps1`): FPS, satırların geliş anına göre değil en yeni karelerin kendi sürelerinden (~1 sn'lik kare süresi) hesaplanır; süreç 3 sn kare göndermezse listeden düşer. Görev korumalı kopyayı çalıştırdığı için uygulama güncellemesi ona ulaşmaz: uygulama kopyanın hash'ini karşılaştırır, eskiyse "FPS ölçümünü güncelle" düğmesi çıkar (yönetici onayı).

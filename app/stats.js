@@ -120,7 +120,7 @@ function pickFps(data, fgPid, now = Date.now()) {
 function createStats({ fetch, cacheDir, platform = process.platform, arch = process.arch, sensorFile, fpsFile } = {}) {
   const cache = { cpu: { name: cpuName(os.cpus()[0]?.model), temp: null, load: null, power: null, clock: null }, gpu: gpuEmpty(), net: { down: null, up: null, ping: null }, fx: { usd: null, eur: null, usdChg: null, eurChg: null } };
   if (platform === 'win32') cache.fps = { fps: null, low: null, app: null };
-  let fgPid = 0, fgAt = 0;
+  let fgPid = 0, fgAt = 0, fpsData = null, fpsGood = null, fpsGoodAt = 0;
   let running = false, previousCpu = null, previousNet = null, netAt = 0, netSeen = 0, sensorAt = 0, pingAt = 0;
   let weather = null, weatherKey = '', weatherGeneration = 0, weatherBusy = false, fxBusy = false, weatherAt = 0, fxAt = 0;
   let macSample = null, macAt = 0;
@@ -182,9 +182,13 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
     }
     if (platform === 'win32' && Date.now() - sensorAt >= 5000) cache.gpu = gpuEmpty();
     if (platform === 'win32') {
-      let data = null;
-      try { const f = typeof fpsFile === 'function' ? fpsFile() : fpsFile; if (f) data = JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch (_) {}
-      cache.fps = pickFps(data, fgPid);
+      // the SYSTEM task replaces fps.json every second; a read in the middle of that fails or sees half a file,
+      // so keep the last good file, and hold the last value for 3 s instead of blinking "--" (2026-10-12)
+      try { const f = typeof fpsFile === 'function' ? fpsFile() : fpsFile; if (f) fpsData = JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch (_) {}
+      const data = fpsData;
+      const pick = pickFps(data, fgPid);
+      if (pick.fps !== null) { fpsGood = pick; fpsGoodAt = Date.now(); cache.fps = pick; }
+      else cache.fps = fpsGood && Date.now() - fpsGoodAt < 3000 ? fpsGood : pick;
       // diagnostics for the settings page (not sent to the deck): is the task writing, what presents, what is in front
       const age = data && Number.isFinite(data.epoch) ? Math.round(Date.now() / 1000 - data.epoch) : null;
       cache.fpsInfo = { file: !!data, age, fg: fgPid, fgSeen: fgAt > 0 && Date.now() - fgAt < 5000,

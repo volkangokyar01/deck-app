@@ -46,3 +46,11 @@ test('sensor setup keeps an existing PawnIO (exit 183 "already exists" no longer
   assert.match(setup, /if \(-not \$pawnioPresent\) \{\n    \$p = Start-Process -FilePath \$signedSetup/);
   assert.match(setup, /\$p\.ExitCode -notin @\(0, 3010, 183\)/);
 });
+
+test('FPS does not blink: half-written file keeps the last one, the last value is held 3 s, fps from frame times', () => {
+  const stats = read('app/stats.js'), fpsPs = read('app/win-fps.ps1');
+  assert.match(stats, /else cache\.fps = fpsGood && Date\.now\(\) - fpsGoodAt < 3000 \? fpsGood : pick;/);
+  assert.match(stats, /if \(f\) fpsData = JSON\.parse/);
+  assert.match(fpsPs, /for \(\$i = \$f\.Length - 1; \$i -ge 0 -and \$sum -lt 1000; \$i--\)/);
+  assert.match(read('app/sensor-install.js'), /fpsOld = h\(path\.join\(dir, 'win-fps\.ps1'\)\) !== h\(path\.join\(__dirname, 'win-fps\.ps1'\)\)/);
+});
