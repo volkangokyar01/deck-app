@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.15.1)
+## Firmware (v1.15.2)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -391,3 +391,6 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Ana sayfanın durum satırında sayfa numarası (ve renkli nokta) yerine saat (SS:DD) yazar; diğer ekranlarda numara kalır. Tasarruf modunda dakika değişince yalnız bu alan (x 134–211) yenilenir.
 - `home.cards` 2 veya 3 kart alır. Üçüncü kart seçilince kartlar alt alta 49 / 49 / 51 px yüksekliğinde sıkışık çizilir (CPU / GPU: sıcaklık, eğri, çubuk; Ağ: indirme büyük, yükleme sağda, ping üstte; Saat, Hava, Döviz için de sıkışık düzen). Eski firmware ilk iki kartı okur.
 - Ayar sayfası: Ana sayfa → Kartlar'da "Kart 3 · isteğe bağlı" (Yok / kart seçimi). Soldaki listede Kartlar satırında aç / kapat anahtarı (`pages.widgets.enabled`, "Döndürgeç listesinde göster" ile aynı ayar).
+
+## 2026-10-12 — Saat bütün ekranlarda, sayfa numarası kaldırıldı (firmware 1.15.2)
+- Durum satırının solundaki sayfa numarası ("3/12") ve renkli nokta bütün ekranlardan kaldırıldı; yerine ana sayfadaki gibi saat (SS:DD) yazar. Dakika değişince ekran yeniden çizilir; tasarruf modunda yalnız saat alanı yenilenir. Önizleme aynı.

@@ -287,7 +287,7 @@ static void drawBattery() {
     spr.fillTriangle(278, 6, 282, 6, 277, 13, SC_GREEN);
   }
 }
-// 1.15.1: home shows the time where the other screens show the page number (x0 .. x0 + 78; the BT / Wi-Fi icons follow)
+// The time at the left of the status row (x0 .. x0 + 78): home since 1.15.1, every screen since 1.15.2 (no page number any more)
 static void drawStatusClock(int x0) {
   spr.fillRect(x0, 0, 78, 14, SC_BG);
   struct tm t; if (!localTime(t)) return;
@@ -295,11 +295,8 @@ static void drawStatusClock(int x0) {
   text(b, x0 + 2, 7, FSB11, SC_TEXT);
 }
 static void drawStatus(uint16_t dot, const char* link, int x0 = 2) {
-  if (x0 > 2) drawStatusClock(x0);             // home
-  else {
-    spr.fillSmoothCircle(x0 + 4, 7, 4, dot);     // page colour (was a 3 px bar across the top)
-    text(items.size() ? String(sel + 1) + "/" + String(items.size()) : String("0/0"), x0 + 12, 7, FSB11, SC_SUB);
-  }
+  (void)dot;
+  drawStatusClock(x0);                         // 1.15.2: the time on every screen, the page number is gone
   // Link (1.13.2): a symbol instead of "usb" / "ble". Home already shows Bluetooth's state, so a BLE link adds nothing there.
   bool usb = !strcmp(link, "usb"), ble = !strcmp(link, "ble");
   bool linkIcon = !(x0 > 2 && ble);
@@ -772,8 +769,8 @@ static void renderEcoAnim(uint32_t now) {
 }
 static void renderEcoClock() {
   if (items.empty() || mailActive()) return;
+  { int sx = items[sel].home ? 134 : 2; drawStatusClock(sx); pushRegion(sx, 0, 78, 14); }   // the time in the status row (1.15.2: every screen)
   if (items[sel].home) {
-    drawStatusClock(134); pushRegion(134, 0, 78, 14);   // the time in the status row (1.15.1)
     for (int i = 0; i < S.ccount; i++) if (S.cards[i] == W_CLOCK) { int y, h; homeCardRect(i, y, h); drawClockCard(132, y, 186, h); pushRegion(132, y, 186, h); }
   } else if (items[sel].kind == K_WIDGETS) {
     // drawWidgets shares the layout; only clock rectangles reach the LCD.
