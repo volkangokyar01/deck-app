@@ -93,3 +93,18 @@ test('wake (1.13.7): a key or the knob wakes a dimmed / dark screen and acts at 
   assert.match(wake, /return false;/);
   assert.ok(!/return was/.test(wake), 'the first input is not swallowed');
 });
+
+test('Wi-Fi (1.18.2): fast connect to the remembered access point, quick reconnect, back-off, failure reason', () => {
+  const w = read('firmware/VolkanDeck/WifiLink.h'), web = read('web/body.html');
+  assert.match(w, /if \(wf\.fast\) WiFi\.begin\(wf\.ssid\.c_str\(\), pw, wf\.ch, wf\.bssid\);/, 'cached BSSID + channel: no scan');
+  assert.match(w, /if \(wf\.fast\) \{ wifiConnect\(false\); return; \}/, 'cached access point missed: full scan at once');
+  assert.match(w, /WiFi\.setAutoReconnect\(false\);/);
+  assert.match(w, /else if \(!wf\.tryAt\) \{ wf\.reason = wfEvtReason; wf\.retryAt = \(now \+ 500\) \| 1; \}/, 'a dropped link comes back quickly');
+  assert.match(w, /WiFi\.setSortMethod\(WIFI_CONNECT_AP_BY_SIGNAL\);/);
+  assert.match(w, /pr\.remove\("bssid"\); pr\.remove\("ch"\);/, 'a new network forgets the old access point');
+  const delay = new Function('min', 'R_PASS', w.slice(w.indexOf('static uint32_t wifiRetryDelay('), w.indexOf('// called from the main loop: attempt end'))
+    .replace('static uint32_t wifiRetryDelay(uint8_t fails, uint8_t reason) {', 'return function(fails, reason) {').replace('min<int>', 'min').replace('uint32_t d', 'let d').replace(/(\d)UL/g, '$1') + ';')(Math.min, 1);
+  assert.deepEqual([1, 2, 3, 4, 5, 9].map(f => delay(f, 0)), [5000, 10000, 20000, 40000, 60000, 60000]);
+  assert.equal(delay(1, 1), 60000, 'wrong password: wait a minute');
+  assert.match(web, /r\.reason==="pass"\?"Bağlanamadı: "\+r\.ssid\+" · şifre yanlış olabilir"/);
+});

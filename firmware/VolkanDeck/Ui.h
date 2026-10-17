@@ -1112,7 +1112,7 @@ static void drawConn() {
   else if (!wf.on) wt = fit(wf.ssid, 170, FM9) + " · kapalı";
   else if (wOk) { int r = WiFi.RSSI(); wt = fit(wf.ssid, 170, FM9) + (r > -60 ? " · güçlü" : r > -72 ? " · iyi" : " · zayıf"); wc = SC_TEXT; }
   else if (!strcmp(ws, "nomem")) { wt = "Bellek yetmedi"; wc = SC_RED; }
-  else if (!strcmp(ws, "failed")) { wt = "Bağlanamadı · şifreyi kontrol et"; wc = SC_RED; }
+  else if (!strcmp(ws, "failed")) { wt = wf.reason == R_PASS ? "Şifre yanlış olabilir" : wf.reason == R_NOAP ? "Ağ bulunamadı · yeniden deneniyor" : "Bağlanamadı · yeniden deneniyor"; wc = SC_RED; }
   else { wt = "Bağlanıyor…"; wc = SC_HL; }
   text(wt, 310, 157, FM9, wc, textdatum_t::middle_right);
 }
