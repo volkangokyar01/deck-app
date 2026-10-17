@@ -27,6 +27,7 @@ struct App {
   uint8_t  pixN = 40;        // 1.15.0: 64 (sharp in the 62 px bubble) or 40 (older settings pages)
 };
 
+enum : uint8_t { KEY_A = 0, KEY_B, KEY_KNOB, KEY_PWR, KEY_PWRON, KEY_RST };   // 1.18.0: Settings::keys rows
 struct Settings {
   String name = "Game Deck";
   bool   trq = true;
@@ -55,7 +56,9 @@ struct Settings {
   int animFps = 15;
   // apps
   std::vector<App> apps;
-  String quickA, quickB;
+  String quickA, quickB;                  // first action of A / B (shown on the home screen)
+  // 1.18.0: every key runs a list of up to 4 actions (app ids, "__media", "__mic", "__wake", "__screen" …)
+  String keys[6][4] = { {}, {}, {}, { "__screen" }, {}, { "__restart" } }; uint8_t keyN[6] = { 0, 0, 0, 1, 0, 1 };
   // extra pages in the knob list
   bool mediaOn = true, mediaStay = true, sysOn = true, connOn = true;
   bool widgetsOn = true;                                           // widgets page: 1–4 cards
@@ -245,6 +248,23 @@ static void applyConfig(JsonObjectConst c) {
     if (N.apps.size() >= 16) break;
   }
   N.quickA = (const char*)(c["quick"]["a"] | ""); N.quickB = (const char*)(c["quick"]["b"] | "");
+  // 1.18.0: "keys" {a, b, knob, pwr, pwrOn, rst}: lists of actions. Older configs: A / B, knob press = pressApp,
+  // power = screen off / on, reset = restart.
+  static const char* KEY_NAMES[6] = { "a", "b", "knob", "pwr", "pwrOn", "rst" };
+  JsonObjectConst ks = c["keys"];
+  for (int k = 0; k < 6; k++) {
+    N.keyN[k] = 0;
+    if (ks.isNull()) {
+      const String& v = k == KEY_A ? N.quickA : k == KEY_B ? N.quickB : k == KEY_KNOB ? N.pressApp : String(k == KEY_PWR ? "__screen" : k == KEY_RST ? "__restart" : "");
+      if (v.length()) N.keys[k][N.keyN[k]++] = v;
+      continue;
+    }
+    for (JsonVariantConst v : ks[KEY_NAMES[k]].as<JsonArrayConst>()) {
+      const char* id = v | ""; if (!*id) continue;
+      N.keys[k][N.keyN[k]++] = id; if (N.keyN[k] == 4) break;
+    }
+  }
+  if (!ks.isNull()) { N.quickA = N.keyN[KEY_A] ? N.keys[KEY_A][0] : ""; N.quickB = N.keyN[KEY_B] ? N.keys[KEY_B][0] : ""; }
   JsonObjectConst pg = c["pages"];
   N.widgetsOn = pg["widgets"]["enabled"] | true;
   JsonArrayConst wc = pg["widgets"]["cards"];

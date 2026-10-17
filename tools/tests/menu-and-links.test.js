@@ -70,8 +70,8 @@ test('knob: the menu opens only by turning left on home and keeps you there; rig
 test('A / B can open a menu page; config keeps the page ids', () => {
   const ino = read('firmware/VolkanDeck/VolkanDeck.ino'), ui = read('firmware/VolkanDeck/Ui.h'), web = read('web/body.html');
   assert.match(ui, /id == "__media" \? K_MEDIA : id == "__system" \? K_SYS : id == "__connections" \? K_CONN : 0/);
-  assert.match(ino, /else quickAct\(S\.quickA\);/);
-  assert.match(ino, /else quickAct\(S\.quickB\);/);
+  assert.match(ino, /else runKey\(KEY_A\);/);
+  assert.match(ino, /else runKey\(KEY_B\);/);
   const q = ino.slice(ino.indexOf('static void quickAct('), ino.indexOf('// press on the menu list'));
   assert.match(q, /if \(!pg\) \{ doLaunch\(appById\(id\)\); return; \}/);
   assert.match(q, /openPage\(pg\);/);
@@ -81,7 +81,7 @@ test('A / B can open a menu page; config keeps the page ids', () => {
 
 test('A / B toggle the microphone or the sound output (1.14.0)', () => {
   const ino = read('firmware/VolkanDeck/VolkanDeck.ino'), ui = read('firmware/VolkanDeck/Ui.h'), web = read('web/body.html');
-  assert.match(ui, /return id == "__mic" \? QA_MIC : id == "__mute" \? QA_MUTE : id == "__wake" \? QA_WAKE : QA_NONE;/);
+  assert.match(ui, /return id == "__mic" \? QA_MIC : id == "__mute" \? QA_MUTE : id == "__wake" \? QA_WAKE :/);
   const q = ino.slice(ino.indexOf('static void quickAct('), ino.indexOf('// press on the menu list'));
   assert.match(q, /if \(t == QA_MIC\) \{ toggleMic\(\);/);
   assert.match(q, /else \{ toggleMute\(\);/);

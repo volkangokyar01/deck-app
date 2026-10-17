@@ -314,20 +314,27 @@ static uint8_t quickPage(const String& id) {
 }
 static String quickPageName(uint8_t k) { return k == K_MEDIA ? "Medya" : k == K_SYS ? "Ses ve parlaklık" : "Bağlantılar"; }
 // 1.14.0: A / B can also toggle the microphone ("__mic") or the sound output, e.g. headphones ("__mute")
-enum : uint8_t { QA_NONE = 0, QA_MIC, QA_MUTE, QA_WAKE };   // QA_WAKE: 1.17.0 "Bilgisayarı aç"
-static uint8_t quickToggle(const String& id) { return id == "__mic" ? QA_MIC : id == "__mute" ? QA_MUTE : id == "__wake" ? QA_WAKE : QA_NONE; }
+enum : uint8_t { QA_NONE = 0, QA_MIC, QA_MUTE, QA_WAKE, QA_SCREEN, QA_OFF, QA_RESTART, QA_HOME };   // QA_WAKE 1.17.0, device actions 1.18.0
+static uint8_t quickToggle(const String& id) { return id == "__mic" ? QA_MIC : id == "__mute" ? QA_MUTE : id == "__wake" ? QA_WAKE : id == "__screen" ? QA_SCREEN : id == "__off" ? QA_OFF : id == "__restart" ? QA_RESTART : id == "__home" ? QA_HOME : QA_NONE; }
 static bool quickToggleOff(uint8_t t) { return t == QA_MIC ? sysSt.mic == 1 : t == QA_MUTE ? sysSt.mute : false; }
 static String quickToggleName(uint8_t t) {
   bool off = quickToggleOff(t);
   if (t == QA_WAKE) return "Bilgisayarı aç";
+  if (t == QA_SCREEN) return "Ekranı kapat";
+  if (t == QA_OFF) return "Cihazı kapat";
+  if (t == QA_RESTART) return "Yeniden başlat";
+  if (t == QA_HOME) return "Ana sayfa";
   return t == QA_MIC ? (off ? "Mikrofon kapalı" : "Mikrofon") : (off ? "Ses kapalı" : "Sesi kapat");
 }
 // round badge (r 7 on home, 10 on app screens): teal while on, red while muted; small mic / speaker glyph
 static void quickToggleIcon(uint8_t t, int cx, int cy, int r) {
   bool off = quickToggleOff(t);
-  uint16_t bg = t == QA_WAKE ? C(0x16A34A) : off ? SC_RED : SYS_COL, fg = onColor(bg);
+  uint16_t bg = t == QA_WAKE ? C(0x16A34A) : t >= QA_SCREEN ? C(0x64748B) : off ? SC_RED : SYS_COL, fg = onColor(bg);
   spr.fillSmoothCircle(cx, cy, r, bg);
-  if (t == QA_WAKE) {                               // power symbol
+  if (t == QA_SCREEN) { spr.drawRoundRect(cx - 5, cy - 4, 11, 7, 1, fg); spr.drawFastHLine(cx - 2, cy + 4, 5, fg); return; }
+  if (t == QA_RESTART) { spr.drawArc(cx, cy, 5, 4, 60, 360, fg); spr.fillTriangle(cx + 1, cy - 7, cx + 5, cy - 4, cx + 1, cy - 2, fg); return; }
+  if (t == QA_HOME) { spr.fillTriangle(cx, cy - 5, cx - 5, cy, cx + 5, cy, fg); spr.fillRect(cx - 3, cy, 7, 4, fg); return; }
+  if (t == QA_WAKE || t == QA_OFF) {                // power symbol
     spr.drawArc(cx, cy + 1, 5, 4, 300, 240, fg);
     spr.drawWideLine(cx, cy - 5, cx, cy, 1.4f, fg);
     return;
@@ -354,6 +361,7 @@ static void drawQuickSlots() {
     else if (pg) { bubble(false, nullptr, x + 28, 155, 10, 1, pg); text(fit(quickPageName(pg), 108, FSB12), x + 43, 155, FSB12, SC_TEXT); }
     else if (uint8_t t = quickToggle(*q[i])) { quickToggleIcon(t, x + 28, 155, 10); text(fit(quickToggleName(t), 108, FSB12), x + 43, 155, FSB12, quickToggleOff(t) ? SC_RED : SC_TEXT); }
     else text("Atanmadı", x + 24, 155, FSB12, SC_DIM);
+    if (S.keyN[i] > 1) text("+" + String(S.keyN[i] - 1), x + 151, 155, FB11, SC_DIM, textdatum_t::middle_right);
   }
 }
 
@@ -789,10 +797,11 @@ static void drawHome() {
     int y = i ? 151 : 132; App* a = appById(*q[i]); uint8_t pg = quickPage(*q[i]);
     spr.fillRoundRect(2, y, 128, 17, 4, SC_PANEL);
     text(i ? "B" : "A", 7, y + 8, FB10, SC_DIM);
-    if (a) { miniIcon(a, 22, y + 8); text(fit(a->name, 94, FSB11), 32, y + 8, FSB11, SC_SUB); }
-    else if (pg) { bubble(false, nullptr, 22, y + 8, 7, 1, pg); text(fit(quickPageName(pg), 94, FSB11), 32, y + 8, FSB11, SC_SUB); }
-    else if (uint8_t t = quickToggle(*q[i])) { quickToggleIcon(t, 22, y + 8, 7); text(fit(quickToggleName(t), 94, FSB11), 32, y + 8, FSB11, quickToggleOff(t) ? SC_RED : SC_SUB); }
+    if (a) { miniIcon(a, 22, y + 8); text(fit(a->name, S.keyN[i] > 1 ? 76 : 94, FSB11), 32, y + 8, FSB11, SC_SUB); }
+    else if (pg) { bubble(false, nullptr, 22, y + 8, 7, 1, pg); text(fit(quickPageName(pg), S.keyN[i] > 1 ? 76 : 94, FSB11), 32, y + 8, FSB11, SC_SUB); }
+    else if (uint8_t t = quickToggle(*q[i])) { quickToggleIcon(t, 22, y + 8, 7); text(fit(quickToggleName(t), S.keyN[i] > 1 ? 76 : 94, FSB11), 32, y + 8, FSB11, quickToggleOff(t) ? SC_RED : SC_SUB); }
     else text("-", 18, y + 8, FSB11, SC_DIM);
+    if (S.keyN[i] > 1) text("+" + String(S.keyN[i] - 1), 125, y + 8, FB10, SC_DIM, textdatum_t::middle_right);   // 1.18.0: more actions
   }
 }
 

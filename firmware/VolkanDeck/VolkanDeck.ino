@@ -232,9 +232,16 @@ static void wakeComputers() {
   else if (n == -2) toast("Kayıtlı bilgisayar yok: Game Deck'i bilgisayarda bir kez aç", 3000);
   else toast("Wi-Fi bağlı değil: Cihaz ayarları → Wi-Fi", 3000);
 }
+static void goHome();
+static void restartNow();
+static void screenToggle();
 static void quickAct(const String& id) {
   if (uint8_t t = quickToggle(id)) {                // 1.14.0: microphone / sound (headphones) on A / B
     if (t == QA_WAKE) { wakeComputers(); dirty = true; return; }
+    if (t == QA_SCREEN) { screenToggle(); return; }
+    if (t == QA_HOME) { goHome(); return; }
+    if (t == QA_OFF) { ecoExit(); goSleep(); return; }
+    if (t == QA_RESTART) { restartNow(); return; }
     if (t == QA_MIC) { toggleMic(); if (sysLive() && sysSt.mic >= 0) toast(sysSt.mic ? "Mikrofon kapalı" : "Mikrofon açık"); }
     else { toggleMute(); toast(sysLive() && sysSt.vol >= 0 ? (sysSt.mute ? "Ses kapalı" : "Ses açık") : String("Sessiz tuşu gönderildi")); }
     dirty = true; return;
@@ -244,6 +251,48 @@ static void quickAct(const String& id) {
   bool on = pg == K_MEDIA ? S.mediaOn : pg == K_SYS ? S.sysOn : S.connOn;
   if (!on || menuItemIndex() < 0) { toast(quickPageName(pg) + " ekranı kapalı"); dirty = true; return; }
   openPage(pg);
+}
+static void screenToggle() {
+  ecoExit();
+  if (screenOff || dimmed) wakeUp();
+  else { screenOff = true; setBright(0); }
+}
+static void goHome() {
+  wakeUp(); adjust = 0; connEdit = false; menuPick = false;
+  if (sel != 0) selectIndex(0); else if (subPage) { subPage = 0; evtSelect(); }
+  dirty = true;
+}
+static void restartNow() {
+  ecoExit(); setBright(S.brightness);
+  spr.fillSprite(SC_BG); text("Yeniden başlatılıyor", 160, 85, FB18, SC_SUB, textdatum_t::middle_center); spr.pushSprite(0, 0);
+  delay(300); ESP.restart();
+}
+// 1.18.0: a key runs its list in order; turning the device off or restarting it comes last
+static void runKey(uint8_t k) {
+  bool off = false, restart = false;
+  for (int i = 0; i < S.keyN[k]; i++) {
+    const String& id = S.keys[k][i];
+    if (id == "__off") off = true;
+    else if (id == "__restart") restart = true;
+    else quickAct(id);
+  }
+  if (off) { ecoExit(); goSleep(); }
+  if (restart) restartNow();
+}
+static bool keyHas(uint8_t k, const char* id) { for (int i = 0; i < S.keyN[k]; i++) if (S.keys[k][i] == id) return true; return false; }
+// Power key turned the device on: its "açılınca" list runs once. "Bilgisayarı aç" waits for the Wi-Fi connection.
+static uint32_t bootWakeAt = 0;
+static void runBootKey() {
+  for (int i = 0; i < S.keyN[KEY_PWRON]; i++) {
+    const String& id = S.keys[KEY_PWRON][i];
+    if (id == "__wake") { if (wifiWanted()) { bootWakeAt = millis() | 1; toast("Wi-Fi bekleniyor: bilgisayar açılacak", 4000); } else wakeComputers(); }
+    else if (id != "__off" && id != "__restart") quickAct(id);
+  }
+}
+static void bootWakeLoop() {
+  if (!bootWakeAt) return;
+  if (wifiConnected()) { bootWakeAt = 0; wakeComputers(); dirty = true; }
+  else if (millis() - bootWakeAt > 30000) { bootWakeAt = 0; toast("Wi-Fi bağlanamadı: bilgisayar açılamadı", 3000); dirty = true; }
 }
 // press on the menu list: first press shows the cursor, the next one opens the page under it
 static void menuPress() {
@@ -414,7 +463,7 @@ static void onPress() {
   if (items.empty()) return;
   Item& it = items[sel];
   switch (curKind()) {
-    case K_HOME: { App* a = appById(S.pressApp); if (a) doLaunch(a); break; }
+    case K_HOME: runKey(KEY_KNOB); break;                     // 1.18.0: list of actions (was one app)
     case K_MEDIA: mediaAction("play_pause", CC_PLAY); break;
     case K_SYS: adjust = adjust == 1 ? 2 : 1; adjustAt = millis(); dirty = true; break;   // volume ↔ brightness
     case K_WIDGETS: break;
@@ -479,28 +528,27 @@ static void handleInput() {
     if (k == K_MEDIA) mediaAction("prev", CC_PREV);
     else if (k == K_SYS) { toggleMute(); adjustAt = now; }
     else if (k == K_CONN && bleStarted) { btSetOff(!bt.off); connEdit = false; toast(bt.off ? "Bluetooth kapandı" : "Bluetooth açıldı"); dirty = true; }
-    else quickAct(S.quickA);
+    else runKey(KEY_A);
   }
   int b = bB.poll(600);
   if ((b == 1 || b == 2) && !wakeUp()) {          // 1.13.4: no volume mode any more, a B hold is a press everywhere
     evtInput("b"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("next", CC_NEXT);
     else if (k == K_SYS) { toggleMic(); if (adjust) adjustAt = now; }
-    else quickAct(S.quickB);
+    else runKey(KEY_B);
   }
 
+  // 1.18.0: power and reset run their own lists on a short press; the 2 s holds stay fixed (off / restart)
   int p = bPwr.poll(2000);
   if (p == 1) {
     ecoExit();
-    if (screenOff || dimmed) wakeUp();
-    else { screenOff = true; setBright(0); }
+    if (!keyHas(KEY_PWR, "__screen")) wakeUp();   // a key press always brings the screen back
+    runKey(KEY_PWR);
   } else if (p == 2) { ecoExit(); goSleep(); }
 
-  if (bRst.poll(0) == 1) {     // act on release so BOOT is not held during reset
-    ecoExit();
-    spr.fillSprite(SC_BG); text("Yeniden başlatılıyor", 160, 85, FB18, SC_SUB, textdatum_t::middle_center); spr.pushSprite(0, 0);
-    delay(300); ESP.restart();
-  }
+  int r = bRst.poll(2000);
+  if (r == 1) { ecoExit(); wakeUp(); runKey(KEY_RST); }
+  else if (r == 2) restartNow();
 }
 
 static void applySideEffects() {
@@ -539,6 +587,7 @@ static void mailInput() {
 /* ---------- setup / loop ---------- */
 void setup() {
   if (offMarker == OFF_MAGIC && esp_reset_reason() != ESP_RST_POWERON && esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_EXT0) offSleep();
+  bool keyBoot = offMarker == OFF_MAGIC && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0;   // 1.18.0: turned on with the power key
   offMarker = 0;   // real key wake or fresh power-on: boot normally
   rtc_gpio_hold_dis((gpio_num_t)PIN_KEY_PWR); rtc_gpio_deinit((gpio_num_t)PIN_KEY_PWR);
   rtc_gpio_hold_dis((gpio_num_t)PIN_LCD_POWER); rtc_gpio_deinit((gpio_num_t)PIN_LCD_POWER);
@@ -575,6 +624,10 @@ void setup() {
   analogReadResolution(12);
   readBattery();
   lastActivity = millis();
+  if (keyBoot) {
+    if (digitalRead(PIN_KEY_PWR) == LOW) { bPwr.raw = bPwr.down = bPwr.longFired = true; bPwr.tChange = bPwr.tDown = millis(); }   // the waking press is not a press
+    runBootKey();
+  }
 }
 
 void loop() {
@@ -586,6 +639,7 @@ void loop() {
   crumbSet("input"); handleInput(); crumbClear();
   connPoll();
   wifiPoll();
+  bootWakeLoop();
   if (wf.dirty) { wf.dirty = false; dirty = true; }   // Wi-Fi state (and a moved screen buffer) redraw the screen
 
   uint32_t now = millis();

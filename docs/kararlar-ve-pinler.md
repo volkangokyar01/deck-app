@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.17.0)
+## Firmware (v1.18.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -421,3 +421,13 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Uygulama MAC'i `app/wol.js` ile seçer: sanal kartlar (VPN, Hyper-V, WSL, Docker, Bluetooth) ve rastgele MAC atlanır, kablolu kart öne alınır; macOS'te Ethernet / Wi-Fi ayrımı yapılmaz.
 - Windows ayarları `app/wol-setup.ps1` (sensörle aynı tek UAC başlatıcısı): ağ kartında `*WakeOnMagicPacket` ve `S5WakeOnLan`, Realtek güç tasarrufları kapalı, `Set-NetAdapterPowerManagement -WakeOnMagicPacket Enabled`, ağ kartı ve deck (VID 303A) için `powercfg /deviceenablewake`, hızlı başlatma kapalı (`HiberbootEnabled=0`).
 - BIOS Windows'tan değiştirilemez. Gigabyte H810M K için: Settings → Power → ErP Disabled (kullanıcının BIOS'unda ayrı Wake on LAN satırı yok; ErP kapalıyken ağ kartı S5'te uyanık kalır), Settings → IO Ports'ta Onboard LAN Enabled. Bilgisayar Ethernet kablosuyla bağlı olmalı. Mac yalnız uykudan uyanır ("Ağ erişimi için uyandır").
+
+## 2026-10-17 — Tuşlar özelleştirilebilir, bir tuşa birden çok komut (firmware 1.18.0)
+- Ayar `keys` {a, b, knob, pwr, pwrOn, rst}: her biri en çok 4 komutluk liste. Komutlar: uygulama kimliği, `__media` / `__system` / `__connections` (ekran aç), `__mic` / `__mute` / `__wake`, cihaz komutları `__screen` (ekranı kapat / aç), `__home` (ana sayfa), `__restart`, `__off` (derin uyku).
+- Sıra: komutlar listedeki sırayla çalışır; `__off` ve `__restart` her zaman en sona kalır.
+- `knob`: yalnız ana sayfada döndürgece basma (eski `home.pressApp`). Diğer ekranlarda döndürgeç ve A / B ekranın kendi işini yapar, basılı tutmak ana sayfa.
+- `pwr`: güç tuşu kısa basış (varsayılan `__screen`). 2 sn basılı tutmak her zaman kapatır, kapalıyken basmak her zaman açar — değiştirilemez, cihaz kilitlenmesin diye. Listede `__screen` yoksa basış önce ekranı açar.
+- `pwrOn`: cihaz güç tuşuyla derin uykudan açılınca (EXT0) bir kez çalışır; yalnız `__wake`, ekranlar ve `__home`. `__wake` Wi-Fi bağlanana kadar bekler (en çok 30 sn), Wi-Fi ayarlı değilse hemen uyarır. Uyandıran basış tuşun ilk basışı sayılmaz (bırakınca ekran kapanmaz).
+- `rst`: reset tuşu kısa basış (varsayılan `__restart`); 2 sn basılı tutmak her zaman yeniden başlatır.
+- Eski ayarlar: `keys` yoksa A / B = `quick.a` / `quick.b`, knob = `home.pressApp`, güç = ekran, reset = yeniden başlat. Sayfa her yazışta `quick` ve `home.pressApp`'i ilk komuttan doldurur; eski firmware yalnız onları okur.
+- Ekran: A / B satırında ilk komut görünür, fazlası "+N".

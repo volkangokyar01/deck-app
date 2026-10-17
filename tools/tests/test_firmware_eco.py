@@ -77,6 +77,7 @@ namespace textdatum_t{const int middle_center=0;}
 void text(const char*,int,int,int,int,int){} void delay(int){}
 struct {void fillSprite(int){}void pushSprite(int,int){}} spr;
 struct {void restart(){}} ESP;
+enum{KEY_A,KEY_B,KEY_KNOB,KEY_PWR,KEY_PWRON,KEY_RST}; void runKey(int){act();} bool keyHas(int,const char*){return false;} void restartNow(){act();}
 '''
         cases = r'''
 void idle(){ecoEnter();assert(ecoActive&&mhz==80);events.clear();screenOff=false;dimmed=true;}

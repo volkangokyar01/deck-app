@@ -260,16 +260,16 @@ for (const platform of ['darwin', 'win32', null]) test(`return to home is one se
   assert.ok(ids.get('devForm').textContent.includes('Ana sayfayı aç'));
 });
 
-test('app editor: target slot sits right under the name; deleting the home press app clears it', () => {
+test('app editor: target slot sits right under the name; deleting an app removes it from every key', () => {
   const { ctx, ids, body, render } = page('win32');
   render();
   const kids = body.children, slot = ids.get('targetSlot');
   assert.equal(kids.indexOf(slot), 1); assert.ok(slot.textContent.includes('Ne açılsın'));
   assert.ok(kids.indexOf(ids.get('launchAdvanced')) > kids.indexOf(slot));
-  const a = ctx.cfg.apps[0]; ctx.cfg.home.pressApp = a.id; ctx.confirmDelete = true; render();
+  const a = ctx.cfg.apps[0]; ctx.cfg.keys = { a: [a.id], b: [], knob: [a.id], pwr: ['__screen'], pwrOn: [], rst: ['__restart'] }; ctx.KEY_SLOTS = [['a'], ['b'], ['knob'], ['pwr'], ['pwrOn'], ['rst']]; ctx.keyList = k => ctx.cfg.keys[k]; ctx.confirmDelete = true; render();
   const all = e => [e, ...(e?.children || []).flatMap(all)];
   all(body).find(e => e?.tag === 'button' && e.textContent === 'Sil' && String(e.className).includes('danger')).events.click();
-  assert.equal(ctx.cfg.home.pressApp, null); assert.ok(!ctx.cfg.apps.includes(a));
+  assert.ok(!ctx.cfg.keys.knob.includes(a.id) && !ctx.cfg.keys.a.includes(a.id)); assert.ok(!ctx.cfg.apps.includes(a));
 });
 
 test('dragging an app moves it before or after the target', () => {
