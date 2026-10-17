@@ -47,10 +47,26 @@ test('sensor setup keeps an existing PawnIO (exit 183 "already exists" no longer
   assert.match(setup, /\$p\.ExitCode -notin @\(0, 3010, 183\)/);
 });
 
-test('FPS does not blink: half-written file keeps the last one, the last value is held 3 s, fps from frame times', () => {
+test('FPS does not blink: half-written file keeps the last one, fps from frame times', () => {
   const stats = read('app/stats.js'), fpsPs = read('app/win-fps.ps1');
-  assert.match(stats, /else cache\.fps = fpsGood && Date\.now\(\) - fpsGoodAt < 3000 \? fpsGood : pick;/);
+  assert.match(stats, /cache\.fps = fpsTrack\(data, fgPid\);/);
   assert.match(stats, /if \(f\) fpsData = JSON\.parse/);
   assert.match(fpsPs, /for \(\$i = \$f\.Length - 1; \$i -ge 0 -and \$sum -lt 1000; \$i--\)/);
   assert.match(read('app/sensor-install.js'), /fpsOld = h\(path\.join\(dir, 'win-fps\.ps1'\)\) !== h\(path\.join\(__dirname, 'win-fps\.ps1'\)\)/);
+});
+
+test('FPS stays on the card while the game runs: missed seconds, stale file, alt-tab keep / follow the value', () => {
+  const { createFpsTracker } = require('../../app/stats.js');
+  let running = new Set([10]);
+  const track = createFpsTracker(pid => running.has(pid));
+  const t0 = 1_800_000_000_000, file = (t, procs) => ({ epoch: t / 1000, procs });
+  assert.equal(track(file(t0, [{ pid: 10, name: 'cs2.exe', fps: 144, low: 120 }]), 10, t0).fps, 144);
+  assert.equal(track(file(t0, []), 10, t0 + 1000).fps, 144, 'a second with no frames keeps the value');
+  assert.equal(track(null, 10, t0 + 2000).fps, 144, 'unreadable file keeps the value');
+  assert.equal(track(file(t0, [{ pid: 10, name: 'cs2.exe', fps: 144 }]), 10, t0 + 60000).fps, 144, 'stale file (task restarting) keeps the value');
+  const alt = track(file(t0 + 61000, [{ pid: 10, name: 'cs2.exe', fps: 60, low: 50 }, { pid: 20, name: 'Discord.exe', fps: 30 }]), 99, t0 + 61000);
+  assert.equal(alt.fps, 60, 'alt-tab to a non-presenting window: follows the game'); assert.equal(alt.app, 'cs2');
+  assert.equal(track(file(t0 + 62000, [{ pid: 30, name: 'eldenring.exe', fps: 58 }]), 30, t0 + 62000).app, 'eldenring', 'a new foreground game takes over');
+  running = new Set();
+  assert.equal(track(file(t0 + 63000, []), 1, t0 + 63000).fps, null, 'game exited: card clears');
 });

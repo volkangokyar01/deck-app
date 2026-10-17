@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.16.0)
+## Firmware (v1.16.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -409,3 +409,7 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Neden: uygulama fps.json'u SYSTEM görevi tam değiştirirken okuyunca okuma başarısız oluyor ya da dosyanın yarısını görüyordu, o saniye kartta "Oyun yok" çıkıyordu; ayrıca PresentMon'un boruya yazdığı çıktı topluca geldiği için bazı saniyelerde "son 1 sn'de kare yok" sayılıyordu.
 - Uygulama: okunamayan dosyada son iyi dosya kullanılır; değer kaybolursa son değer 3 sn tutulur.
 - FPS görevi (`win-fps.ps1`): FPS, satırların geliş anına göre değil en yeni karelerin kendi sürelerinden (~1 sn'lik kare süresi) hesaplanır; süreç 3 sn kare göndermezse listeden düşer. Görev korumalı kopyayı çalıştırdığı için uygulama güncellemesi ona ulaşmaz: uygulama kopyanın hash'ini karşılaştırır, eskiyse "FPS ölçümünü güncelle" düğmesi çıkar (yönetici onayı).
+
+## 2026-10-17 — FPS kartta hiç silinmez (firmware 1.16.1)
+- Uygulama (`createFpsTracker`): ön planda bir oyun bir kez değer verdiyse o oyun, süreci kapanana kadar kartta kalır. Kare gelmeyen saniye, okunamayan / eski fps.json, görevin yeniden başlaması son değeri tutar; Discord'a / masaüstüne geçilince oyun hâlâ kare gönderiyorsa onun değeri izlenmeye devam eder. Yeni bir oyun ön plana gelince o geçer; oyun kapanınca kart "Oyun yok" der.
+- Cihaz: FPS verisi 15 sn'ye kadar taze sayılır (önce 5 sn), değerden hemen sonra (3 sn içinde) gelen boş paket son değeri silmez.

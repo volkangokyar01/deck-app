@@ -4,6 +4,7 @@ Her push'tan önce en üste bir satır eklenir. Kurallar `GUNCELLEME.md` → 5. 
 
 | Tarih / saat (TSİ) | İmza | Tür | Güncelleme | Özet |
 |---|---|---|---|---|
+| 2026-10-17 17:05 | volkangokyar01 | uygulama / ayar sayfası / firmware / belge | Evet | Firmware 1.16.1: FPS kartta silinmiyor; uygulama oyunu süreci kapanana kadar izler (kare gelmeyen saniye, eski / yarım dosya, alt-tab son değeri tutar), cihaz 15 sn tazelik ve boş paketi yok sayma. Yeni izleme testi dahil 200 Node / 34 Python testi geçti. Windows'ta ve donanımda denenmedi |
 | 2026-10-12 22:45 | volkangokyar01 | uygulama / belge | Evet | FPS yanıp sönmesi: uygulama yarım yazılmış fps.json'da son iyi dosyayı ve 3 sn son değeri tutar; FPS görevi FPS'i kare sürelerinden hesaplar (toplu gelen çıktıda boş saniye yok); görev betiği eskiyse "FPS ölçümünü güncelle" düğmesi. Sahte PresentMon ile PowerShell 7'de denendi; 199 Node testi geçti. Windows'ta denenmedi |
 | 2026-10-12 22:30 | volkangokyar01 | uygulama / belge | Evet | Sensör kurulumu: PawnIO zaten kuruluyken "PawnIO kurulumu başarısız (183)" hatası düzeltildi (kurucu atlanır, 183 başarı); FPS adımı artık kurulabiliyor. Betik PowerShell 7'de ayrıştırıldı; 198 Node testi geçti. Windows'ta denenmedi |
 | 2026-10-12 22:25 | volkangokyar01 | uygulama / belge | Evet | FPS tanı satırı: Cihaz ayarları → CPU sıcaklığı ve oyun FPS bölümünde PresentMon kurulumu, fps.json yaşı, ön plandaki süreç, kare gönderen süreçler ve karta giden değer gösterilir (FPS görünmüyor bildirimi için). 197 Node testi geçti. Firmware değişmedi |

@@ -28,7 +28,7 @@ static bool gpuFresh() { return fresh(st.gpu.at, 5000); }
 static bool netFresh() { return fresh(st.net.at, 5000); }
 static bool wxFresh() { return fresh(st.wx.at, 2 * 3600000UL); }
 static bool fxFresh() { return fresh(st.fx.at, 2 * 3600000UL); }
-static bool fpsFresh() { return fresh(st.fps.at, 5000); }
+static bool fpsFresh() { return fresh(st.fps.at, 15000); }   // 1.16.1: a late stats packet must not blank the card
 
 // Local time (1.11.0, no Wi-Fi): every "time" from the desktop app also sets the chip's own clock
 // (settimeofday). That clock keeps running through restarts, crashes and deep sleep ("Kapanıyor"),
@@ -89,8 +89,11 @@ static void parseStats(JsonObjectConst d) {
   }
   if (d["fps"].is<JsonObjectConst>()) {
     JsonObjectConst o = d["fps"];
-    st.fps.fps = num(o["fps"]); st.fps.low = num(o["low"]); st.fps.app = (const char*)(o["app"] | ""); st.fps.at = millis() | 1;
-    st.fpsH.push(st.fps.fps);
+    float f = num(o["fps"]);
+    // 1.16.1: one empty packet right after a value keeps the value (the card never blinks "--")
+    if (isnan(f) && !isnan(st.fps.fps) && st.fps.at && millis() - st.fps.at < 3000) { /* keep */ }
+    else { st.fps.fps = f; st.fps.low = num(o["low"]); st.fps.app = (const char*)(o["app"] | ""); st.fps.at = millis() | 1; }
+    if (!isnan(f)) st.fpsH.push(f);
   }
   if (d["time"].is<JsonObjectConst>() && d["time"]["epoch"].is<double>()) {
     st.epoch = (int64_t)d["time"]["epoch"].as<double>(); st.tz = (int32_t)(d["time"]["tz"] | 0.0); st.timeAt = millis() | 1;

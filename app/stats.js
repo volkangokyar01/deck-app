@@ -117,10 +117,31 @@ function pickFps(data, fgPid, now = Date.now()) {
   if (fps === null) return none;
   return { fps, low, app: String(p.name || '').replace(/\.exe$/i, '').slice(0, 24) };
 }
+// Keeps the FPS on screen (2026-10-17): once a game showed a value, that game stays the one on the card until its
+// process exits. A missed second, a half-written file, a stale file or switching to Discord / the desktop keeps the
+// last value (and keeps following the game if it still presents); only a new foreground game replaces it.
+function createFpsTracker(alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } }) {
+  let game = null, last = null;
+  const none = { fps: null, low: null, app: null };
+  return function update(data, fgPid, now = Date.now()) {
+    const fresh = data && Array.isArray(data.procs) && now - data.epoch * 1000 < 4000 && now - data.epoch * 1000 >= -2000;
+    const cur = fresh ? pickFps(data, fgPid, now) : none;
+    if (cur.fps !== null) { game = Number(fgPid); last = cur; return last; }
+    if (game !== null && fresh) {
+      const p = data.procs.find(x => Number(x.pid) === game);
+      const fps = p ? range(p.fps, 0, 2000) : null;
+      if (fps !== null) last = { fps, low: range(p.low, 0, 2000), app: last.app };
+    }
+    if (game !== null && alive(game)) return last;
+    game = null; last = null;
+    return none;
+  };
+}
 function createStats({ fetch, cacheDir, platform = process.platform, arch = process.arch, sensorFile, fpsFile } = {}) {
   const cache = { cpu: { name: cpuName(os.cpus()[0]?.model), temp: null, load: null, power: null, clock: null }, gpu: gpuEmpty(), net: { down: null, up: null, ping: null }, fx: { usd: null, eur: null, usdChg: null, eurChg: null } };
   if (platform === 'win32') cache.fps = { fps: null, low: null, app: null };
-  let fgPid = 0, fgAt = 0, fpsData = null, fpsGood = null, fpsGoodAt = 0;
+  let fgPid = 0, fgAt = 0, fpsData = null;
+  const fpsTrack = createFpsTracker();
   let running = false, previousCpu = null, previousNet = null, netAt = 0, netSeen = 0, sensorAt = 0, pingAt = 0;
   let weather = null, weatherKey = '', weatherGeneration = 0, weatherBusy = false, fxBusy = false, weatherAt = 0, fxAt = 0;
   let macSample = null, macAt = 0;
@@ -186,9 +207,7 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
       // so keep the last good file, and hold the last value for 3 s instead of blinking "--" (2026-10-12)
       try { const f = typeof fpsFile === 'function' ? fpsFile() : fpsFile; if (f) fpsData = JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch (_) {}
       const data = fpsData;
-      const pick = pickFps(data, fgPid);
-      if (pick.fps !== null) { fpsGood = pick; fpsGoodAt = Date.now(); cache.fps = pick; }
-      else cache.fps = fpsGood && Date.now() - fpsGoodAt < 3000 ? fpsGood : pick;
+      cache.fps = fpsTrack(data, fgPid);
       // diagnostics for the settings page (not sent to the deck): is the task writing, what presents, what is in front
       const age = data && Number.isFinite(data.epoch) ? Math.round(Date.now() / 1000 - data.epoch) : null;
       cache.fpsInfo = { file: !!data, age, fg: fgPid, fgSeen: fgAt > 0 && Date.now() - fgAt < 5000,
@@ -333,4 +352,4 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
   function stop() { running = false; locationGeneration++; for (const t of timers) clearInterval(t); timers.clear(); for (const c of children) c.kill(); children.clear(); for (const s of sockets) s.destroy(); sockets.clear(); }
   return { start, stop, get, refreshWeather, refreshFx, refreshLocation };
 }
-module.exports = { createStats, pickFps, RATES, parseNvidia, parseMacmon, parseNetstat, netDelta, cpuName, parseLocation, resolveLocation, parseReverseLocation, reverseLocation, resolveWeatherLocation };
+module.exports = { createStats, pickFps, createFpsTracker, RATES, parseNvidia, parseMacmon, parseNetstat, netDelta, cpuName, parseLocation, resolveLocation, parseReverseLocation, reverseLocation, resolveWeatherLocation };
