@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.18.0)
+## Firmware (v1.18.1)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -431,3 +431,10 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - `rst`: reset tuşu kısa basış (varsayılan `__restart`); 2 sn basılı tutmak her zaman yeniden başlatır.
 - Eski ayarlar: `keys` yoksa A / B = `quick.a` / `quick.b`, knob = `home.pressApp`, güç = ekran, reset = yeniden başlat. Sayfa her yazışta `quick` ve `home.pressApp`'i ilk komuttan doldurur; eski firmware yalnız onları okur.
 - Ekran: A / B satırında ilk komut görünür, fazlası "+N".
+
+## 2026-10-17 — Uzun basış komutları (firmware 1.18.1)
+- `keys`'e uzun basış listeleri eklendi: `aHold`, `bHold` (0,6 sn), `knobHold` (0,7 sn, yalnız ana sayfa), `pwrHold`, `rstHold` (2 sn). Kısa basış listeleriyle aynı komutlar, en çok 4.
+- Varsayılanlar eski davranış: `pwrHold` = `__off`, `rstHold` = `__restart`; `aHold` / `bHold` boşsa uzun basış kısa basışla aynı; `knobHold` boşsa ve diğer ekranlarda basılı tutmak ana sayfaya döner. 1.18.0 ayarlarında olmayan liste varsayılanı alır.
+- A / B uzun basış listesi yalnız ekranın kendi işi olmayan yerlerde çalışır (Medya, Ses ve parlaklık, Bağlantılar hariç; Medya'da A basılı = sessiz kalır).
+- Güvenlik: güç tuşunu 6 sn basılı tutmak her zaman kapatır, reset tuşunu 6 sn basılı tutmak her zaman yeniden başlatır (liste ne olursa olsun). Kapalıyken güç tuşu her zaman açar.
+- Güç tuşunun kısa basış listesine artık `__off` da eklenebilir.

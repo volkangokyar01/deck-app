@@ -52,18 +52,18 @@ unsigned tick=10000; unsigned millis(){return tick;}
 bool ecoActive=false,dirty=false,screenOff=false,dimmed=false; unsigned lastActivity=0;
 int mhz=240; std::vector<int> events;
 bool setCpuFrequencyMhz(int v){mhz=v;events.push_back(v);return true;}
-struct {int brightness=80;bool encRev=false,homeOn=true;const char* quickA="a";const char* quickB="b";} S;
+struct {int brightness=80;bool encRev=false,homeOn=true;const char* quickA="a";const char* quickB="b";int keyN[11]={0};} S;
 void setBright(int){assert(mhz==240);}
 void noInterrupts(){} void interrupts(){}
 int encSteps=0,sel=0,adjust=0;unsigned adjustAt=0;
-enum{K_MEDIA,K_SYS,K_APP,K_CONN,K_MENU};int kind=K_APP;int curKind(){return kind;}
+enum{K_MEDIA,K_SYS,K_APP,K_CONN,K_MENU,K_HOME};int kind=K_APP;int curKind(){return kind;}
 int subPage=0; void evtSelect(){} bool menuPick=false; int menuCur=0; unsigned menuAt=0; std::vector<int> menuPages(){return {0};} int wheelStep(int i,int d){return i+d;}
 using std::max;
 bool connEdit=false,bleStarted=false;int connCur=0;unsigned connAt=0,connConfirmAt=0;
 struct {bool off=false;} bt; bool btPairing(){return false;} void btPairStop(){} void btSetOff(bool){}
 std::vector<int> connRows(){return {0};} int connActiveRow(const std::vector<int>&){return 0;} void toast(const char*){}
 int constrain(int n,int lo,int hi){return n<lo?lo:n>hi?hi:n;}
-struct Btn{int event=0;int poll(int){int e=event;event=0;return e;}} bEnc,bA,bB,bPwr,bRst;
+struct Btn{int event=0;bool down=false;unsigned tDown=0;int poll(int){int e=event;event=0;return e;}} bEnc,bA,bB,bPwr,bRst;
 void act(){assert(mhz==240);events.push_back(1);}
 void selectIndex(int n){act();sel=n;} void levelStep(bool,int){act();}
 void evtInput(const char*){assert(mhz==240);} bool companionOn(){return false;}
@@ -77,7 +77,7 @@ namespace textdatum_t{const int middle_center=0;}
 void text(const char*,int,int,int,int,int){} void delay(int){}
 struct {void fillSprite(int){}void pushSprite(int,int){}} spr;
 struct {void restart(){}} ESP;
-enum{KEY_A,KEY_B,KEY_KNOB,KEY_PWR,KEY_PWRON,KEY_RST}; void runKey(int){act();} bool keyHas(int,const char*){return false;} void restartNow(){act();}
+enum{KEY_A,KEY_B,KEY_KNOB,KEY_PWR,KEY_PWRON,KEY_RST,KEY_A_HOLD,KEY_B_HOLD,KEY_KNOB_HOLD,KEY_PWR_HOLD,KEY_RST_HOLD}; bool quickScreen(){return true;} void runKey(int){act();} bool keyHas(int,const char*){return false;} void restartNow(){act();}
 '''
         cases = r'''
 void idle(){ecoEnter();assert(ecoActive&&mhz==80);events.clear();screenOff=false;dimmed=true;}

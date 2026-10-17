@@ -27,7 +27,8 @@ struct App {
   uint8_t  pixN = 40;        // 1.15.0: 64 (sharp in the 62 px bubble) or 40 (older settings pages)
 };
 
-enum : uint8_t { KEY_A = 0, KEY_B, KEY_KNOB, KEY_PWR, KEY_PWRON, KEY_RST };   // 1.18.0: Settings::keys rows
+// 1.18.0: Settings::keys rows; 1.18.1 adds the long-press lists (…_HOLD)
+enum : uint8_t { KEY_A = 0, KEY_B, KEY_KNOB, KEY_PWR, KEY_PWRON, KEY_RST, KEY_A_HOLD, KEY_B_HOLD, KEY_KNOB_HOLD, KEY_PWR_HOLD, KEY_RST_HOLD, KEY_ROWS };
 struct Settings {
   String name = "Game Deck";
   bool   trq = true;
@@ -58,7 +59,8 @@ struct Settings {
   std::vector<App> apps;
   String quickA, quickB;                  // first action of A / B (shown on the home screen)
   // 1.18.0: every key runs a list of up to 4 actions (app ids, "__media", "__mic", "__wake", "__screen" …)
-  String keys[6][4] = { {}, {}, {}, { "__screen" }, {}, { "__restart" } }; uint8_t keyN[6] = { 0, 0, 0, 1, 0, 1 };
+  String keys[KEY_ROWS][4] = { {}, {}, {}, { "__screen" }, {}, { "__restart" }, {}, {}, {}, { "__off" }, { "__restart" } };
+  uint8_t keyN[KEY_ROWS] = { 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1 };
   // extra pages in the knob list
   bool mediaOn = true, mediaStay = true, sysOn = true, connOn = true;
   bool widgetsOn = true;                                           // widgets page: 1–4 cards
@@ -250,12 +252,12 @@ static void applyConfig(JsonObjectConst c) {
   N.quickA = (const char*)(c["quick"]["a"] | ""); N.quickB = (const char*)(c["quick"]["b"] | "");
   // 1.18.0: "keys" {a, b, knob, pwr, pwrOn, rst}: lists of actions. Older configs: A / B, knob press = pressApp,
   // power = screen off / on, reset = restart.
-  static const char* KEY_NAMES[6] = { "a", "b", "knob", "pwr", "pwrOn", "rst" };
+  static const char* KEY_NAMES[KEY_ROWS] = { "a", "b", "knob", "pwr", "pwrOn", "rst", "aHold", "bHold", "knobHold", "pwrHold", "rstHold" };
   JsonObjectConst ks = c["keys"];
-  for (int k = 0; k < 6; k++) {
+  for (int k = 0; k < KEY_ROWS; k++) {
     N.keyN[k] = 0;
-    if (ks.isNull()) {
-      const String& v = k == KEY_A ? N.quickA : k == KEY_B ? N.quickB : k == KEY_KNOB ? N.pressApp : String(k == KEY_PWR ? "__screen" : k == KEY_RST ? "__restart" : "");
+    if (ks.isNull() || ks[KEY_NAMES[k]].isNull()) {          // missing list: the old behaviour
+      const String& v = k == KEY_A ? N.quickA : k == KEY_B ? N.quickB : k == KEY_KNOB ? N.pressApp : String(k == KEY_PWR ? "__screen" : k == KEY_RST || k == KEY_RST_HOLD ? "__restart" : k == KEY_PWR_HOLD ? "__off" : "");
       if (v.length()) N.keys[k][N.keyN[k]++] = v;
       continue;
     }

@@ -17,9 +17,9 @@ test('holding the knob goes home from every screen and closes open modes', () =>
 test('Medya / Ses ve parlaklık (1.13.4): the knob works inside the page at once; A hold mutes; B hold is a press', () => {
   const ino = read('firmware/VolkanDeck/VolkanDeck.ino');
   assert.match(ino, /int a = bA\.poll\(600\);\n  if \(a == 2 && curKind\(\) == K_MEDIA && !wakeUp\(\)\) \{ evtInput\("a_hold"\); toggleMute\(\);/);
-  assert.ok(!/b_hold/.test(ino), 'no volume mode on B hold any more');
+  assert.ok(!/b_hold"\); (?!runKey\(KEY_B_HOLD\))/.test(ino), 'no volume mode on B hold any more (only the own long-press list, 1.18.1)');
   assert.match(ino, /else if \(\(a == 1 \|\| a == 2\) && !wakeUp\(\)\)/);
-  assert.match(ino, /if \(\(b == 1 \|\| b == 2\) && !wakeUp\(\)\)/);
+  assert.match(ino, /else if \(\(b == 1 \|\| b == 2\) && !wakeUp\(\)\)/);
   const enc = ino.slice(ino.indexOf('uint8_t k = curKind();', ino.indexOf('static void handleInput()')), ino.indexOf('evtInput(steps > 0 ? "cw" : "ccw");'));
   assert.match(enc, /if \(k == K_MEDIA\) \{ adjust = 1; levelStep\(true, steps\); \}/);
   assert.match(enc, /else if \(k == K_SYS\) \{ if \(!adjust\) adjust = 1; levelStep\(adjust == 1, steps\); \}/);

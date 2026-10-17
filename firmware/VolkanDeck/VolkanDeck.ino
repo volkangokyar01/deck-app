@@ -279,6 +279,8 @@ static void runKey(uint8_t k) {
   if (off) { ecoExit(); goSleep(); }
   if (restart) restartNow();
 }
+// A / B run their own lists only where they have no page job (home, apps, Kartlar, Menü)
+static bool quickScreen() { uint8_t k = curKind(); return k != K_MEDIA && k != K_SYS && k != K_CONN; }
 static bool keyHas(uint8_t k, const char* id) { for (int i = 0; i < S.keyN[k]; i++) if (S.keys[k][i] == id) return true; return false; }
 // Power key turned the device on: its "açılınca" list runs once. "Bilgisayarı aç" waits for the Wi-Fi connection.
 static uint32_t bootWakeAt = 0;
@@ -510,6 +512,8 @@ static void handleInput() {
         else pressPendingAt = now;
       } else onPress();
     }
+  } else if (e == 2 && curKind() == K_HOME && S.keyN[KEY_KNOB_HOLD]) {   // 1.18.1: own long-press list on home
+    wakeUp(); pressPendingAt = 0; runKey(KEY_KNOB_HOLD);
   } else if (e == 2) {
     // hold the knob: home, from every screen (1.10.0); open modes (volume, cursor) close on the way
     wakeUp(); pressPendingAt = 0;
@@ -523,6 +527,7 @@ static void handleInput() {
   // A / B: hold on the media page = mute (A) / volume mode (B); elsewhere a hold acts like a press
   int a = bA.poll(600);
   if (a == 2 && curKind() == K_MEDIA && !wakeUp()) { evtInput("a_hold"); toggleMute(); dirty = true; }
+  else if (a == 2 && S.keyN[KEY_A_HOLD] && quickScreen() && !wakeUp()) { evtInput("a_hold"); runKey(KEY_A_HOLD); }   // 1.18.1
   else if ((a == 1 || a == 2) && !wakeUp()) {
     evtInput("a"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("prev", CC_PREV);
@@ -531,7 +536,8 @@ static void handleInput() {
     else runKey(KEY_A);
   }
   int b = bB.poll(600);
-  if ((b == 1 || b == 2) && !wakeUp()) {          // 1.13.4: no volume mode any more, a B hold is a press everywhere
+  if (b == 2 && S.keyN[KEY_B_HOLD] && quickScreen() && !wakeUp()) { evtInput("b_hold"); runKey(KEY_B_HOLD); }   // 1.18.1
+  else if ((b == 1 || b == 2) && !wakeUp()) {          // 1.13.4: no volume mode any more, a B hold is a press everywhere
     evtInput("b"); uint8_t k = curKind();
     if (k == K_MEDIA) mediaAction("next", CC_NEXT);
     else if (k == K_SYS) { toggleMic(); if (adjust) adjustAt = now; }
@@ -544,11 +550,18 @@ static void handleInput() {
     ecoExit();
     if (!keyHas(KEY_PWR, "__screen")) wakeUp();   // a key press always brings the screen back
     runKey(KEY_PWR);
-  } else if (p == 2) { ecoExit(); goSleep(); }
+  } else if (p == 2) {                            // 1.18.1: own long-press list (default: turn off)
+    ecoExit();
+    if (!keyHas(KEY_PWR_HOLD, "__screen")) wakeUp();
+    runKey(KEY_PWR_HOLD);
+  }
+  // safety: 6 s on the power key always turns the device off, 6 s on reset always restarts, whatever the lists say
+  if (bPwr.down && now - bPwr.tDown >= 6000) { ecoExit(); goSleep(); }
 
   int r = bRst.poll(2000);
   if (r == 1) { ecoExit(); wakeUp(); runKey(KEY_RST); }
-  else if (r == 2) restartNow();
+  else if (r == 2) { ecoExit(); wakeUp(); runKey(KEY_RST_HOLD); }
+  if (bRst.down && now - bRst.tDown >= 6000) restartNow();
 }
 
 static void applySideEffects() {

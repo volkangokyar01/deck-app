@@ -12,7 +12,7 @@ const apps = [{ id: 'spotify', name: 'Spotify', launch: { method: 'run', value: 
 
 test('older configs become key lists: A / B, knob = home press app, power = screen, reset = restart', () => {
   const k = context.keysFrom({ apps, quick: { a: 'spotify', b: '__wake' }, home: { pressApp: 'discord' } }, ['spotify', 'discord']);
-  assert.deepEqual(JSON.parse(JSON.stringify(k)), { a: ['spotify'], b: ['__wake'], knob: ['discord'], pwr: ['__screen'], pwrOn: [], rst: ['__restart'] });
+  assert.deepEqual(JSON.parse(JSON.stringify(k)), { a: ['spotify'], b: ['__wake'], knob: ['discord'], pwr: ['__screen'], pwrOn: [], rst: ['__restart'], aHold: [], bHold: [], knobHold: [], pwrHold: ['__off'], rstHold: ['__restart'] });
 });
 test('lists drop unknown ids and duplicates, keep at most 4; the power-on list cannot turn the device off', () => {
   const k = context.keysFrom({ keys: { a: ['spotify', 'gone', 'spotify', '__mic', '__mute', '__wake', '__screen'], pwrOn: ['__wake', '__off', '__restart'] } }, ['spotify']);
@@ -37,13 +37,23 @@ test('a key difference is one Turkish line; old and new configs with the same me
 test('firmware: lists per key, run in order, off / restart last; power-on list runs once, wake waits for Wi-Fi', () => {
   const store = fs.readFileSync(path.join(root, 'firmware/VolkanDeck/Store.h'), 'utf8');
   const ino = fs.readFileSync(path.join(root, 'firmware/VolkanDeck/VolkanDeck.ino'), 'utf8');
-  assert.match(store, /static const char\* KEY_NAMES\[6\] = \{ "a", "b", "knob", "pwr", "pwrOn", "rst" \};/);
+  assert.match(store, /static const char\* KEY_NAMES\[KEY_ROWS\] = \{ "a", "b", "knob", "pwr", "pwrOn", "rst", "aHold", "bHold", "knobHold", "pwrHold", "rstHold" \};/);
   assert.match(ino, /case K_HOME: runKey\(KEY_KNOB\);/);
   const run = ino.slice(ino.indexOf('static void runKey('), ino.indexOf('static bool keyHas('));
   assert.ok(run.indexOf('quickAct(id)') < run.indexOf('if (off) { ecoExit(); goSleep(); }'));
-  assert.match(ino, /if \(p == 1\) \{[\s\S]*?runKey\(KEY_PWR\);[\s\S]*?\} else if \(p == 2\) \{ ecoExit\(\); goSleep\(\); \}/);
-  assert.match(ino, /if \(r == 1\) \{ ecoExit\(\); wakeUp\(\); runKey\(KEY_RST\); \}\n  else if \(r == 2\) restartNow\(\);/);
+  assert.match(ino, /if \(p == 1\) \{[\s\S]*?runKey\(KEY_PWR\);[\s\S]*?\} else if \(p == 2\) \{[\s\S]*?runKey\(KEY_PWR_HOLD\);/);
+  assert.match(ino, /if \(r == 1\) \{ ecoExit\(\); wakeUp\(\); runKey\(KEY_RST\); \}\n  else if \(r == 2\) \{ ecoExit\(\); wakeUp\(\); runKey\(KEY_RST_HOLD\); \}/);
+  assert.match(ino, /if \(bPwr\.down && now - bPwr\.tDown >= 6000\) \{ ecoExit\(\); goSleep\(\); \}/, '6 s always turns the device off');
+  assert.match(ino, /if \(bRst\.down && now - bRst\.tDown >= 6000\) restartNow\(\);/, '6 s always restarts');
   assert.match(ino, /bool keyBoot = offMarker == OFF_MAGIC && esp_sleep_get_wakeup_cause\(\) == ESP_SLEEP_WAKEUP_EXT0;/);
   assert.match(ino, /if \(id == "__wake"\) \{ if \(wifiWanted\(\)\) \{ bootWakeAt = millis\(\) \| 1;/);
   assert.match(ino, /bPwr\.raw = bPwr\.down = bPwr\.longFired = true;/, 'the press that woke the device is not a press');
+});
+
+test('long press (1.18.1): old 1.18.0 keys keep the fixed holds; a hold difference has its own Turkish line', () => {
+  const k = context.keysFrom({ keys: { a: ['spotify'], pwr: ['__screen'] } }, ['spotify']);
+  assert.deepEqual([...k.pwrHold], ['__off']); assert.deepEqual([...k.rstHold], ['__restart']); assert.deepEqual([...k.aHold], []);
+  const a = { device: {}, home: {}, apps, keys: { pwrHold: ['__screen'] } }, b = { device: {}, home: {}, apps, keys: {} };
+  const d = JSON.parse(JSON.stringify(context.configDiff(a, b)));
+  assert.equal(d.length, 1); assert.equal(d[0].label, 'Tuşlar · Güç tuşu · uzun bas');
 });
