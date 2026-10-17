@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.18.2)
+## Firmware (v1.18.3)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -445,3 +445,7 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Bağlı kalma: çekirdeğin otomatik yeniden bağlanması kapalı, yerine `wifiPoll`: kopunca 0,5 sn sonra yeniden dener; tam deneme başarısızsa 5 / 10 / 20 / 40 / 60 sn bekler, hep dener; şifre hatasında 60 sn. Deneme, sürücünün bağlantı kesildi olayıyla hemen biter (zaman aşımını beklemez); kendi `disconnect`'imizin olayı (ASSOC_LEAVE) sayılmaz.
 - Neden: kesilme nedeni `wifi_status` → `reason` (`pass` şifre / el sıkışma, `noap` ağ bulunamadı, `other`) ve `retry` (sn). Cihaz ve ayar sayfası "Şifre yanlış olabilir", "Ağ bulunamadı (modeme uzak ya da 5 GHz)" gösterir.
 - Uyum: en düşük güvenlik WPA-PSK (eski WPA / WPA2 karışık modemler), cihaz ağda "GameDeck" adıyla görünür. Modem uykusu Bluetooth için açık kalır. ESP32-S3 yalnız 2,4 GHz'e bağlanır.
+
+## 2026-10-17 — En çok 20 uygulama (firmware 1.18.3)
+- Uygulama sınırı 16'dan 20'ye çıktı (`MAX_APPS`, Store.h ve ayar sayfası). Ek yük: 4 ikon × 8 KB LittleFS / PSRAM, ayarda ~1,2 KB; 16 KB ayar sınırının çok altında. PSRAM yoksa ekranda yine 6 ikonluk önbellek kullanılır.
+- Eski firmware 16'dan sonrasını sessizce atardı; kartta 1.18.3'ten eski firmware varken 16'dan fazla uygulama yazılmaz, ayar sayfası önce güncellemeyi ister.

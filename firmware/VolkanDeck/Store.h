@@ -29,6 +29,7 @@ struct App {
 
 // 1.18.0: Settings::keys rows; 1.18.1 adds the long-press lists (…_HOLD)
 enum : uint8_t { KEY_A = 0, KEY_B, KEY_KNOB, KEY_PWR, KEY_PWRON, KEY_RST, KEY_A_HOLD, KEY_B_HOLD, KEY_KNOB_HOLD, KEY_PWR_HOLD, KEY_RST_HOLD, KEY_ROWS };
+static const size_t MAX_APPS = 20;   // 1.18.3 (was 16); icons ~8 KB each in LittleFS, config ~0.3 KB each
 struct Settings {
   String name = "Game Deck";
   bool   trq = true;
@@ -247,7 +248,7 @@ static void applyConfig(JsonObjectConst c) {
     A.img = a["img"] | false; A.inWheel = a["inWheel"] | true;
     parseLaunch(a["launch"], A.launch);
     N.apps.push_back(A);
-    if (N.apps.size() >= 16) break;
+    if (N.apps.size() >= MAX_APPS) break;
   }
   N.quickA = (const char*)(c["quick"]["a"] | ""); N.quickB = (const char*)(c["quick"]["b"] | "");
   // 1.18.0: "keys" {a, b, knob, pwr, pwrOn, rst}: lists of actions. Older configs: A / B, knob press = pressApp,

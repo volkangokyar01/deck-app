@@ -24,7 +24,7 @@ function page(platform) {
     clone: x => JSON.parse(JSON.stringify(x)), uid: () => Math.random().toString(36),
     save() {}, drawScreen() {}, renderList() {}, renderCtlMap() {}, renderAll() {}, changed() {}, toast() {},
     appById: id => ctx.cfg.apps.find(a => a.id === id), COLORS: ['#64748B'], ICONS: { star: '' },
-    svgIcon: () => new Element('svg'), svgPath: () => new Element('svg'), NAME_MAX: 14, MAX_APPS: 16,
+    svgIcon: () => new Element('svg'), svgPath: () => new Element('svg'), NAME_MAX: 14, MAX_APPS: 20,
     PLAYERS: [['spotify', 'Spotify']], port: null, confirmDelete: false, animFrames: [],
     launchSummary: l => l.value || l.method, geoSeq: 0, setTimeout, clearTimeout,
     deviceInfo: null, FIRMWARE: { version: '1.6.3' }, verGE: (a, b) => a >= b });
