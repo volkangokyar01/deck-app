@@ -2298,7 +2298,7 @@ function renderDeviceForm(){
       el("li",{},"Cihazın Wi-Fi'si aynı modeme bağlı olmalı (yukarıdaki Wi-Fi kartı)."),
       el("li",{},isMac?"Mac: Sistem Ayarları → Enerji → “Ağ erişimi için uyandır” açık olmalı. Mac yalnız uykudan uyanır, tam kapalıyken açılmaz."
         :"Windows: yukarıdaki düğmeye bas. Ağ kartının uyandırma ayarlarını açar, cihazın USB ile uyandırmasına izin verir, hızlı başlatmayı kapatır."),
-      ...(isMac?[]:[el("li",{},"BIOS (Gigabyte): açılışta Del → Settings → Platform Power → Wake on LAN: Enabled, ErP: Disabled → F10 kaydet. Başka anakartta adlar “Power On By PCI-E”, “Resume by LAN” olabilir.")]),
+      ...(isMac?[]:[el("li",{},"BIOS (Gigabyte): açılışta Del → Settings → Power → ErP: Disabled → F10 kaydet. Gigabyte'ta ayrı bir Wake on LAN satırı çoğu zaman yoktur; ErP kapalıyken ağ kartı açar. Settings → IO Ports'ta ağ kartı (Onboard LAN) Enabled olmalı. Başka anakartta adlar “Power On By PCI-E”, “Resume by LAN” olabilir.")]),
       el("li",{},"A ya da B tuşuna “Bilgisayarı aç”ı ata (Butonlar). Uykudaki bilgisayar USB kablosuyla da uyanır."));
     kids.push(steps);
     f.append(card("cardWol","wake","Bilgisayarı uzaktan aç",...kids));
