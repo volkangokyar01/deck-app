@@ -223,8 +223,18 @@ static void openPage(uint8_t k) {                // open Medya / Ses ve parlakl�
 // A / B: an app, or a page of the menu
 static void doLaunch(App* a);
 static void toggleMic(); static void toggleMute();
+// 1.17.0: turn the computers on — USB remote wakeup (sleeping computer on the cable) and Wake-on-LAN over Wi-Fi
+static void wakeComputers() {
+  bool usb = usbWake();
+  int n = wolSend();
+  if (n > 0) toast(n == 1 ? String("Açılış sinyali: ") + wolT[0].name : String("Açılış sinyali ") + n + " bilgisayara", 2500);
+  else if (usb) toast("Bilgisayar uyandırıldı (USB)");
+  else if (n == -2) toast("Kayıtlı bilgisayar yok: Game Deck'i bilgisayarda bir kez aç", 3000);
+  else toast("Wi-Fi bağlı değil: Cihaz ayarları → Wi-Fi", 3000);
+}
 static void quickAct(const String& id) {
   if (uint8_t t = quickToggle(id)) {                // 1.14.0: microphone / sound (headphones) on A / B
+    if (t == QA_WAKE) { wakeComputers(); dirty = true; return; }
     if (t == QA_MIC) { toggleMic(); if (sysLive() && sysSt.mic >= 0) toast(sysSt.mic ? "Mikrofon kapalı" : "Mikrofon açık"); }
     else { toggleMute(); toast(sysLive() && sysSt.vol >= 0 ? (sysSt.mute ? "Ses kapalı" : "Ses açık") : String("Sessiz tuşu gönderildi")); }
     dirty = true; return;
@@ -539,6 +549,7 @@ void setup() {
 
   hidBegin();
   wifiBegin();
+  wolLoad();                                       // 1.17.0: computers to wake (Wake-on-LAN)
   Serial.begin(115200);
   Serial.enableReboot(false);
   protoBegin();

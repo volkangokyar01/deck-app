@@ -314,18 +314,24 @@ static uint8_t quickPage(const String& id) {
 }
 static String quickPageName(uint8_t k) { return k == K_MEDIA ? "Medya" : k == K_SYS ? "Ses ve parlaklık" : "Bağlantılar"; }
 // 1.14.0: A / B can also toggle the microphone ("__mic") or the sound output, e.g. headphones ("__mute")
-enum : uint8_t { QA_NONE = 0, QA_MIC, QA_MUTE };
-static uint8_t quickToggle(const String& id) { return id == "__mic" ? QA_MIC : id == "__mute" ? QA_MUTE : QA_NONE; }
-static bool quickToggleOff(uint8_t t) { return t == QA_MIC ? sysSt.mic == 1 : sysSt.mute; }
+enum : uint8_t { QA_NONE = 0, QA_MIC, QA_MUTE, QA_WAKE };   // QA_WAKE: 1.17.0 "Bilgisayarı aç"
+static uint8_t quickToggle(const String& id) { return id == "__mic" ? QA_MIC : id == "__mute" ? QA_MUTE : id == "__wake" ? QA_WAKE : QA_NONE; }
+static bool quickToggleOff(uint8_t t) { return t == QA_MIC ? sysSt.mic == 1 : t == QA_MUTE ? sysSt.mute : false; }
 static String quickToggleName(uint8_t t) {
   bool off = quickToggleOff(t);
+  if (t == QA_WAKE) return "Bilgisayarı aç";
   return t == QA_MIC ? (off ? "Mikrofon kapalı" : "Mikrofon") : (off ? "Ses kapalı" : "Sesi kapat");
 }
 // round badge (r 7 on home, 10 on app screens): teal while on, red while muted; small mic / speaker glyph
 static void quickToggleIcon(uint8_t t, int cx, int cy, int r) {
   bool off = quickToggleOff(t);
-  uint16_t bg = off ? SC_RED : SYS_COL, fg = onColor(bg);
+  uint16_t bg = t == QA_WAKE ? C(0x16A34A) : off ? SC_RED : SYS_COL, fg = onColor(bg);
   spr.fillSmoothCircle(cx, cy, r, bg);
+  if (t == QA_WAKE) {                               // power symbol
+    spr.drawArc(cx, cy + 1, 5, 4, 300, 240, fg);
+    spr.drawWideLine(cx, cy - 5, cx, cy, 1.4f, fg);
+    return;
+  }
   if (t == QA_MIC) {
     spr.fillRoundRect(cx - 2, cy - 5, 5, 7, 2, fg);
     spr.drawArc(cx, cy - 1, 4, 4, 0, 180, fg);

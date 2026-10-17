@@ -176,7 +176,7 @@ static void handleLine(char* buf, size_t len) {
     r["via"] = replySrc == SRC_BLE ? "ble" : "usb"; if (replySrc == SRC_BLE) r["mtu"] = bleMtuOf(replyConn);
     r["anim"] = anim.frames; r["animLight"] = animLight.frames;   // frames stored per theme (0: none)
     r["reset"] = bootReset; if (bootCrash.length()) r["crash"] = bootCrash;
-    r["bonds"] = bleBondCount(); r["btOff"] = bt.off; r["wifi"] = wifiStateName();
+    r["bonds"] = bleBondCount(); r["btOff"] = bt.off; r["wifi"] = wifiStateName(); r["wol"] = wolN;
     // PSRAM diagnosis: does the chip carry PSRAM at all, and did the startup bring it up? Read from the eFuse
     // (PSRAM_CAP 0 none, 1 = 8 MB octal, 2 = 2 MB quad): esp_chip_info never sets CHIP_FEATURE_EMB_PSRAM on the S3
     { uint8_t cap = 0, vendor = 0;
@@ -213,6 +213,23 @@ static void handleLine(char* buf, size_t len) {
   else if (!strcmp(cmd, "launch")) {
     Launch L; parseLaunch(doc["launch"], L);
     if (runLaunch(L, L.value)) replyOk(id); else replyErr(id, "no_host");
+  }
+  // Wake-on-LAN (1.17.0): each desktop app registers its computer; "wol_send" is the same as the deck's button
+  else if (!strcmp(cmd, "wol_add")) {
+    String nm = (const char*)(doc["name"] | ""); uint8_t m[6];
+    if (!nm.length() || nm.length() > 40 || !wolParseMac(doc["mac"] | "", m)) { replyErr(id, "invalid"); return; }
+    wolAdd(nm, m); replyOk(id);
+  }
+  else if (!strcmp(cmd, "wol_del")) { if (wolRemove((const char*)(doc["name"] | ""))) replyOk(id); else replyErr(id, "not_found"); }
+  else if (!strcmp(cmd, "wol_list")) {
+    JsonDocument r; r["id"] = id; r["ok"] = true; JsonArray a = r["targets"].to<JsonArray>();
+    for (int i = 0; i < wolN; i++) { JsonObject o = a.add<JsonObject>(); o["name"] = wolT[i].name; o["mac"] = wolMacText(wolT[i].mac); }
+    r["wifi"] = wifiConnected(); sendJson(r);
+  }
+  else if (!strcmp(cmd, "wol_send")) {
+    int n = wolSend(); JsonDocument r; r["id"] = id; r["ok"] = n > 0; r["sent"] = max(n, 0);
+    if (n < 0) r["error"] = n == -1 ? "no_wifi" : "no_targets";
+    sendJson(r);
   }
   else if (!strcmp(cmd, "icon_set")) {              // 1.15.0: 64 x 64 (8192 bytes) or 40 x 40 (3200)
     String aid = (const char*)(doc["app"] | "");

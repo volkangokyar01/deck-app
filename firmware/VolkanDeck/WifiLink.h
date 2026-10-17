@@ -8,6 +8,7 @@
    Wi-Fi and Bluetooth share the antenna: modem sleep stays on (required for coexistence). */
 #include <WiFi.h>
 #include <Preferences.h>
+#include <WiFiUdp.h>
 
 struct WifiState {
   String ssid;
@@ -123,4 +124,61 @@ static void wifiStatusJson(JsonDocument& r) {
   r["state"] = wifiStateName(); r["ssid"] = wf.ssid; r["on"] = wf.on;
   if (wifiConnected()) { r["ip"] = WiFi.localIP().toString(); r["rssi"] = WiFi.RSSI(); }
   r["time"] = wf.timeSet; r["heap"] = internalFree() / 1024;
+}
+
+
+/* ---------- Wake-on-LAN (1.17.0): turn computers on from the deck ----------
+   Each desktop app registers its computer's wired network card (name + MAC, NVS "vdwol", up to 3). "Bilgisayarı aç"
+   sends the magic packet (6 x FF, 16 x MAC) over Wi-Fi to the LAN broadcast, ports 9 and 7, three times. Works from
+   sleep and from full shutdown when the BIOS / network card allow it; a sleeping computer on the USB cable is
+   also woken with USB remote wakeup (Hid.h usbWake). */
+struct WolTarget { char name[25]; uint8_t mac[6]; };
+static WolTarget wolT[3]; static uint8_t wolN = 0;
+static void wolLoad() {
+  Preferences pr; if (!pr.begin("vdwol", true)) return;
+  size_t n = pr.getBytesLength("t"); if (n % sizeof(WolTarget) == 0 && n <= sizeof wolT) { pr.getBytes("t", wolT, n); wolN = n / sizeof(WolTarget); }
+  pr.end();
+}
+static void wolSave() {
+  Preferences pr; if (!pr.begin("vdwol", false)) return;
+  if (wolN) pr.putBytes("t", wolT, wolN * sizeof(WolTarget)); else pr.remove("t");
+  pr.end();
+}
+static bool wolParseMac(const char* s, uint8_t m[6]) {
+  int v[6]; char c; if (!s) return false;
+  if (sscanf(s, "%2x%c%2x%*c%2x%*c%2x%*c%2x%*c%2x", &v[0], &c, &v[1], &v[2], &v[3], &v[4], &v[5]) != 7 || (c != ':' && c != '-')) return false;
+  for (int i = 0; i < 6; i++) m[i] = v[i];
+  return (m[0] | m[1] | m[2] | m[3] | m[4] | m[5]) != 0 && (m[0] & 1) == 0;   // not empty, not multicast
+}
+static String wolMacText(const uint8_t m[6]) { char b[18]; snprintf(b, sizeof b, "%02X:%02X:%02X:%02X:%02X:%02X", m[0], m[1], m[2], m[3], m[4], m[5]); return b; }
+// same name or same card: replace; otherwise add, dropping the oldest when full
+static void wolAdd(const String& name, const uint8_t mac[6]) {
+  int at = -1;
+  for (int i = 0; i < wolN; i++) if (!strncmp(wolT[i].name, name.c_str(), 24) || !memcmp(wolT[i].mac, mac, 6)) { at = i; break; }
+  if (at < 0) { if (wolN == 3) { memmove(wolT, wolT + 1, 2 * sizeof(WolTarget)); wolN = 2; } at = wolN++; }
+  memset(&wolT[at], 0, sizeof(WolTarget)); strncpy(wolT[at].name, name.c_str(), 24);
+  if (name.length() > 24) { int k = 24; while (k > 0 && ((uint8_t)name[k] & 0xC0) == 0x80) k--; wolT[at].name[k] = 0; }   // no half UTF-8 letter
+  memcpy(wolT[at].mac, mac, 6);
+  wolSave();
+}
+static bool wolRemove(const String& name) {
+  for (int i = 0; i < wolN; i++) if (!strcmp(wolT[i].name, name.c_str())) {
+    memmove(wolT + i, wolT + i + 1, (wolN - i - 1) * sizeof(WolTarget)); wolN--; wolSave(); return true;
+  }
+  return false;
+}
+// -1 no Wi-Fi connection, -2 no computer registered, else the number of computers the packet went to
+static int wolSend() {
+  if (!wolN) return -2;
+  if (!wifiConnected()) return -1;
+  WiFiUDP u; uint8_t pkt[102];
+  IPAddress bc = WiFi.broadcastIP(), all(255, 255, 255, 255);
+  for (int rep = 0; rep < 3; rep++) {
+    for (int i = 0; i < wolN; i++) {
+      memset(pkt, 0xFF, 6); for (int k = 0; k < 16; k++) memcpy(pkt + 6 + k * 6, wolT[i].mac, 6);
+      for (IPAddress ip : { bc, all }) for (uint16_t port : { (uint16_t)9, (uint16_t)7 }) { u.beginPacket(ip, port); u.write(pkt, sizeof pkt); u.endPacket(); }
+    }
+    delay(30);
+  }
+  return wolN;
 }

@@ -131,6 +131,13 @@
     } else {
       try { const host = await deck.hostName?.().catch(() => '') || ''; await send({ cmd: 'companion', os: HOST, mediaLaunch: true, ack: true, idle: idleSec, ...(host ? { host } : {}) }, 2500, true); direct = true; } catch (e) {}
     }
+    // 1.17.0: register this computer on the deck so its "Bilgisayarı aç" key can wake it (Wake-on-LAN)
+    if (deviceInfo.fw && verGE(deviceInfo.fw, '1.17.0')) {
+      try {
+        const nic = await deck.wolInfo?.().catch(() => null), host = await deck.hostName?.().catch(() => '') || '';
+        if (nic && nic.mac) await send({ cmd: 'wol_add', name: (host || nic.name || 'Bilgisayar').slice(0, 24), mac: nic.mac }, 2500, true);
+      } catch (e) {}
+    }
     pushStatus();
     await pollStats(true);
   }

@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.16.1)
+## Firmware (v1.17.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -413,3 +413,11 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 ## 2026-10-17 — FPS kartta hiç silinmez (firmware 1.16.1)
 - Uygulama (`createFpsTracker`): ön planda bir oyun bir kez değer verdiyse o oyun, süreci kapanana kadar kartta kalır. Kare gelmeyen saniye, okunamayan / eski fps.json, görevin yeniden başlaması son değeri tutar; Discord'a / masaüstüne geçilince oyun hâlâ kare gönderiyorsa onun değeri izlenmeye devam eder. Yeni bir oyun ön plana gelince o geçer; oyun kapanınca kart "Oyun yok" der.
 - Cihaz: FPS verisi 15 sn'ye kadar taze sayılır (önce 5 sn), değerden hemen sonra (3 sn içinde) gelen boş paket son değeri silmez.
+
+## 2026-10-17 — Bilgisayarı deck'ten açma (firmware 1.17.0)
+- İki yol: tam kapalı bilgisayar için Wake-on-LAN (cihaz Wi-Fi'sinden yerel ağın yayın adresine ve 255.255.255.255'e, port 9 ve 7, üç kez sihirli paket: 6 × FF + 16 × MAC). Uykudaki ve USB kablosuyla takılı bilgisayar ayrıca USB remote wakeup ile uyanır (`USB.usbAttributes(... | TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP)`, askıya alınırken bilgisayar izin verdiyse `tud_remote_wakeup()`).
+- Hedefler: her masaüstü uygulaması bağlanınca kendi kablolu ağ kartını `wol_add {name, mac}` ile kaydeder (fw ≥ 1.17.0). Cihaz en çok 3 bilgisayar tutar (NVS `vdwol`, ad 24 bayt); aynı ad ya da aynı MAC gelirse kayıt yenilenir, dolunca en eskisi düşer. Diğer komutlar: `wol_list` (→ `targets`, `wifi`), `wol_del {name}`, `wol_send` (→ `sent`, hata `no_wifi` / `no_targets`); `hello` → `wol` sayısı.
+- A / B tuşu: hızlı kimlik `__wake` ("Bilgisayarı aç", yeşil güç rozeti). Kayıtlı bilgisayarların hepsine paket gider.
+- Uygulama MAC'i `app/wol.js` ile seçer: sanal kartlar (VPN, Hyper-V, WSL, Docker, Bluetooth) ve rastgele MAC atlanır, kablolu kart öne alınır; macOS'te Ethernet / Wi-Fi ayrımı yapılmaz.
+- Windows ayarları `app/wol-setup.ps1` (sensörle aynı tek UAC başlatıcısı): ağ kartında `*WakeOnMagicPacket` ve `S5WakeOnLan`, Realtek güç tasarrufları kapalı, `Set-NetAdapterPowerManagement -WakeOnMagicPacket Enabled`, ağ kartı ve deck (VID 303A) için `powercfg /deviceenablewake`, hızlı başlatma kapalı (`HiberbootEnabled=0`).
+- BIOS Windows'tan değiştirilemez. Gigabyte H810M K için: Settings → Platform Power → Wake on LAN Enabled, ErP Disabled. Bilgisayar Ethernet kablosuyla bağlı olmalı. Mac yalnız uykudan uyanır ("Ağ erişimi için uyandır").

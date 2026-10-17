@@ -153,12 +153,16 @@ class BleCb : public NimBLEServerCallbacks {
   }
 };
 
+extern "C" bool tud_remote_wakeup(void);
+// wake the computer on the cable from sleep: only while the host suspended the bus and armed remote wakeup
+static volatile bool usbWakeArmed = false;
+static bool usbWake() { return usbMounted && usbSuspended && usbWakeArmed && tud_remote_wakeup(); }
 static void usbEvent(void* arg, esp_event_base_t base, int32_t id, void* data) {
   if (base != ARDUINO_USB_EVENTS) return;
   switch (id) {
     case ARDUINO_USB_STARTED_EVENT: usbMounted = true; usbSuspended = false; usbPcSeen = false; break;   // a new host: not known as a computer yet
     case ARDUINO_USB_STOPPED_EVENT: usbMounted = false; usbPcSeen = false; break;
-    case ARDUINO_USB_SUSPEND_EVENT: usbSuspended = true; break;
+    case ARDUINO_USB_SUSPEND_EVENT: usbSuspended = true; usbWakeArmed = ((arduino_usb_event_data_t*)data)->suspend.remote_wakeup_en; break;
     case ARDUINO_USB_RESUME_EVENT: usbSuspended = false; break;
   }
 }
@@ -360,6 +364,9 @@ static void hidBegin() {
   USB.onEvent(usbEvent);
   USB.productName("Game Deck");
   USB.manufacturerName("Volkan");
+  // 1.17.0: remote wakeup — a sleeping computer (S3) can be woken over the USB cable (usbWake); Windows asks
+  // the device to arm it when "allow this device to wake the computer" is on
+  USB.usbAttributes(TUSB_DESC_CONFIG_ATT_SELF_POWERED | TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP);
   USB.begin();
 }
 

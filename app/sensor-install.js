@@ -129,11 +129,20 @@ exit 0
       return result;
     } catch (e) { return { ok: false, message: 'Sensör kaldırılamadı: ' + e.message }; }
   }
+  // 1.17.0: Wake-on-LAN settings (network card, deck USB wake, fast startup off) with the same one-UAC launcher
+  async function wolOnce(mac) {
+    if (process.platform !== 'win32') return { ok: false, message: 'Bu adım yalnız Windows içindir.' };
+    if (!/^[0-9a-f]{2}([:-][0-9a-f]{2}){5}$/i.test(String(mac || ''))) return { ok: false, message: 'Kablolu ağ kartı bulunamadı. Bilgisayarı Ethernet kablosuyla bağlayın.' };
+    try {
+      await init(); if (!sid) throw new Error('Windows kullanıcı kimliği okunamadı.');
+      return await elevate('wol-setup.ps1', { Mac: mac });
+    } catch (e) { return { ok: false, message: 'Uzaktan açma ayarları yapılamadı: ' + e.message }; }
+  }
   function start(action) {
     if (operation) return Promise.resolve({ ok: false, message: 'Sensör işlemi sürüyor; bitince tekrar deneyin.' });
     operation = action().finally(() => { operation = null; }); return operation;
   }
-  return { init, status, install: () => start(installOnce), uninstall: () => start(uninstallOnce), sensorFile: () => !sensorDisabled && outputDir() ? path.join(outputDir(), 'readings.json') : null,
+  return { init, status, install: () => start(installOnce), uninstall: () => start(uninstallOnce), wolSetup: mac => start(() => wolOnce(mac)), sensorFile: () => !sensorDisabled && outputDir() ? path.join(outputDir(), 'readings.json') : null,
     fpsFile: () => !sensorDisabled && outputDir() ? path.join(outputDir(), 'fps.json') : null };
 }
 module.exports = { createSensorInstaller };

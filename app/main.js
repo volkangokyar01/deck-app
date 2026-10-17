@@ -10,6 +10,7 @@ const media = require('./media');
 const { timing } = require('./debug');
 const { createStats } = require('./stats');
 const { createSensorInstaller } = require('./sensor-install');
+const { wolInfo } = require('./wol');
 const { createUpdater, REPO_URL } = require('./updater');
 const { createTrayUpdate, openLocationSettings } = require('./main-actions');
 const { macDeckPaired, pickDeck } = require('./ble-pick');
@@ -207,6 +208,8 @@ ipcMain.handle('host-name', async () => {
   if (!hostName) hostName = (process.env.COMPUTERNAME || require('os').hostname() || '').replace(/\.local$/, '');
   return hostName;
 });
+
+/* ---------------- Wake-on-LAN (1.17.0): the deck turns this computer on ---------------- */
 
 /* ---------------- Web Serial: auto-pick the deck, no chooser ---------------- */
 function isEsp(p) {
@@ -459,6 +462,8 @@ ipcMain.handle('location-available', () => {
 ipcMain.handle('sensor-status', () => sensorInstaller.status());
 ipcMain.handle('sensor-install', () => sensorInstaller.install());
 ipcMain.handle('sensor-uninstall', () => sensorInstaller.uninstall());
+ipcMain.handle('wol-info', () => wolInfo(require('os').networkInterfaces()));
+ipcMain.handle('wol-setup', async () => sensorInstaller.wolSetup((wolInfo(require('os').networkInterfaces()) || {}).mac));
 ipcMain.handle('notify', (ev, t, b) => { if (Notification.isSupported()) new Notification({ title: t, body: b }).show(); });
 ipcMain.on('status', (ev, s) => { const changed = JSON.stringify(s) !== JSON.stringify(status); status = s; mailWatcher.setLinked(!!(s.connected && s.direct && s.mail)); if (changed) { refreshTray(); applyStatusVisual(); } });
 ipcMain.handle('mail-settings', (ev, patch) => mailSettings(patch));

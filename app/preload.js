@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('deck', {
   sensorStatus: () => ipcRenderer.invoke('sensor-status'),
   installSensors: () => ipcRenderer.invoke('sensor-install'),
   uninstallSensors: () => ipcRenderer.invoke('sensor-uninstall'),
+  wolInfo: () => ipcRenderer.invoke('wol-info'),
+  wolSetup: () => ipcRenderer.invoke('wol-setup'),
   notify: (t, b) => ipcRenderer.invoke('notify', t, b),
   status: s => ipcRenderer.send('status', s),
   version: () => ipcRenderer.invoke('version'),
