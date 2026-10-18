@@ -449,3 +449,9 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 ## 2026-10-17 — En çok 20 uygulama (firmware 1.18.3)
 - Uygulama sınırı 16'dan 20'ye çıktı (`MAX_APPS`, Store.h ve ayar sayfası). Ek yük: 4 ikon × 8 KB LittleFS / PSRAM, ayarda ~1,2 KB; 16 KB ayar sınırının çok altında. PSRAM yoksa ekranda yine 6 ikonluk önbellek kullanılır.
 - Eski firmware 16'dan sonrasını sessizce atardı; kartta 1.18.3'ten eski firmware varken 16'dan fazla uygulama yazılmaz, ayar sayfası önce güncellemeyi ister.
+
+## 2026-10-18 — Bluetooth hızlı yeniden bağlanma ve "Bluetooth ile bağlan" düğmesi (uygulama, firmware değişmedi)
+- Sorun: cihaz yeniden başlayınca uygulama her denemede yeniden tarama yapıyordu (`requestDevice`, 8 sn'ye kadar seçici bekleme); tarama cihazı görmezse bekleme 12 sn → 5 dk'ya uzuyordu.
+- Hızlı yol: sayfa son konuştuğu cihaz nesnesini (`lastBleDev`) ya da daha önce izin verilmiş cihazı (`navigator.bluetooth.getDevices()`, ayardaki adla) tutar ve önce doğrudan `gatt.connect()` dener (8 sn). Eşleşmiş cihaza işletim sistemi adresiyle bağlanır, tarama ve eşleştirme penceresi olmaz. Olmazsa eski yol: tarama.
+- Bilinen cihaz varken otomatik deneme aralığı en çok 15 sn (kopmadan sonraki 3 dk 4 sn); bilinmeyen cihazda eski geri çekilme (eşleştirme penceresini tekrar tekrar açtırmamak için).
+- Üst çubukta "USB ile bağlan"ın yanında "Bluetooth ile bağlan" (bağlıyken gizli). Masaüstü uygulamasında 25 sn boyunca adı ayardakinden farklı olsa da yakında tek Game Deck varsa onu seçer; olmazsa nedenini ve eşleştirme adımlarını gösterir.

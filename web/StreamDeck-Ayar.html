@@ -341,6 +341,7 @@ details.adv:not([open]) > summary{border-bottom:0}
   <div class="conn">
     <span class="pill" id="connPill"><span class="dot"></span><span id="connText">Bağlı değil</span></span>
     <button class="btn" id="btnConnect">USB ile bağlan</button>
+    <button class="btn" id="btnBle" title="Kablosuz: cihazın Bluetooth veri kanalı (cihaz bu bilgisayarla eşleşmiş olmalı)">Bluetooth ile bağlan</button>
     <button class="btn primary" id="btnWrite" disabled title="Önce cihaza bağlan">Cihaza yaz</button>
   </div>
 </header>
@@ -2791,14 +2792,30 @@ function bleErrorText(e){
 }
 // a step that does not finish in time fails (Windows can leave gatt.connect / a write hanging after the deck rebooted)
 const bleWithin=(pr,ms,what)=>{ let t; return Promise.race([pr,new Promise((_,rej)=>{ t=setTimeout(()=>rej(Object.assign(new Error(what+" zaman aşımı"),{name:"TimeoutError"})),ms); })]).finally(()=>clearTimeout(t)); };
+// 2026-10-18: the deck this page already used (or allowed before) is connected straight away, without a new
+// scan: after the deck restarts, Windows / macOS find a paired device by its address even before a scan would
+// see it. Only when that fails does the page scan again (requestDevice).
+let lastBleDev=null;
+const bleNorm=s=>String(s||"").normalize("NFC").replace(/\s+/g," ").trim().toLocaleLowerCase("tr");
+async function knownBleDevice(){
+  if(lastBleDev) return lastBleDev;
+  try{ const L=await navigator.bluetooth.getDevices?.(); if(!L?.length) return null;
+    const want=bleNorm(cfg.device?.name||"Game Deck"); return L.find(d=>bleNorm(d.name)===want)||(L.length===1?L[0]:null); }catch(_){ return null; }
+}
 async function openBlePort(){
-  const dev=await bleWithin(navigator.bluetooth.requestDevice({filters:[{services:[VD_SVC]}]}),20000,"cihaz arama");
-  let gatt, svc, rx, tx;
+  let dev=await knownBleDevice(), gatt=null;
+  if(dev){
+    try{ gatt=await bleWithin(dev.gatt.connect(),8000,"bağlanma"); }
+    catch(e){ try{ dev.gatt.disconnect(); }catch(_){} dev=null; lastBleDev=null; }   // not reachable that way: scan
+  }
+  if(!dev) dev=await bleWithin(navigator.bluetooth.requestDevice({filters:[{services:[VD_SVC]}]}),20000,"cihaz arama");
+  let svc, rx, tx;
   try{
-    gatt=await bleWithin(dev.gatt.connect(),15000,"bağlanma");
+    if(!gatt) gatt=await bleWithin(dev.gatt.connect(),15000,"bağlanma");
     svc=await bleWithin(gatt.getPrimaryService(VD_SVC),10000,"servis");
     rx=await bleWithin(svc.getCharacteristic(VD_RX),5000,"yazma kanalı"); tx=await bleWithin(svc.getCharacteristic(VD_TX),5000,"okuma kanalı");
   }catch(e){ try{ dev.gatt.disconnect(); }catch(_){} throw e; }
+  lastBleDev=dev;
   const on={disconnect:[]}; let ctrl=null, closed=false;
   const P={isBle:true, chunk:20, name:dev.name||""};
   P.readable=new ReadableStream({start(c){ ctrl=c; }});
@@ -2818,7 +2835,9 @@ async function openBlePort(){
 async function connect(auto=false, ble=false){
   if(ble){
     try{ port=await openBlePort(); log("","  Bluetooth: "+(port.name||"cihaz")+" bulundu, bağlanılıyor"); }
-    catch(e){ port=null; log("er","  Bluetooth: "+bleErrorText(e)); return; }
+    catch(e){ port=null; log("er","  Bluetooth: "+bleErrorText(e));
+      if(!auto) serialNote("Bluetooth ile bağlanılamadı: "+bleErrorText(e)+". Cihazın açık ve yakında olduğundan, bu bilgisayarla eşleşmiş olduğundan emin ol (cihazda Bağlantılar → Yeni cihaz eşleştir, ardından bilgisayarın Bluetooth ayarlarından ekle).");
+      return; }
   } else {
   if(!("serial" in navigator)){ serialNote("Bu tarayıcı USB seri bağlantıyı desteklemiyor. Bilgisayarındaki StreamDeck-Ayar.html dosyasını Chrome veya Edge ile aç."); return; }
   try{ const known=(await navigator.serial.getPorts()).filter(p=>p.getInfo().usbVendorId===ESP_VID);
@@ -2860,10 +2879,16 @@ function disconnectedUI(){ stats.live=false; updateLiveTag(); port=null; writer=
 function setConnUI(on,txt){
   $("#connPill").classList.toggle("on",on); $("#connText").textContent=on?txt+(port?.isBle?" · Bluetooth":""):"Bağlı değil";
   $("#btnConnect").textContent=on?"Bağlantıyı kes":"USB ile bağlan";
+  $("#btnBle").hidden=on||!("bluetooth" in navigator);
   for(const id of ["#btnWrite","#btnRead"]){ $(id).disabled=!on; $(id).title=on?"":"Önce cihaza bağlan"; }
   if(!on) deviceCfg=null; markPending();
 }
 $("#btnConnect").onclick=()=>port?disconnect():connect();
+// manual Bluetooth (2026-10-18): the desktop app also connects by itself; this button does it now
+$("#btnBle").hidden=!("bluetooth" in navigator);
+$("#btnBle").onclick=async()=>{ if(port) return; const b=$("#btnBle"); b.disabled=true; b.textContent="Aranıyor…";
+  try{ await window.deck?.bleManual?.(cfg.device?.name||"Game Deck"); await (window.__deckBleConnect?window.__deckBleConnect():connect(false,true)); }
+  finally{ b.disabled=false; b.textContent="Bluetooth ile bağlan"; } };
 function forDevice(c=cfg){ const d=clone(c); delete d.sensors; if(d.keys) syncLegacyKeys(d); if(window.deck) d.device.host=window.deck.platform==="darwin"?"mac":"win"; if(d.home?.weather) delete d.home.weather.auto; if(d.home?.anim){ delete d.home.anim.delays; delete d.home.anim.light; } for(const a of d.apps){ if(a.targets&&a.launch){ a.launch.path=a.targets.win||""; a.launch.mac=a.targets.mac||""; } delete a.targets; delete a.fallbackCustom; delete a.bg; a.img=!!(a.iconData||a.img); delete a.iconData; delete a.src; } return d; }
 function diffValue(v,path){
   if(v==null||v==="") return "—";

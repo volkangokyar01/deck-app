@@ -79,6 +79,16 @@
   // instead of the slow back-off, so the app is back by itself without being restarted
   let bleFastUntil = 0, connectingAt = 0;
   window.onBleDropped = () => { bleFails = 0; bleTriedAt = 0; bleFastUntil = Date.now() + 180e3; };
+  // "Bluetooth ile bağlan" (2026-10-18): connect now, waiting for a running automatic attempt first
+  window.__deckBleConnect = async () => {
+    for (let i = 0; i < 40 && connecting; i++) await new Promise(r => setTimeout(r, 500));
+    if (port) return;
+    connecting = true; connectingAt = Date.now();
+    try { bleTriedAt = Date.now(); await connect(false, true); if (port) bleFails = 0; }
+    catch (e) { log('er', '  Bluetooth: ' + (e && e.message || e)); }
+    finally { connecting = false; }
+    if (port && deviceInfo) await afterConnect();
+  };
   // Is the deck plugged into this computer? getPorts() may be empty until a port was picked once,
   // so ask the main process too (it answers requestPort without a chooser).
   const usbDeck = async () => {
@@ -97,7 +107,8 @@
       await connect(true);                                      // USB always first
       // No cable to this computer: the deck's Bluetooth data channel
       // after failed tries wait longer (12 s, 30 s, 1 min, then 5 min) so Windows isn't asked to pair over and over
-      const bleWait = Date.now() < bleFastUntil ? 4e3 : [12e3, 30e3, 60e3][bleFails] || 300e3;
+      // a deck this app already reached is tried directly (no scan, no pairing prompt): every 15 s at most
+      const bleWait = Date.now() < bleFastUntil ? 4e3 : (typeof lastBleDev !== 'undefined' && lastBleDev) ? 15e3 : [12e3, 30e3, 60e3][bleFails] || 300e3;
       const bleDue = !port && cfg.device.connection !== 'usb' && Date.now() - bleTriedAt > bleWait;
       if (bleDue) {
         if (!('bluetooth' in navigator)) { if (bleReady !== false) log('er', '  Bluetooth: bu pencerede Web Bluetooth yok'); bleReady = false; }

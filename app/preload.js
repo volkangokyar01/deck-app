@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('deck', {
   version: () => ipcRenderer.invoke('version'),
   bleReady: () => ipcRenderer.invoke('ble-ready'),
   blePaired: name => ipcRenderer.invoke('ble-paired', name),
+  bleManual: name => ipcRenderer.invoke('ble-manual', name),
   hostName: () => ipcRenderer.invoke('host-name'),
   idleTime: () => ipcRenderer.invoke('idle-time'),
   updateState: () => ipcRenderer.invoke('update-state'),

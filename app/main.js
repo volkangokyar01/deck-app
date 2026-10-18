@@ -155,17 +155,20 @@ function bluetoothReady() {
   try { return fs.readFileSync(path.join(path.dirname(app.getPath('exe')), '..', 'Info.plist')).includes('NSBluetoothAlwaysUsageDescription'); }
   catch (e) { return false; }
 }
+// "Bluetooth ile bağlan" (2026-10-18): for 25 s a deck with another name may be taken too (the only one nearby)
+let bleManualUntil = 0;
 function setupBluetooth(wc) {
-  let pending = null, timer = null;
-  const finish = id => { clearTimeout(timer); timer = null; const cb = pending; pending = null; if (cb) cb(id); };
+  let pending = null, timer = null, seen = [];
+  const finish = id => { clearTimeout(timer); timer = null; const cb = pending; pending = null; seen = []; if (cb) cb(id); };
   wc.on('select-bluetooth-device', (event, list, callback) => {
     event.preventDefault();
-    pending = callback;
+    pending = callback; seen = list || [];
     // the page filters by the Volkan Deck service; only the deck named in the settings is taken (another person's deck
     // in the same room would make macOS ask its owner "connect to …?")
     const id = pickDeck(list, bleWantName);
     if (id) return finish(id);
-    if (!timer) timer = setTimeout(() => finish(''), 8000);    // nothing nearby: give up, the page retries later
+    const manual = Date.now() < bleManualUntil;
+    if (!timer) timer = setTimeout(() => finish(manual && seen.length === 1 ? seen[0].deviceId : ''), manual ? 6000 : 8000);   // nothing nearby: give up, the page retries later
   });
   session.defaultSession.setBluetoothPairingHandler?.((details, callback) => callback({ confirmed: details.pairingKind === 'confirm' || details.pairingKind === 'confirmPin' }));
 }
@@ -198,6 +201,7 @@ async function blePaired(name) {
   return value;
 }
 ipcMain.handle('ble-paired', (e, name) => blePaired(name));
+ipcMain.handle('ble-manual', (e, name) => { bleWantName = String(name || 'Game Deck').slice(0, 40); bleManualUntil = Date.now() + 25e3; return true; });
 // computer name shown on the deck's Bağlantılar page (sent over Bluetooth with the first companion message)
 let hostName = null;
 // seconds since the last keyboard / mouse input: the deck sends keys to the computer in use
