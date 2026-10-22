@@ -1,7 +1,7 @@
 // Game Deck (formerly Volkan Deck) — desktop companion (Windows + macOS)
 // Keeps the USB link to the deck, opens apps directly when a key is pressed (no Win+R / Spotlight typing),
 // forwards home-screen statistics and hosts the settings UI.
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog, nativeImage, session, Notification, nativeTheme, net } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog, nativeImage, session, Notification, nativeTheme, net, powerMonitor } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const fs = require('fs');
@@ -187,8 +187,10 @@ async function blePaired(name) {
   let value = true;                                          // if the system can't be asked, don't block Bluetooth
   if (IS_WIN) {
     const q = name.replace(/'/g, "''");
+    // by name, or (2026-10-22) by the Game Deck GATT service node: Windows keeps the name the deck had when it was
+    // paired, so a deck renamed later was never tried automatically
     const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
-      `[Console]::OutputEncoding=[Text.Encoding]::UTF8; @(Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'BTHLE\\DEV_*' -and $_.FriendlyName -eq '${q}' }).Count`], 15000);
+      `[Console]::OutputEncoding=[Text.Encoding]::UTF8; @(Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Where-Object { ($_.InstanceId -like 'BTHLE\\DEV_*' -and $_.FriendlyName -eq '${q}') -or $_.InstanceId -like 'BTHLEDEVICE\\{7D9A0001-5C2E-4B7A-9F3D-1A6C0DE5D001}*' }).Count`], 15000);
     const n = parseInt(r.stdout.trim(), 10);
     if (r.code === 0 && !isNaN(n)) value = n > 0;
   } else {
@@ -205,7 +207,7 @@ ipcMain.handle('ble-manual', (e, name) => { bleWantName = String(name || 'Game D
 // computer name shown on the deck's Bağlantılar page (sent over Bluetooth with the first companion message)
 let hostName = null;
 // seconds since the last keyboard / mouse input: the deck sends keys to the computer in use
-ipcMain.handle('idle-time', () => { try { return require('electron').powerMonitor.getSystemIdleTime(); } catch (e) { return -1; } });
+ipcMain.handle('idle-time', () => { try { return powerMonitor.getSystemIdleTime(); } catch (e) { return -1; } });
 ipcMain.handle('host-name', async () => {
   if (hostName) return hostName;
   if (IS_MAC) { const r = await run('scutil', ['--get', 'ComputerName'], 3000); hostName = r.stdout.trim(); }
@@ -469,7 +471,14 @@ ipcMain.handle('sensor-uninstall', () => sensorInstaller.uninstall());
 ipcMain.handle('wol-info', () => wolInfo(require('os').networkInterfaces()));
 ipcMain.handle('wol-setup', async () => sensorInstaller.wolSetup((wolInfo(require('os').networkInterfaces()) || {}).mac));
 ipcMain.handle('notify', (ev, t, b) => { if (Notification.isSupported()) new Notification({ title: t, body: b }).show(); });
-ipcMain.on('status', (ev, s) => { const changed = JSON.stringify(s) !== JSON.stringify(status); status = s; mailWatcher.setLinked(!!(s.connected && s.direct && s.mail)); if (changed) { refreshTray(); applyStatusVisual(); } });
+// 2026-10-22: 60 s after the deck went away the helpers stop (stats: PowerShell, nvidia-smi, macmon, ping; the media
+// and Outlook PowerShell helpers); stats start again on connect, the others when they are next asked
+let helpersIdle = null;
+function helpersFollow(connected) {
+  if (connected) { clearTimeout(helpersIdle); helpersIdle = null; stats.setLive(true); }
+  else if (!helpersIdle) helpersIdle = setTimeout(() => { stats.setLive(false); media.stop(); mailWatcher.stop(); }, 60e3);
+}
+ipcMain.on('status', (ev, s) => { const changed = JSON.stringify(s) !== JSON.stringify(status); status = s; mailWatcher.setLinked(!!(s.connected && s.direct && s.mail)); helpersFollow(!!s.connected); if (changed) { refreshTray(); applyStatusVisual(); } });
 ipcMain.handle('mail-settings', (ev, patch) => mailSettings(patch));
 ipcMain.handle('mail-open', async () => { try { return await openOutlook(); } catch (e) { return fail(e.message); } });
 ipcMain.handle('version', () => app.getVersion());
@@ -500,6 +509,10 @@ app.whenReady().then(() => {
   stats.start();
   updater.start();
   setupSerial();
+  // back from sleep (2026-10-22): the Bluetooth link is gone or about to be; retry every 4 s instead of after the back-off
+  powerMonitor.on('resume', () => {
+    if (win && !win.isDestroyed()) win.webContents.executeJavaScript('window.onBleDropped && window.onBleDropped()', true).catch(() => {});
+  });
   createWindow();
   buildTray(); applyStatusVisual();
   const st = readState();

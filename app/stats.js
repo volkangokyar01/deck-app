@@ -157,11 +157,14 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
   } catch (_) {}
   if (lastSystemLocation) cache.location = { ...lastSystemLocation, source: 'last', pending: false, error: '' };
   const timers = new Set(), children = new Set(), sockets = new Set();
+  // 2026-10-22: helper processes (win-stats.ps1, nvidia-smi, macmon), netstat and ping run only while a deck is
+  // connected (setLive): the app starts with the computer even when the deck is off, and nothing reads the samples
+  let live = true;
   function every(fn, ms) { const t = setInterval(() => { Promise.resolve().then(fn).catch(() => {}); }, ms); timers.add(t); }
   function stream(file, args, onLine) {
     let child = null, buffer = '', lastLine = Date.now(), retryAt = 0;
     function launch() {
-      if (!running || child || Date.now() < retryAt) return;
+      if (!running || !live || child || Date.now() < retryAt) return;
       lastLine = Date.now(); buffer = '';
       const proc = cp.spawn(file, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
       child = proc; children.add(proc);
@@ -175,11 +178,11 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
           try { if (onLine(line)) lastLine = Date.now(); } catch (_) {}
         }
       });
-      const dead = () => { children.delete(proc); if (child === proc) { child = null; retryAt = Date.now() + 5000; } };
+      const dead = () => { children.delete(proc); if (child === proc) { child = null; retryAt = live ? Date.now() + 5000 : 0; } };
       proc.once('error', dead); proc.once('exit', dead);
     }
     launch();
-    every(() => { if (child && Date.now() - lastLine > 8000) child.kill(); launch(); }, 1000);
+    every(() => { if (child && (!live || Date.now() - lastLine > 8000)) child.kill(); launch(); }, 1000);
   }
   function cpu() {
     const cpus = os.cpus();
@@ -222,7 +225,7 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
   }
   let netBusy = false;
   async function macNetwork() {
-    if (netBusy) return; netBusy = true;
+    if (netBusy || !live) return; netBusy = true;
     try {
       const active = new Set(Object.entries(os.networkInterfaces()).filter(([, a]) => a?.some(n => !n.internal)).map(([name]) => name));
       const text = await assets.run('/usr/sbin/netstat', ['-ibn'], 2000);
@@ -231,7 +234,7 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
   }
   async function ping() {
     for (const host of ['1.1.1.1', '8.8.8.8']) {
-      if (!running) return;
+      if (!running || !live) return;
       const result = await new Promise(resolve => {
         const start = performance.now(), socket = tcp.connect({ host, port: 443 }); sockets.add(socket);
         let settled = false;
@@ -349,7 +352,13 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
       }).catch(() => {});
     }
   }
+  function setLive(on) {
+    if (live === !!on) return;
+    live = !!on;
+    previousNet = null;                       // the first speed after a pause must not average the whole pause
+    if (live && running) { ping().catch(() => {}); if (platform === 'darwin') macNetwork().catch(() => {}); }
+  }
   function stop() { running = false; locationGeneration++; for (const t of timers) clearInterval(t); timers.clear(); for (const c of children) c.kill(); children.clear(); for (const s of sockets) s.destroy(); sockets.clear(); }
-  return { start, stop, get, refreshWeather, refreshFx, refreshLocation };
+  return { start, stop, setLive, get, refreshWeather, refreshFx, refreshLocation };
 }
 module.exports = { createStats, pickFps, createFpsTracker, RATES, parseNvidia, parseMacmon, parseNetstat, netDelta, cpuName, parseLocation, resolveLocation, parseReverseLocation, reverseLocation, resolveWeatherLocation };

@@ -1,9 +1,11 @@
-# Wake-on-LAN settings for Windows (2026-10-17, firmware 1.17.0). Invoked from protected Program Files by the
+﻿# Wake-on-LAN settings for Windows (2026-10-17, firmware 1.17.0). Invoked from protected Program Files by the
 # same one-UAC launcher as the sensor setup. Lets the deck turn this computer on from sleep and from shutdown:
 # - the wired network card wakes on a magic packet (also from S5 / shutdown when the driver supports it)
 # - the deck's USB keyboard may wake the computer from sleep
 # - fast startup is turned off (with it, "shut down" is a hibernate state many cards cannot wake from)
 # The BIOS setting (Wake on LAN on, ErP off) cannot be changed from Windows; the app shows those steps.
+# Saved as UTF-8 with BOM: Windows PowerShell 5.1 reads a script without one in the ANSI code page and the Turkish
+# messages came back as "ayarlarÄ±" (2026-10-22).
 param(
   [Parameter(Mandatory=$true)][ValidatePattern('^S-1-5-21-[0-9-]+$')][string]$UserSid,
   [Parameter(Mandatory=$true)][ValidatePattern('^[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}$')][string]$Mac
@@ -54,13 +56,15 @@ if ($nicDev) { Arm $nicDev 'Ağ kartı uyandırabilir' } else { $failures.Add('A
 $deck = @(Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match 'VID_303A' -and $_.FriendlyName -in $wakeable })
 $deckArmed = $false
 foreach ($d in $deck) { $before = $failures.Count; Arm $d.FriendlyName 'Deck uykudan uyandırabilir'; if ($failures.Count -eq $before) { $deckArmed = $true; break } }
-if (-not $deck.Count) { $done.Add('Deck USB ile takılı değil (uykudan USB ile uyandırma için kabloyla takıp tekrar çalıştırın)') }
+$notes = [Collections.Generic.List[string]]::new()
+if (-not $deck.Count) { $notes.Add('Deck USB ile takılı değil; uykudan USB ile uyandırma için kabloyla takıp bu düğmeye tekrar basın.') }
 # Fast startup off
 try {
   Set-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name HiberbootEnabled -Value 0 -Type DWord
   $done.Add('Hızlı başlatma kapatıldı')
 } catch { $failures.Add('Hızlı başlatma kapatılamadı: ' + $_.Exception.Message) }
-$message = if ($failures.Count -eq 0) { 'Windows ayarları tamam (' + $nic.Name + '). Son adım: BIOS''ta Wake on LAN açık, ErP kapalı olmalı.' } else { 'Windows ayarları kısmen yapıldı.' }
+$message = if ($failures.Count -eq 0) { 'Windows ayarları tamam (' + $nic.Name + '). Son adım: BIOS''ta ErP kapalı (Disabled) olmalı; varsa Wake on LAN açık.' } else { 'Windows ayarları kısmen yapıldı.' }
 if ($done.Count) { $message += "`nYapılanlar: " + ($done -join ', ') }
 if ($failures.Count) { $message += "`nYapılamayanlar:`n- " + ($failures -join "`n- ") }
+if ($notes.Count) { $message += "`nNot: " + ($notes -join ' ') }
 @{ ok = ($failures.Count -eq 0); message = $message; adapter = $nic.Name; deck = $deckArmed }

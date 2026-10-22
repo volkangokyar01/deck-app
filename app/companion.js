@@ -79,6 +79,10 @@
   // instead of the slow back-off, so the app is back by itself without being restarted
   let bleFastUntil = 0, connectingAt = 0;
   window.onBleDropped = () => { bleFails = 0; bleTriedAt = 0; bleFastUntil = Date.now() + 180e3; };
+  // 2026-10-22: the scan did not see the deck at all (switched off when the computer started, out of range)
+  const bleUnseen = () => typeof bleLastErr !== 'undefined' && !!bleLastErr?.unseen;
+  // the window is opened while not connected: try now instead of at the end of the wait
+  window.addEventListener?.('focus', () => { if (!port && !connecting && Date.now() - bleTriedAt > 5e3) bleTriedAt = 0; });
   // "Bluetooth ile bağlan" (2026-10-18): connect now, waiting for a running automatic attempt first
   window.__deckBleConnect = async () => {
     for (let i = 0; i < 40 && connecting; i++) await new Promise(r => setTimeout(r, 500));
@@ -108,7 +112,9 @@
       // No cable to this computer: the deck's Bluetooth data channel
       // after failed tries wait longer (12 s, 30 s, 1 min, then 5 min) so Windows isn't asked to pair over and over
       // a deck this app already reached is tried directly (no scan, no pairing prompt): every 15 s at most
-      const bleWait = Date.now() < bleFastUntil ? 4e3 : (typeof lastBleDev !== 'undefined' && lastBleDev) ? 15e3 : [12e3, 30e3, 60e3][bleFails] || 300e3;
+      // a deck the scan did not see cannot raise a pairing prompt either: every 20 s, so a deck switched on after the
+      // computer started connects within seconds (2026-10-22; it waited up to 5 min)
+      const bleWait = Date.now() < bleFastUntil ? 4e3 : (typeof lastBleDev !== 'undefined' && lastBleDev) ? 15e3 : bleUnseen() ? 20e3 : [12e3, 30e3, 60e3][bleFails] || 300e3;
       const bleDue = !port && cfg.device.connection !== 'usb' && Date.now() - bleTriedAt > bleWait;
       if (bleDue) {
         if (!('bluetooth' in navigator)) { if (bleReady !== false) log('er', '  Bluetooth: bu pencerede Web Bluetooth yok'); bleReady = false; }
@@ -126,7 +132,7 @@
           } else {
             bleUnpairedNote = false;
             await connect(true, true);
-            bleFails = port ? 0 : bleFails + 1;
+            bleFails = port ? 0 : bleUnseen() ? bleFails : bleFails + 1;
           }
         }
       }

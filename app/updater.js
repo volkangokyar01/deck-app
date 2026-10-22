@@ -162,6 +162,7 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
   const cache = new Map(), pending = new Map();
   const packaged = isInstalledApp(app.getAppPath(), platform);
   let target = null, applying = false, quitRequested = false, timers = [], cleanup = Promise.resolve();
+  let started = false, retry = null, retries = 0;
   let releasesOnly = !!readState().updatesReleasesOnly;
   let state = { phase: 'idle', available: false, localNewer: false, needsInstaller: false, latest: null, message: 'Henüz kontrol edilmedi.', detail: null };
   let macSigner;
@@ -272,7 +273,13 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
     }
     const value = await pending.get(channel);
     if (channel !== releasesOnly || applying) return getState();
-    if (value.error) return publish(errorState(value.error));
+    if (value.error) {
+      // 2026-10-22: the first check runs 15 s after the computer started, often before the network is up; try again
+      // in 5 min (at most 3 times) instead of showing "Hata" for 6 hours
+      if (!manual && started && retries < 3) { retries++; clearTimeout(retry); retry = setTimeout(() => check(), 5 * 60e3); }
+      return publish(errorState(value.error));
+    }
+    retries = 0;
     target = value.target; return publish(value.result);
   }
   async function setChannel(on) {
@@ -403,6 +410,7 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
         } catch (e) { console.error('macOS imza geçişi tamamlanamadı.'); }
       }
     }).catch(() => { console.error('macOS imza temizliği tamamlanamadı.'); });
+    started = true; retries = 0;
     timers = [setTimeout(() => check(), 15e3), setInterval(() => check(), 6 * 60 * 60e3)];
     return getState();
   }
@@ -410,7 +418,7 @@ function createUpdater({ app, net, media, readState, writeState, onState = () =>
     if (receipt) { fs.rmSync(receiptPath(), { force: true }); receipt = null; }
     return getState();
   }
-  function stop() { timers.forEach(t => { clearTimeout(t); clearInterval(t); }); timers = []; }
+  function stop() { started = false; clearTimeout(retry); retry = null; timers.forEach(t => { clearTimeout(t); clearInterval(t); }); timers = []; }
   app.on('before-quit', event => {
     if (applying) { event.preventDefault(); quitRequested = true; }
   });

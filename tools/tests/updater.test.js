@@ -390,3 +390,23 @@ test('startup cleanup failure is caught and logged without throwing', async t =>
   await until(() => logs.length > 0);
   assert.equal((await f.updater.check()).available, true);
 });
+
+test('a failed automatic check right after start is retried in 5 min, at most 3 times (network not up yet)', async t => {
+  const f = await fixture(t);
+  f.config.compareError = new TypeError('offline');
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  t.after(() => f.updater.stop());
+  // a check that started has published "checking"; wait (real I/O, mocked timers) until it ends
+  const settle = async () => { for (let i = 0; i < 5000 && f.updater.getState().phase === 'checking'; i++) await new Promise(r => setImmediate(r)); };
+  f.updater.start();
+  t.mock.timers.tick(15e3); await settle();
+  assert.equal(f.updater.getState().phase, 'error');
+  const perCheck = f.requests.length;
+  assert.ok(perCheck > 0);
+  for (let retry = 1; retry <= 3; retry++) {
+    t.mock.timers.tick(5 * 60e3); await settle();
+    assert.equal(f.requests.length, perCheck * (retry + 1), 'retry ' + retry);
+  }
+  t.mock.timers.tick(5 * 60e3); await settle();
+  assert.equal(f.requests.length, perCheck * 4, 'no fourth retry; the 6-hour check takes over');
+});

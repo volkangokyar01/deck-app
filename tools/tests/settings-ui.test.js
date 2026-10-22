@@ -357,3 +357,9 @@ test('light-theme animation: own slot, sent only to firmware 1.7.0+, removable, 
   vm.runInContext(source.slice(from, source.indexOf('function diffValue(', from)), ctx);
   assert.equal(ctx.forDevice().home.anim.light, undefined); assert.equal(ctx.forDevice().home.anim.delays, undefined);
 });
+
+test('top tabs never show a scroll bar (Windows classic scroll bars appeared next to "Geliştirici")', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../../web/head.css.html'), 'utf8');
+  assert.match(css, /nav\.tabs\{[^}]*overflow-x:auto;overflow-y:hidden\}/);
+  assert.doesNotMatch(css.match(/nav\.tabs button\{[^}]*\}/)[0], /margin-bottom:-1px/, 'no 1 px overflow below the tabs');
+});

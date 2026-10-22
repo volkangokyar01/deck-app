@@ -68,8 +68,8 @@ header.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn.sm{padding:4px 9px;font-size:12px}
 
-nav.tabs{max-width:1400px;margin:0 auto 14px;display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
-nav.tabs button{background:none;border:0;padding:9px 14px;cursor:pointer;color:var(--muted);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+nav.tabs{max-width:1400px;margin:0 auto 14px;display:flex;gap:4px;box-shadow:inset 0 -1px 0 var(--line);overflow-x:auto;overflow-y:hidden}
+nav.tabs button{background:none;border:0;padding:9px 14px;cursor:pointer;color:var(--muted);font-weight:500;border-bottom:2px solid transparent;white-space:nowrap}
 nav.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
 
 .notice{max-width:1400px;margin:0 auto 14px;padding:10px 14px;border-radius:var(--r);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -2535,7 +2535,7 @@ function renderDeviceForm(){
     const st=el("p",{class:"hint",id:"wolState"},"");
     const list=el("div",{class:"wifi-list",id:"wolList"});
     const nic=el("p",{class:"hint",id:"wolNic"},"");
-    const out=el("p",{class:"hint",id:"wolOut",hidden:true});
+    const out=el("p",{class:"hint",id:"wolOut",hidden:true,style:"white-space:pre-line"});
     const refresh=async()=>{
       if(!ready()){ list.replaceChildren(); st.textContent=!port?"Cihazı bağla; kayıtlı bilgisayarlar burada görünür.":deviceInfo?.fw?"Kartta firmware v"+deviceInfo.fw+" var; uzaktan açma için v"+WOL_FW+" gerekiyor.":"Cihaz yanıtı bekleniyor…"; return; }
       try{ const r=await send({cmd:"wol_list"},3000,true), T=r.targets||[];
@@ -2796,6 +2796,8 @@ const bleWithin=(pr,ms,what)=>{ let t; return Promise.race([pr,new Promise((_,re
 // scan: after the deck restarts, Windows / macOS find a paired device by its address even before a scan would
 // see it. Only when that fails does the page scan again (requestDevice).
 let lastBleDev=null;
+// why the last Bluetooth attempt failed; .unseen = the scan did not see the deck (switched off, out of range)
+let bleLastErr=null;
 const bleNorm=s=>String(s||"").normalize("NFC").replace(/\s+/g," ").trim().toLocaleLowerCase("tr");
 async function knownBleDevice(){
   if(lastBleDev) return lastBleDev;
@@ -2808,7 +2810,7 @@ async function openBlePort(){
     try{ gatt=await bleWithin(dev.gatt.connect(),8000,"bağlanma"); }
     catch(e){ try{ dev.gatt.disconnect(); }catch(_){} dev=null; lastBleDev=null; }   // not reachable that way: scan
   }
-  if(!dev) dev=await bleWithin(navigator.bluetooth.requestDevice({filters:[{services:[VD_SVC]}]}),20000,"cihaz arama");
+  if(!dev) dev=await bleWithin(navigator.bluetooth.requestDevice({filters:[{services:[VD_SVC]}]}),20000,"cihaz arama").catch(e=>{ throw Object.assign(e,{unseen:true}); });
   let svc, rx, tx;
   try{
     if(!gatt) gatt=await bleWithin(dev.gatt.connect(),15000,"bağlanma");
@@ -2834,8 +2836,10 @@ async function openBlePort(){
 }
 async function connect(auto=false, ble=false){
   if(ble){
-    try{ port=await openBlePort(); log("","  Bluetooth: "+(port.name||"cihaz")+" bulundu, bağlanılıyor"); }
-    catch(e){ port=null; log("er","  Bluetooth: "+bleErrorText(e));
+    const before=bleLastErr;
+    try{ bleLastErr=null; port=await openBlePort(); log("","  Bluetooth: "+(port.name||"cihaz")+" bulundu, bağlanılıyor"); }
+    catch(e){ port=null; bleLastErr=e;
+      if(!(auto&&e.unseen&&before?.unseen)) log("er","  Bluetooth: "+bleErrorText(e));   // a deck that stays off: logged once
       if(!auto) serialNote("Bluetooth ile bağlanılamadı: "+bleErrorText(e)+". Cihazın açık ve yakında olduğundan, bu bilgisayarla eşleşmiş olduğundan emin ol (cihazda Bağlantılar → Yeni cihaz eşleştir, ardından bilgisayarın Bluetooth ayarlarından ekle).");
       return; }
   } else {
