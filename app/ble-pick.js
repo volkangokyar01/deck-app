@@ -22,12 +22,14 @@ function macDeckPaired(json, name) {
 }
 
 // Web Bluetooth seçicisinin listesinden (Electron: {deviceId, deviceName}) doğru deck'in kimliği, yoksa ''.
-// Ad bilinmiyorsa (elle bağlanma) ilk cihaz.
-function pickDeck(list, wantName) {
+// Adı tutan yoksa daha önce adıyla seçilmiş deck (knownId, adresi) alınır: Windows onu eşleştirme anındaki adla
+// listeler, adı sonradan değişse de bulunur (2026-10-30). Ad bilinmiyorsa (elle bağlanma) ilk cihaz.
+function pickDeck(list, wantName, knownId) {
   if (!Array.isArray(list) || !list.length) return '';
   if (!norm(wantName)) return list[0].deviceId;
   const hit = list.find(d => norm(d.deviceName) === norm(wantName));
-  return hit ? hit.deviceId : '';
+  if (hit) return hit.deviceId;
+  return knownId && list.some(d => d.deviceId === knownId) ? knownId : '';
 }
 
 module.exports = { macDeckPaired, macPairedNames, pickDeck, norm };

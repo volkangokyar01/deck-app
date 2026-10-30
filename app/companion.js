@@ -78,6 +78,8 @@
   // 2026-10-10: after a Bluetooth link drops (deck restarted or switched off and on) try again every 4 s for 3 minutes,
   // instead of the slow back-off, so the app is back by itself without being restarted
   let bleFastUntil = 0, connectingAt = 0;
+  // 2026-10-30: each attempt has a number; a stale one (reset after 60 s) can't clear the flag of the one after it
+  let connGen = 0, usbSwitchFailAt = 0, bleOffSince = 0;
   window.onBleDropped = () => { bleFails = 0; bleTriedAt = 0; bleFastUntil = Date.now() + 180e3; };
   // 2026-10-22: the scan did not see the deck at all (switched off when the computer started, out of range)
   const bleUnseen = () => typeof bleLastErr !== 'undefined' && !!bleLastErr?.unseen;
@@ -87,10 +89,12 @@
   window.__deckBleConnect = async () => {
     for (let i = 0; i < 40 && connecting; i++) await new Promise(r => setTimeout(r, 500));
     if (port) return;
-    connecting = true; connectingAt = Date.now();
+    if (connecting) { toast('Otomatik bağlanma denemesi sürüyor, birkaç saniye sonra tekrar dene'); return; }
+    const gen = ++connGen; connecting = true; connectingAt = Date.now();
+    deck.bleLog?.('elle bağlanma: "Bluetooth ile bağlan"');
     try { bleTriedAt = Date.now(); await connect(false, true); if (port) bleFails = 0; }
     catch (e) { log('er', '  Bluetooth: ' + (e && e.message || e)); }
-    finally { connecting = false; }
+    finally { if (gen === connGen) connecting = false; }
     if (port && deviceInfo) await afterConnect();
   };
   // Is the deck plugged into this computer? getPorts() may be empty until a port was picked once,
@@ -100,21 +104,25 @@
     try { return !!(await navigator.serial.requestPort({ filters: [{ usbVendorId: ESP_VID }] })); } catch (e) { return false; }
   };
   window.__deckAutoConnect = async () => {
-    if (connecting && Date.now() - connectingAt > 60e3) { log('er', '  Bağlantı denemesi takıldı, yeniden deneniyor'); connecting = false; try { await disconnect(); } catch (e) {} }
+    if (connecting && Date.now() - connectingAt > 60e3) { log('er', '  Bağlantı denemesi takıldı, yeniden deneniyor'); connecting = false; connGen++; try { await disconnect('bağlanma denemesi 60 sn\'de bitmedi'); } catch (e) {} }
     if (connecting || busy || (port && !port.isBle)) return;
-    connecting = true; connectingAt = Date.now();
+    const gen = ++connGen; connecting = true; connectingAt = Date.now();
     try {
       if (port) {                                               // on Bluetooth: move to USB as soon as the cable is here
-        if (!(await usbDeck())) return;
-        log('', '  Kablo bağlı: USB\'ye geçiliyor'); await disconnect();
-      }
-      await connect(true);                                      // USB always first
+        // a cable whose port can't be opened must not drop Bluetooth every few seconds: tried again after 5 min
+        if (Date.now() - usbSwitchFailAt < 300e3 || !(await usbDeck())) return;
+        log('', '  Kablo bağlı: USB\'ye geçiliyor'); await disconnect('kablo takıldı, USB\'ye geçiliyor');
+        await connect(true);
+        if (!port) { usbSwitchFailAt = Date.now(); log('er', '  USB açılamadı, Bluetooth\'a dönülüyor'); deck.bleLog?.('USB açılamadı, Bluetooth\'a dönülüyor'); }
+      } else await connect(true);                               // USB always first
       // No cable to this computer: the deck's Bluetooth data channel
-      // after failed tries wait longer (12 s, 30 s, 1 min, then 5 min) so Windows isn't asked to pair over and over
+      // a deck that was seen but did not connect: wait longer (12 s, 30 s, then 1 min) so Windows isn't asked to pair
+      // over and over; since 2026-10-30 at most 1 min (it was 5 min): only a deck the system lists as paired is tried
       // a deck this app already reached is tried directly (no scan, no pairing prompt): every 15 s at most
       // a deck the scan did not see cannot raise a pairing prompt either: every 20 s, so a deck switched on after the
       // computer started connects within seconds (2026-10-22; it waited up to 5 min)
-      const bleWait = Date.now() < bleFastUntil ? 4e3 : (typeof lastBleDev !== 'undefined' && lastBleDev) ? 15e3 : bleUnseen() ? 20e3 : [12e3, 30e3, 60e3][bleFails] || 300e3;
+      const known = typeof lastBleDev !== 'undefined' && !!lastBleDev;
+      const bleWait = Date.now() < bleFastUntil ? 4e3 : !bleUnseen() && bleFails ? [12e3, 30e3][bleFails - 1] || 60e3 : known ? 15e3 : bleUnseen() ? 20e3 : 12e3;
       const bleDue = !port && cfg.device.connection !== 'usb' && Date.now() - bleTriedAt > bleWait;
       if (bleDue) {
         if (!('bluetooth' in navigator)) { if (bleReady !== false) log('er', '  Bluetooth: bu pencerede Web Bluetooth yok'); bleReady = false; }
@@ -125,18 +133,25 @@
         if (bleReady) {
           bleTriedAt = Date.now();
           const avail = await navigator.bluetooth.getAvailability?.().catch(() => true);
-          if (avail === false) log('er', '  Bluetooth: bilgisayarın Bluetooth\'u kapalı ya da uygulamanın izni yok');
-          else if (!(await deck.blePaired?.(cfg.device.name || 'Game Deck').catch(() => true) ?? true)) {
+          if (avail === false) {
+            if (!bleOffSince) { bleOffSince = Date.now(); log('er', '  Bluetooth: bilgisayarın Bluetooth\'u kapalı ya da uygulamanın izni yok'); deck.bleLog?.('bilgisayarın Bluetooth\'u kapalı görünüyor'); }
+            // Windows (2026-10-30): an adapter that was not ready when the app started stays "off" inside Chromium
+            // until the page is reloaded; asked once per app start, after 2 min
+            else if (OS === 'win32' && Date.now() - bleOffSince > 120e3) { bleOffSince = Date.now(); deck.bleReset?.('adaptör')?.catch(() => {}); }
+          } else if (!(await deck.blePaired?.(cfg.device.name || 'Game Deck').catch(() => true) ?? true)) {
+            if (bleOffSince) deck.bleResetCancel?.();
+            bleOffSince = 0;
             if (!bleUnpairedNote) log('', '  Bluetooth: cihaz bu bilgisayarla eşleşmemiş. Cihazda Bağlantılar → Yeni cihaz eşleştir, sonra Windows Ayarlar → Bluetooth ve cihazlar → Cihaz ekle → Bluetooth.');
             bleUnpairedNote = true;
           } else {
-            bleUnpairedNote = false;
+            if (bleOffSince) deck.bleResetCancel?.();             // Bluetooth is back: a pending 'adaptör' reset is not needed
+            bleUnpairedNote = false; bleOffSince = 0;
             await connect(true, true);
             bleFails = port ? 0 : bleUnseen() ? bleFails : bleFails + 1;
           }
         }
       }
-    } catch (e) { log('er', '  Bağlantı: ' + (e && e.message || e)); } finally { connecting = false; }
+    } catch (e) { log('er', '  Bağlantı: ' + (e && e.message || e)); } finally { if (gen === connGen) connecting = false; }
     if (port && deviceInfo) await afterConnect();
   };
   async function afterConnect() {
@@ -145,9 +160,7 @@
     if (!deviceInfo.fw || !verGE(deviceInfo.fw, MIN_FW)) {
       serialNote('Uygulamaları doğrudan açmak için kartta firmware v' + MIN_FW + ' gerekiyor (kartta v' + (deviceInfo.fw || '?') + ' var). Cihaz ayarları → Firmware yükle ile güncelle; o zamana kadar cihaz eski klavye yöntemiyle açar.');
       fwNeeded = true; renderStatus(); renderEditor();
-    } else {
-      try { const host = await deck.hostName?.().catch(() => '') || ''; await send({ cmd: 'companion', os: HOST, mediaLaunch: true, ack: true, idle: idleSec, ...(host ? { host } : {}) }, 2500, true); direct = true; } catch (e) {}
-    }
+    } else await handshake();
     // 1.17.0: register this computer on the deck so its "Bilgisayarı aç" key can wake it (Wake-on-LAN)
     if (deviceInfo.fw && verGE(deviceInfo.fw, '1.17.0')) {
       try {
@@ -158,6 +171,22 @@
     pushStatus();
     await pollStats(true);
   }
+  // direct mode: the deck acknowledges the first companion message. 2026-10-30: a lost answer is asked again every
+  // 10 s (heartbeat below) instead of leaving direct mode off until the next connection
+  let ackTriedAt = 0, ackBusy = false;
+  async function handshake() {
+    if (ackBusy) return;
+    ackBusy = true; ackTriedAt = Date.now();
+    try { const host = await deck.hostName?.().catch(() => '') || ''; await send({ cmd: 'companion', os: HOST, mediaLaunch: true, ack: true, idle: idleSec, ...(host ? { host } : {}) }, 2500, true); direct = true; }
+    catch (e) { if (port?.isBle) deck.bleLog?.('doğrudan mod onayı gelmedi: ' + (e && e.message || e)); }
+    finally { ackBusy = false; ackTriedAt = Date.now(); }
+  }
+  // the app may reset a stuck Bluetooth (reload this page) only while nothing is connected or running here, and not
+  // while this page's own file picker is open (Windows: "Gözat", "Dosyadan yükle"; the window is blurred meanwhile)
+  let pickerOpen = false;
+  document.addEventListener('click', e => { if (e.target?.matches?.('input[type=file]')) pickerOpen = true; }, true);
+  window.addEventListener?.('focus', () => { pickerOpen = false; });
+  window.__deckResetOk = () => !port && !busy && !pickerOpen;
   // flashing needs the port to itself
   const _flashTo = flashTo;
   flashTo = async function (p) { busy = true; try { return await _flashTo(p); } finally { busy = false; } };
@@ -170,6 +199,7 @@
   setInterval(() => {
     // the page may have connected on its own (already-allowed port): run the direct-mode handshake once per connection
     if (port && deviceInfo && checkedPort !== port && !connecting && !busy) { checkedPort = port; afterConnect(); }
+    else if (port && deviceInfo && checkedPort === port && !direct && !connecting && !busy && deviceInfo.fw && verGE(deviceInfo.fw, MIN_FW) && Date.now() - ackTriedAt > 10e3) handshake();
     if (writer && deviceInfo && direct && !busy) sendRaw({ cmd: 'companion', os: HOST, mediaLaunch: true, idle: idleSec });
     if (!port) direct = false;
     pushStatus();
@@ -414,13 +444,21 @@
   }
   setInterval(() => pollStats(), 1000);
   // Bluetooth watchdog (2026-10-10): a deck that restarted can leave the link half open (nothing arrives, writes
-  // hang). The deck answers every second's stats; 10 s of silence → ask hello, no answer → drop and reconnect.
-  let bleProbe = false;
+  // hang). 10 s of silence → ask hello. 2026-10-30: the link is dropped only after two unanswered probes in a row (the
+  // deck sends a status line every 5 s only to the computer in use; one lost answer dropped a good link)
+  let bleProbe = false, bleMiss = 0;
   setInterval(async () => {
-    if (!port || !port.isBle || bleProbe || busy || connecting || Date.now() - lastRxAt < 10e3) return;
+    if (!port || !port.isBle) { bleMiss = 0; return; }
+    if (Date.now() - lastRxAt < 10e3) { bleMiss = 0; return; }   // the deck spoke since: an older miss no longer counts
+    if (bleProbe || busy || connecting) return;
     bleProbe = true;
-    try { await send({ cmd: 'hello' }, 2000, true); }
-    catch (e) { log('er', '  Bluetooth: cihaz yanıt vermiyor, yeniden bağlanılıyor'); try { await disconnect(); } catch (_) {} window.onBleDropped(); }
+    const probed = port;
+    try { await send({ cmd: 'hello' }, 2000, true); bleMiss = 0; }
+    catch (e) {
+      if (port !== probed) bleMiss = 0;
+      else if (++bleMiss < 2) deck.bleLog?.('bekçi: cihaz 10 sn sessiz ve hello yanıtsız, bir kez daha sorulacak');
+      else { bleMiss = 0; log('er', '  Bluetooth: cihaz yanıt vermiyor, yeniden bağlanılıyor'); try { await disconnect('bekçi: cihaz iki kez yanıt vermedi'); } catch (_) {} window.onBleDropped(); }
+    }
     finally { bleProbe = false; }
   }, 3000);
 

@@ -5,12 +5,17 @@ const src = body.slice(body.indexOf('const VD_SVC='), body.indexOf('async functi
 
 function fakeDevice() {
   const writes = [], txListeners = [], devListeners = {};
-  const tx = { addEventListener: (t, f) => txListeners.push(f), startNotifications: async () => {} };
+  const tx = { addEventListener: (t, f) => txListeners.push(f), removeEventListener: (t, f) => { const i = txListeners.indexOf(f); if (i >= 0) txListeners.splice(i, 1); },
+    startNotifications: async () => {} };
   const rx = { writeValueWithResponse: async b => { writes.push(Buffer.from(b).toString()); } };
-  const dev = { name: 'Volkan Deck', addEventListener: (t, f) => { devListeners[t] = f; },
-    gatt: { connected: true, connect: async () => ({ getPrimaryService: async () => ({ getCharacteristic: async u => u.endsWith('0002-5c2e-4b7a-9f3d-1a6c0de5d001') ? rx : tx }) }), disconnect() { this.connected = false; } } };
+  // like Web Bluetooth: connect() resolves with the same server object, which then has getPrimaryService
+  const gatt = { connected: false, connects: 0, disconnects: 0,
+    connect() { this.connects++; this.connected = true; return Promise.resolve(this); },
+    getPrimaryService: async () => ({ getCharacteristic: async u => u.endsWith('0002-5c2e-4b7a-9f3d-1a6c0de5d001') ? rx : tx }),
+    disconnect() { this.connected = false; this.disconnects++; } };
+  const dev = { name: 'Volkan Deck', addEventListener: (t, f) => { devListeners[t] = f; }, removeEventListener: (t, f) => { if (devListeners[t] === f) delete devListeners[t]; }, gatt };
   const notify = s => { const b = Buffer.from(s); txListeners.forEach(f => f({ target: { value: new DataView(b.buffer, b.byteOffset, b.byteLength) } })); };
-  return { dev, writes, notify, drop: () => devListeners.gattserverdisconnected() };
+  return { dev, rx, tx, writes, notify, txListeners, devListeners, drop: () => { gatt.connected = false; devListeners.gattserverdisconnected(); } };
 }
 
 test('BLE port chunks writes, streams notifications and reports disconnects', async () => {
@@ -65,7 +70,7 @@ test('companion: fast Bluetooth retries after a drop, watchdog asks hello after 
   const comp = fs.readFileSync(path.join(__dirname, '../../app/companion.js'), 'utf8');
   assert.match(comp, /window\.onBleDropped = \(\) => \{ bleFails = 0; bleTriedAt = 0; bleFastUntil = Date\.now\(\) \+ 180e3; \};/);
   assert.match(comp, /const bleWait = Date\.now\(\) < bleFastUntil \? 4e3 :/);
-  assert.match(comp, /Date\.now\(\) - lastRxAt < 10e3\) return;/);
+  assert.match(comp, /if \(Date\.now\(\) - lastRxAt < 10e3\) \{ bleMiss = 0; return; \}/);
   assert.match(comp, /if \(connecting && Date\.now\(\) - connectingAt > 60e3\)/);
   assert.match(body, /setTimeout\(\(\)=>\{ if\(pending\.has\(id\)\)\{ pending\.delete\(id\); rejFn\(new Error\("Cihaz yanıt vermedi"\)\); \} \},timeout\);\n  const w=withWrite/, 'send() times out even when the write hangs');
 });

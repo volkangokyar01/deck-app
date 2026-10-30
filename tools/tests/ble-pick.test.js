@@ -32,9 +32,18 @@ test('seçici yalnız ayarlardaki adı taşıyan deck\'i alır', () => {
   assert.equal(pickDeck(list, ''), 'x1', 'ad bilinmiyorsa (elle bağlanma) eski davranış');
 });
 
+test('daha önce seçilen deck (adresi) adı değişmiş olsa da seçilir (2026-10-30)', () => {
+  const list = [{ deviceId: 'AA:BB', deviceName: 'Game Deck' }, { deviceId: 'CC:DD', deviceName: 'Sencer Deck' }];
+  assert.equal(pickDeck(list, 'Yeni Ad', 'AA:BB'), 'AA:BB', 'Windows eşleştirme anındaki adı gösterse de bulunur');
+  assert.equal(pickDeck(list, 'Sencer Deck', 'AA:BB'), 'CC:DD', 'adı tutan deck önce gelir (ikinci deck\'e geçiş)');
+  assert.equal(pickDeck(list, 'Yeni Ad', 'EE:FF'), '', 'hatırlanan deck yakında değilse ve ad tutmuyorsa hiçbiri');
+  assert.equal(pickDeck([list[1]], 'Volkan Deck', 'AA:BB'), '', 'başkasının deck\'i yine alınmaz');
+  assert.match(main, /if \(id && byName\) \{ const st = readState\(\);/, 'elle "yakındaki tek deck" seçimi hatırlanmaz');
+});
+
 test('main.js: seçici ad ile seçer, macOS eşleşme kapısı bağlıdır', () => {
   assert.match(main, /require\('\.\/ble-pick'\)/);
-  assert.match(main, /pickDeck\(list, bleWantName\)/);
+  assert.match(main, /pickDeck\(list, bleWantName, readState\(\)\.bleDeckId\)/);
   assert.doesNotMatch(main, /finish\(list\[0\]\.deviceId\)/, 'ilk cihaza körü körüne bağlanma kalmadı');
   assert.match(main, /bleWantName = name;/);
   assert.match(main, /macDeckPaired\(json, name\)/);

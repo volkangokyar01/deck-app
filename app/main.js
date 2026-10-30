@@ -13,7 +13,8 @@ const { createSensorInstaller } = require('./sensor-install');
 const { wolInfo } = require('./wol');
 const { createUpdater, REPO_URL } = require('./updater');
 const { createTrayUpdate, openLocationSettings } = require('./main-actions');
-const { macDeckPaired, pickDeck } = require('./ble-pick');
+const { macDeckPaired, pickDeck, norm: bleNorm } = require('./ble-pick');
+const { createBleLog } = require('./ble-log');
 const { createMailWatcher } = require('./mail');
 
 const IS_WIN = process.platform === 'win32';
@@ -30,6 +31,7 @@ if (IS_MAC || IS_WIN) {
 // (state.json, sensor cache): pin userData there before anything reads it.
 app.setPath('userData', path.join(app.getPath('appData'), 'Volkan Deck'));
 app.setName('Game Deck');
+const bleLog = createBleLog({ dir: path.join(app.getPath('userData'), 'logs') });
 const sensorInstaller = createSensorInstaller({ fetch: (...args) => net.fetch(...args), cacheDir: path.join(app.getPath('userData'), 'stats-cache') });
 const stats = createStats({ fetch: (...args) => net.fetch(...args), cacheDir: path.join(app.getPath('userData'), 'stats-cache'), sensorFile: sensorInstaller.sensorFile, fpsFile: sensorInstaller.fpsFile });
 if (IS_WIN) app.setAppUserModelId('com.volkan.deck');
@@ -64,6 +66,7 @@ function createWindow() {
   setupBluetooth(win.webContents);
   win.loadFile(path.join(__dirname, 'index.html'));
   win.on('page-title-updated', e => e.preventDefault());   // keep the status in the title bar / taskbar
+  win.on('blur', bleResetOnBlur); win.on('hide', () => bleResetSoon());
   win.once('ready-to-show', () => {
     if (!startHidden || updatedAtStart) showWindow();
     else if (IS_MAC) setDock(false);                           // started at login: menu bar only
@@ -139,6 +142,7 @@ function refreshTray() {
     { label: 'Ayarları aç', click: showWindow },
     { label: updater.getState().available ? 'Güncelleme var — yükle…' : 'Güncellemeleri kontrol et', click: trayUpdate },
     { label: 'Bilgisayar açılınca başlat', type: 'checkbox', checked: login, click: m => setLogin(m.checked) },
+    { label: 'Bluetooth kaydını göster', click: () => { bleLog.write('kayıt açıldı'); shell.showItemInFolder(bleLog.file); } },
     { type: 'separator' },
     { label: 'Çık', click: () => { quitting = true; app.quit(); } }
   ]));
@@ -157,21 +161,83 @@ function bluetoothReady() {
 }
 // "Bluetooth ile bağlan" (2026-10-18): for 25 s a deck with another name may be taken too (the only one nearby)
 let bleManualUntil = 0;
+let bleScanStart = () => {};
 function setupBluetooth(wc) {
-  let pending = null, timer = null, seen = [];
-  const finish = id => { clearTimeout(timer); timer = null; const cb = pending; pending = null; seen = []; if (cb) cb(id); };
+  let pending = null, timer = null, seen = [], lastLine = '', repeats = 0;
+  const finish = (id, byName) => {
+    clearTimeout(timer); timer = null;
+    const cb = pending, names = seen.map(d => d.deviceName || '?').join(', ');
+    pending = null; seen = [];
+    if (!cb) return;
+    // 2026-10-30: the deck picked by its configured name is remembered by its address, so it is found again after a
+    // rename (Windows lists it under the name it had when it was paired). Never the manual "only deck nearby" pick:
+    // that may be someone else's deck.
+    if (id && byName) { const st = readState(); if (st.bleDeckId !== id) { st.bleDeckId = id; writeState(st); } }
+    const line = 'tarama: ' + (id ? 'seçildi' : 'deck yok') + ' · görülen: ' + (names || 'hiçbiri');
+    if (line === lastLine) repeats++;                         // a deck that stays off: one line, then a count
+    else { if (repeats) bleLog.write('(önceki tarama sonucu ' + repeats + ' kez daha)'); bleLog.write(line); lastLine = line; repeats = 0; }
+    cb(id);
+  };
+  // the page starts a new scan: a timer left from an earlier chooser must not end this one early
+  bleScanStart = () => { clearTimeout(timer); timer = null; pending = null; seen = []; };
   wc.on('select-bluetooth-device', (event, list, callback) => {
     event.preventDefault();
     pending = callback; seen = list || [];
-    // the page filters by the Volkan Deck service; only the deck named in the settings is taken (another person's deck
-    // in the same room would make macOS ask its owner "connect to …?")
-    const id = pickDeck(list, bleWantName);
-    if (id) return finish(id);
+    // the page filters by the Volkan Deck service; only the deck named in the settings (or the one picked before) is
+    // taken: another person's deck in the same room would make macOS ask its owner "connect to …?"
+    const id = pickDeck(list, bleWantName, readState().bleDeckId);
+    if (id) return finish(id, list.some(d => d.deviceId === id && bleNorm(d.deviceName) === bleNorm(bleWantName)));
     const manual = Date.now() < bleManualUntil;
     if (!timer) timer = setTimeout(() => finish(manual && seen.length === 1 ? seen[0].deviceId : ''), manual ? 6000 : 8000);   // nothing nearby: give up, the page retries later
   });
   session.defaultSession.setBluetoothPairingHandler?.((details, callback) => callback({ confirmed: details.pairingKind === 'confirm' || details.pairingKind === 'confirmPin' }));
 }
+ipcMain.handle('ble-scan', () => { bleScanStart(); return true; });
+// Windows (2026-10-30): Chromium's Bluetooth stuck for this page (see bleGattConnect in web/body.html) is cleared only
+// when its Bluetooth adapter is released: no page may use Bluetooth for a moment. The page is reloaded through an empty
+// page (a plain reload can hand the old adapter to the new page); if that did not help within 30 min, the app restarts
+// (once an hour). At most every 10 min (an adapter that was not ready at start once per run), and never while the
+// window is in use: then it waits until the window is hidden or loses focus.
+let bleResetAt = 0, bleResetWhy = '', bleResetAsked = 0, bleAdapterReset = false, bleBlurTimer = null, dialogsOpen = 0;
+async function bleResetSoon() {
+  if (!bleResetWhy || !win || win.isDestroyed()) return;
+  // a request that waited 2 min while the window was in use is dropped: the page asks again if it is still stuck
+  if (Date.now() - bleResetAsked > 2 * 60e3) { bleResetWhy = ''; bleLog.write('Bluetooth sıfırlama isteği düştü (pencere kullanılıyordu)'); return; }
+  if (win.isVisible() && win.isFocused() || dialogsOpen) return;
+  // connected again in the meantime, or busy over USB (firmware, animation): nothing to reset
+  const ok = await win.webContents.executeJavaScript('!window.__deckResetOk || window.__deckResetOk()', true).catch(() => true);
+  if (!bleResetWhy || win.isDestroyed()) return;
+  const why = bleResetWhy, st = readState();
+  bleResetWhy = '';
+  if (!ok) { bleLog.write('Bluetooth sıfırlaması gerekmedi: cihaz bağlı ya da işlem sürüyor'); return; }
+  // only while the window is hidden: a restarted app would show a visible window again and take the focus
+  if (bleResetAt && Date.now() - bleResetAt < 30 * 60e3 && !win.isVisible() && !(Date.now() - (st.bleRelaunchAt || 0) < 60 * 60e3)) {
+    st.bleRelaunchAt = Date.now(); writeState(st);
+    bleLog.write('Bluetooth yine takıldı (' + why + '): uygulama yeniden başlatılıyor');
+    app.relaunch({ args: process.argv.slice(1).filter(a => a !== '--hidden').concat(['--hidden']) });
+    quitting = true; app.quit();
+    return;
+  }
+  bleLog.write('Bluetooth takıldı (' + why + '): sayfa yeniden yükleniyor');
+  bleResetAt = Date.now();
+  if (why === 'adaptör') bleAdapterReset = true;               // used up only by a reset that really happened
+  win.webContents.loadURL('about:blank').catch(() => {}).finally(() => setTimeout(() => {
+    if (win && !win.isDestroyed()) win.loadFile(path.join(__dirname, 'index.html'));
+  }, 1500));
+}
+// blur also comes from the app's own file dialog and from a quick look elsewhere: act only when it lasts 30 s
+function bleResetOnBlur() { clearTimeout(bleBlurTimer); bleBlurTimer = setTimeout(() => bleResetSoon(), 30e3); }
+ipcMain.handle('ble-reset', (e, why) => {
+  why = String(why || 'takılma').slice(0, 60);
+  if (bleResetWhy && Date.now() - bleResetAsked > 2 * 60e3) bleResetWhy = '';   // an expired request does not block a new one
+  if (bleResetWhy || Date.now() - bleResetAt < 10 * 60e3) return false;
+  if (why === 'adaptör' && bleAdapterReset) return false;
+  bleResetWhy = why; bleResetAsked = Date.now(); bleResetSoon();
+  return true;
+});
+// the page connected again: a reset still waiting for the window is withdrawn
+ipcMain.on('ble-reset-cancel', () => { if (bleResetWhy) bleLog.write('Bluetooth sıfırlama isteği geri alındı: bağlantı kuruldu'); bleResetWhy = ''; });
+ipcMain.on('ble-log', (e, line) => bleLog.write(line));
 ipcMain.handle('ble-ready', () => bluetoothReady());
 // The app only uses Bluetooth once this computer lists the deck as paired. Windows: connecting to an unpaired deck
 // makes Windows try to pair on its own ("Try connecting your device again"). macOS: it shows "connect to <deck>?" on
@@ -199,6 +265,7 @@ async function blePaired(name) {
     const paired = r.code === 0 ? macDeckPaired(json, name) : null;
     if (paired !== null) value = paired;
   }
+  if (blePairedCache.value !== value || blePairedCache.name !== name) bleLog.write('eşleşme kontrolü: "' + name + '" ' + (value ? 'eşleşmiş' : 'bu bilgisayarla eşleşmemiş'));
   blePairedCache = { name, at: Date.now(), value };
   return value;
 }
@@ -363,12 +430,13 @@ async function launch(e) {
 const WIN_SCRIPTS = ['bat', 'cmd', 'ps1', 'vbs'], MAC_SCRIPTS = ['command', 'sh', 'zsh', 'bash', 'py', 'scpt', 'applescript'];
 const isScript = p => new RegExp('\\.(' + (IS_MAC ? MAC_SCRIPTS : WIN_SCRIPTS).join('|') + ')$', 'i').test(p);
 async function pickApps(multi) {
+  dialogsOpen++;                                            // a pending Bluetooth reset waits for the dialog (see bleResetSoon)
   const r = await dialog.showOpenDialog(win, {
     title: 'Uygulama seç',
     defaultPath: IS_MAC ? '/Applications' : undefined,
     properties: ['openFile', ...(multi ? ['multiSelections'] : [])],
     filters: IS_MAC ? [{ name: 'Uygulamalar ve komut dosyaları', extensions: ['app', ...MAC_SCRIPTS] }] : [{ name: 'Programlar, kısayollar ve komut dosyaları', extensions: ['exe', 'lnk', 'url', ...WIN_SCRIPTS] }]
-  });
+  }).finally(() => { dialogsOpen--; });
   if (r.canceled) return [];
   const out = [];
   for (const p of r.filePaths) out.push(await appInfo(p));
@@ -509,10 +577,13 @@ app.whenReady().then(() => {
   stats.start();
   updater.start();
   setupSerial();
+  bleLog.write('uygulama açıldı · v' + app.getVersion() + ' · ' + process.platform + ' ' + require('os').release() + (startHidden ? ' · gizli başladı' : ''));
   // back from sleep (2026-10-22): the Bluetooth link is gone or about to be; retry every 4 s instead of after the back-off
   powerMonitor.on('resume', () => {
+    bleLog.write('bilgisayar uykudan döndü');
     if (win && !win.isDestroyed()) win.webContents.executeJavaScript('window.onBleDropped && window.onBleDropped()', true).catch(() => {});
   });
+  powerMonitor.on('suspend', () => bleLog.write('bilgisayar uykuya geçiyor'));
   createWindow();
   buildTray(); applyStatusVisual();
   const st = readState();

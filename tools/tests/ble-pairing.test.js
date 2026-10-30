@@ -13,7 +13,7 @@ test('Bluetooth auto-connect waits for Windows pairing and backs off after failu
   assert.match(main, /system_profiler/, 'macOS asks the system which Bluetooth devices are paired');
   assert.match(main, /BTHLE\\\\DEV_\*/);
   assert.match(comp, /deck\.blePaired\?\.\(/);
-  assert.match(comp, /\[12e3, 30e3, 60e3\]\[bleFails\] \|\| 300e3/);
+  assert.match(comp, /!bleUnseen\(\) && bleFails \? \[12e3, 30e3\]\[bleFails - 1\] \|\| 60e3/, 'seen-but-failed backs off, at most 1 min (2026-10-30; it was 5 min)');
   const conn = comp.indexOf('await connect(true, true);'), gate = comp.indexOf('deck.blePaired?.(');
   assert.ok(gate > 0 && gate < conn, 'pairing check comes before the Bluetooth connect');
 });

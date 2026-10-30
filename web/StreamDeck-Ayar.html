@@ -2792,6 +2792,29 @@ function bleErrorText(e){
 }
 // a step that does not finish in time fails (Windows can leave gatt.connect / a write hanging after the deck rebooted)
 const bleWithin=(pr,ms,what)=>{ let t; return Promise.race([pr,new Promise((_,rej)=>{ t=setTimeout(()=>rej(Object.assign(new Error(what+" zaman aşımı"),{name:"TimeoutError"})),ms); })]).finally(()=>clearTimeout(t)); };
+// Bluetooth log file of the desktop app (2026-10-30): attempts, drops and why, kept after a restart
+const bleTrace=m=>{ try{ window.deck?.bleLog?.(m); }catch(_){} };
+// 2026-10-30, Windows: the page never calls gatt.disconnect() there. In Electron 44 (Chromium 152) a page-side disconnect
+// leaves the deck "connected" inside Chromium while Windows holds its keyboard link, and a cancelled connect stays queued;
+// every later connect then hangs until the app is restarted. A session ends by dropping the page's objects, and a
+// connect that is still running is awaited again by the next attempt instead of being started anew.
+const BLE_KEEP=window.deck?.platform==="win32";
+const bleConnecting=new WeakMap();   // device → its one running gatt.connect()
+function bleGattConnect(dev){
+  if(dev.gatt.connected) return Promise.resolve(dev.gatt);
+  let p=bleConnecting.get(dev);
+  if(!p){ p=dev.gatt.connect(); bleConnecting.set(dev,p); const done=()=>{ if(bleConnecting.get(dev)===p) bleConnecting.delete(dev); }; p.then(done,done); }
+  return p;
+}
+function bleDrop(dev){ if(!BLE_KEEP){ try{ dev.gatt.disconnect(); }catch(_){} } }
+// Windows: whenever the link drops, connect again right away, while it is still down. Once Windows has brought the
+// deck's keyboard link back, Chromium counts the deck as connected without looking up its services again, and the data
+// channel hangs. One listener per device for the page's lifetime: it must also fire after a session was closed.
+// At most every 30 s: a deck that drops this computer on purpose (another computer chosen, pairing lost on the deck)
+// is left to the normal tries and their back-off.
+const bleHooked=new WeakSet();
+function bleHook(dev){ if(!BLE_KEEP||bleHooked.has(dev)) return; bleHooked.add(dev); let at=0;
+  dev.addEventListener("gattserverdisconnected",()=>{ if(Date.now()-at<30e3) return; at=Date.now(); bleGattConnect(dev).catch(()=>{}); }); }
 // 2026-10-18: the deck this page already used (or allowed before) is connected straight away, without a new
 // scan: after the deck restarts, Windows / macOS find a paired device by its address even before a scan would
 // see it. Only when that fails does the page scan again (requestDevice).
@@ -2805,41 +2828,77 @@ async function knownBleDevice(){
     const want=bleNorm(cfg.device?.name||"Game Deck"); return L.find(d=>bleNorm(d.name)===want)||(L.length===1?L[0]:null); }catch(_){ return null; }
 }
 async function openBlePort(){
-  let dev=await knownBleDevice(), gatt=null;
+  // reused: the link of an earlier session is still up (Windows keeps it, see bleGattConnect)
+  let dev=await knownBleDevice(), gatt=null, seen=false, reused=false;
   if(dev){
-    try{ gatt=await bleWithin(dev.gatt.connect(),8000,"bağlanma"); }
-    catch(e){ try{ dev.gatt.disconnect(); }catch(_){} dev=null; lastBleDev=null; }   // not reachable that way: scan
+    bleHook(dev); reused=dev.gatt.connected;
+    try{ gatt=await bleWithin(bleGattConnect(dev),8000,"bağlanma"); }
+    catch(e){ bleDrop(dev); dev=null; reused=false; }   // not reachable that way: scan (the deck stays remembered, 2026-10-30)
   }
-  if(!dev) dev=await bleWithin(navigator.bluetooth.requestDevice({filters:[{services:[VD_SVC]}]}),20000,"cihaz arama").catch(e=>{ throw Object.assign(e,{unseen:true}); });
+  if(!dev){ await window.deck?.bleScan?.(); dev=await bleWithin(navigator.bluetooth.requestDevice({filters:[{services:[VD_SVC]}]}),20000,"cihaz arama").catch(e=>{ throw Object.assign(e,{unseen:true}); }); seen=true; }
+  bleHook(dev);
   let svc, rx, tx;
   try{
-    if(!gatt) gatt=await bleWithin(dev.gatt.connect(),15000,"bağlanma");
+    if(!gatt){ reused=dev.gatt.connected; gatt=await bleWithin(bleGattConnect(dev),15000,"bağlanma"); }
     svc=await bleWithin(gatt.getPrimaryService(VD_SVC),10000,"servis");
     rx=await bleWithin(svc.getCharacteristic(VD_RX),5000,"yazma kanalı"); tx=await bleWithin(svc.getCharacteristic(VD_TX),5000,"okuma kanalı");
-  }catch(e){ try{ dev.gatt.disconnect(); }catch(_){} throw e; }
+  }catch(e){ bleDrop(dev);
+    // Windows: a deck that is advertising but won't connect, or a link that is up but answers nothing, means
+    // Chromium's Bluetooth is stuck (see bleGattConnect); connect() asks the app for a fresh page after two such tries
+    if(BLE_KEEP && e.name==="TimeoutError" && (seen && /bağlanma/.test(e.message) || /servis|kanal/.test(e.message) && dev.gatt.connected)) e.wedged=true;
+    throw e; }
   lastBleDev=dev;
-  const on={disconnect:[]}; let ctrl=null, closed=false;
-  const P={isBle:true, chunk:20, name:dev.name||""};
+  const on={disconnect:[]}; let ctrl=null, closed=false, onGone=null;
+  const P={isBle:true, chunk:20, name:dev.name||"", reused};
   P.readable=new ReadableStream({start(c){ ctrl=c; }});
-  tx.addEventListener("characteristicvaluechanged",e=>{ const v=e.target.value; try{ ctrl.enqueue(new Uint8Array(v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength))); }catch(_){} });
-  try{ await bleWithin(tx.startNotifications(),10000,"bildirim"); }catch(e){ try{ dev.gatt.disconnect(); }catch(_){} throw e; }
+  const onValue=e=>{ if(closed) return; const v=e.target.value; try{ ctrl.enqueue(new Uint8Array(v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength))); }catch(_){} };
+  // one listener per session: a reused device (Windows) must not keep feeding the streams of earlier sessions
+  const detach=()=>{ try{ tx.removeEventListener?.("characteristicvaluechanged",onValue); if(onGone) dev.removeEventListener?.("gattserverdisconnected",onGone); }catch(_){} };
+  tx.addEventListener("characteristicvaluechanged",onValue);
+  try{ await bleWithin(tx.startNotifications(),10000,"bildirim"); }
+  catch(e){ detach(); bleDrop(dev); if(BLE_KEEP && e.name==="TimeoutError" && dev.gatt.connected) e.wedged=true; throw e; }
   P.writable=new WritableStream({ async write(chunk){
-    try{ for(let i=0;i<chunk.length;i+=P.chunk) await bleWithin(rx.writeValueWithResponse(chunk.slice(i,i+P.chunk)),6000,"yazma"); }
-    catch(e){ try{ dev.gatt.disconnect(); }catch(_){} gone(); throw e; } } });
-  const gone=()=>{ if(closed) return; closed=true; try{ ctrl.close(); }catch(_){} on.disconnect.forEach(f=>{ try{ f(); }catch(_){} }); window.onBleDropped?.(); };
-  dev.addEventListener("gattserverdisconnected",gone);
+    for(let i=0;i<chunk.length;i+=P.chunk){
+      const part=chunk.slice(i,i+P.chunk);
+      for(let t=0;;t++){
+        // a session the page closed sends nothing more (on Windows the link stays up for the next session)
+        if(closed) throw Object.assign(new Error("Bağlantı kapandı"),{name:"AbortError"});
+        try{ await bleWithin(rx.writeValueWithResponse(part),6000,"yazma"); break; }
+        catch(e){
+          // 2026-10-30: a refused write (the deck was short of buffers) is sent again; a write that timed out may have
+          // arrived, and a lost link can't be written to: then the session ends
+          if(t<2 && e.name!=="TimeoutError" && !closed && dev.gatt.connected){ await new Promise(r=>setTimeout(r,120*(t+1))); continue; }
+          if(closed) throw e;
+          if(!closed) bleTrace("yazma hatası, bağlantı kapanıyor: "+(e.name?e.name+": ":"")+(e.message||e));
+          bleDrop(dev); gone(); throw e;
+        }
+      }
+    } } });
+  const gone=()=>{ if(closed) return; closed=true; detach(); try{ ctrl.close(); }catch(_){} on.disconnect.forEach(f=>{ try{ f(); }catch(_){} }); window.onBleDropped?.(); };
+  onGone=()=>{ if(!closed) bleTrace("bağlantı koptu (cihaz ya da bilgisayarın Bluetooth'u)"); gone(); };
+  dev.addEventListener("gattserverdisconnected",onGone);
   P.addEventListener=(t,f)=>{ (on[t]||=[]).push(f); };
   P.getInfo=()=>({bluetooth:true});
   P.setSignals=async()=>{};
-  P.close=async()=>{ closed=true; try{ dev.gatt.disconnect(); }catch(_){} };
+  P.close=async()=>{ closed=true; detach(); bleDrop(dev); };
   return P;
 }
+// Windows (2026-10-30): two stuck Bluetooth tries in a row → the app reloads this page (a fresh Chromium Bluetooth
+// adapter; see bleGattConnect). The app does it at most every 10 min and not while the window is in use; a connection
+// that works again withdraws the request.
+let bleWedges=0;
+function bleStuck(w){ if(!w){ bleWedges=0; return; } if(!window.deck?.bleReset) return; if(++bleWedges<2) return; bleWedges=0; bleTrace("Bluetooth takıldı görünüyor: sayfanın yeniden yüklenmesi istendi"); window.deck.bleReset("bağlantı takıldı").catch?.(()=>{}); }
+const bleSecs=t=>((Date.now()-t)/1000).toFixed(1)+" sn";
 async function connect(auto=false, ble=false){
+  let bleReused=false;
   if(ble){
-    const before=bleLastErr;
-    try{ bleLastErr=null; port=await openBlePort(); log("","  Bluetooth: "+(port.name||"cihaz")+" bulundu, bağlanılıyor"); }
+    const before=bleLastErr, t0=Date.now();
+    try{ bleLastErr=null; port=await openBlePort(); bleReused=port.reused; log("","  Bluetooth: "+(port.name||"cihaz")+" bulundu, bağlanılıyor");
+      bleTrace("bulundu: "+(port.name||"cihaz")+(bleReused?" · açık bağlantı yeniden kullanıldı":"")+" · "+bleSecs(t0)); }
     catch(e){ port=null; bleLastErr=e;
-      if(!(auto&&e.unseen&&before?.unseen)) log("er","  Bluetooth: "+bleErrorText(e));   // a deck that stays off: logged once
+      if(!(auto&&e.unseen&&before?.unseen)){ log("er","  Bluetooth: "+bleErrorText(e));   // a deck that stays off: logged once
+        bleTrace("deneme olmadı ("+bleSecs(t0)+"): "+bleErrorText(e)+(e.unseen?" · taramada görülmedi":"")+(e.wedged?" · takılma belirtisi":"")); }
+      bleStuck(e.wedged);
       if(!auto) serialNote("Bluetooth ile bağlanılamadı: "+bleErrorText(e)+". Cihazın açık ve yakında olduğundan, bu bilgisayarla eşleşmiş olduğundan emin ol (cihazda Bağlantılar → Yeni cihaz eşleştir, ardından bilgisayarın Bluetooth ayarlarından ekle).");
       return; }
   } else {
@@ -2860,11 +2919,18 @@ async function connect(auto=false, ble=false){
   try{ let h=null; for(let t=0;t<3&&!h;t++){ try{ h=await send({cmd:"hello"},2500); }catch(e){ if(t===2) throw e; await new Promise(r=>setTimeout(r,400)); } }
     deviceInfo=h;
     if(port?.isBle && h.mtu>23) port.chunk=Math.min(h.mtu-3,240);
+    window.deck?.bleResetCancel?.();
+    if(ble){ bleWedges=0; bleTrace("bağlandı: "+(h.name||"Game Deck")+(h.fw?" v"+h.fw:"")+(h.mtu?" · mtu "+h.mtu:"")); }
     if(h.embPsram!=null&&!h.psram&&verGE(h.fw,"1.12.1")) log("er","  Bellek: "+(h.embPsram?"çipte ek bellek (PSRAM) var ama başlamadı (açılış "+(h.psramInit?"tamam":"başarısız")+")":"çipte ek bellek (PSRAM) yok")+" · boş "+h.heap+" KB, en büyük blok "+h.block+" KB · çip rev "+h.chipRev+" · flash "+h.flashMB+" MB");
     if(h.crash){ log("er","Cihaz beklenmedik biçimde yeniden başlamış: "+h.crash); toast("Cihaz beklenmedik biçimde yeniden başlamış ("+h.crash+")"); }
     if(h.fw && !verGE(h.fw,FIRMWARE.version)) serialNote("Kartta firmware v"+h.fw+" var; v"+FIRMWARE.version+" pakette var. Cihaz ayarları → Firmware yükle ile güncelleyebilirsin."); setConnUI(true,(h.name||"Cihaz")+(h.fw?" · v"+h.fw:"")); toast("Cihaza bağlanıldı");
     try{ const g=await send({cmd:"get_config"},4000); deviceCfg=g.config; refreshConfigDiff(); markPending(); }catch(e){}
-  }catch(e){ if(port?.isBle){ await disconnect(); return; }   // Bluetooth: just try again later
+  }catch(e){
+    // Bluetooth: just try again later. Decided by how this try started, not by port: a link that drops during hello has
+    // already cleared port and must not fall into the USB advice below (2026-10-30)
+    if(ble){ log("er","  Bluetooth: cihaz yanıt vermedi ("+(e.message||e)+")"); bleTrace("el sıkışma olmadı: "+(e.message||e)+(bleReused?" · açık bağlantı yanıtsız":""));
+      // stuck only if the reused link is still up: a deck that dropped us during hello is a normal failure
+      const up=!!lastBleDev?.gatt?.connected; await disconnect(); bleStuck(BLE_KEEP&&bleReused&&up); return; }
     setConnUI(true,"Bağlı · kart yanıt vermiyor");
     if(lastStatus){
       const bootSteps=" Güncellemek için: 1) kartın kablosunu çıkar, 2) kartın BOOT tuşuna basılı tutarak kabloyu geri tak ve tuşu bırak (ekran karanlık kalır), 3) Cihaz ayarları → Firmware yükle'ye bas ve listeden kartı seç.";
@@ -2878,7 +2944,7 @@ async function connect(auto=false, ble=false){
   renderStatus(); drawScreen(); renderEditor();
 }
 let readDone=null;
-async function disconnect(){ try{await reader?.cancel();}catch(e){} try{await readDone;}catch(e){} try{writer?.releaseLock();}catch(e){} try{await port?.close();}catch(e){} readDone=null; disconnectedUI(); }
+async function disconnect(why){ if(why&&port?.isBle) bleTrace("bağlantı kapatılıyor: "+why); try{await reader?.cancel();}catch(e){} try{await readDone;}catch(e){} try{writer?.releaseLock();}catch(e){} try{await port?.close();}catch(e){} readDone=null; disconnectedUI(); }
 function disconnectedUI(){ stats.live=false; updateLiveTag(); port=null; writer=null; reader=null; deviceInfo=null; pending.forEach(p=>p.rej(new Error("Bağlantı kapandı"))); pending.clear(); setConnUI(false); $("#diffNote").hidden=true; renderStatus(); drawScreen(); renderEditor(); }
 function setConnUI(on,txt){
   $("#connPill").classList.toggle("on",on); $("#connText").textContent=on?txt+(port?.isBle?" · Bluetooth":""):"Bağlı değil";
@@ -2887,7 +2953,7 @@ function setConnUI(on,txt){
   for(const id of ["#btnWrite","#btnRead"]){ $(id).disabled=!on; $(id).title=on?"":"Önce cihaza bağlan"; }
   if(!on) deviceCfg=null; markPending();
 }
-$("#btnConnect").onclick=()=>port?disconnect():connect();
+$("#btnConnect").onclick=()=>port?disconnect("elle kesildi"):connect();
 // manual Bluetooth (2026-10-18): the desktop app also connects by itself; this button does it now
 $("#btnBle").hidden=!("bluetooth" in navigator);
 $("#btnBle").onclick=async()=>{ if(port) return; const b=$("#btnBle"); b.disabled=true; b.textContent="Aranıyor…";

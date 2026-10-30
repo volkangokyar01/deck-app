@@ -32,11 +32,11 @@ test('a deck the scan does not see is marked unseen; a deck that is seen but fai
 
 test('companion: an unseen deck is tried every 20 s without growing the back-off; seen failures still back off', () => {
   assert.match(page, /catch\(e\)\{ port=null; bleLastErr=e;/);
-  assert.match(page, /if\(!\(auto&&e\.unseen&&before\?\.unseen\)\) log\("er"/, 'a deck that stays off is logged once');
-  assert.match(comp, /: bleUnseen\(\) \? 20e3 : \[12e3, 30e3, 60e3\]\[bleFails\] \|\| 300e3;/);
+  assert.match(page, /if\(!\(auto&&e\.unseen&&before\?\.unseen\)\)\{ log\("er"/, 'a deck that stays off is logged once');
+  assert.match(comp, /const bleWait = Date\.now\(\) < bleFastUntil \? 4e3 : !bleUnseen\(\) && bleFails \? \[12e3, 30e3\]\[bleFails - 1\] \|\| 60e3 : known \? 15e3 : bleUnseen\(\) \? 20e3 : 12e3;/);
   assert.match(comp, /bleFails = port \? 0 : bleUnseen\(\) \? bleFails : bleFails \+ 1;/);
   assert.match(comp, /window\.addEventListener\?\.\('focus', \(\) => \{ if \(!port && !connecting && Date\.now\(\) - bleTriedAt > 5e3\) bleTriedAt = 0; \}\);/);
-  assert.match(main, /powerMonitor\.on\('resume', \(\) => \{\n\s+if \(win && !win\.isDestroyed\(\)\) win\.webContents\.executeJavaScript\('window\.onBleDropped && window\.onBleDropped\(\)', true\)/);
+  assert.match(main, /powerMonitor\.on\('resume', \(\) => \{\n\s+bleLog\.write\('bilgisayar uykudan döndü'\);\n\s+if \(win && !win\.isDestroyed\(\)\) win\.webContents\.executeJavaScript\('window\.onBleDropped && window\.onBleDropped\(\)', true\)/);
 });
 
 test('Windows: a deck paired under an older name still counts as paired (its Game Deck GATT service node)', () => {
