@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.18.3)
+## Firmware (v1.18.4)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -463,3 +463,9 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Boşta: cihaz 60 sn bağlı değilse ölçüm yardımcıları (win-stats.ps1, nvidia-smi, macmon, netstat, ping) ve medya / Outlook PowerShell yardımcıları durur; bağlanınca ölçüm hemen, diğerleri ilk istekte yeniden başlar. Hava, konum ve kur güncellemesi sürer.
 - Güncelleme kontrolü: ilk kontrol açılıştan 15 sn sonra, çoğu zaman ağ hazır olmadan yapılıyordu; başarısız otomatik kontrol 5 dk arayla en çok 3 kez yeniden denenir (önce 6 saat "Hata" kalıyordu).
 - Uzaktan açma: `wol-setup.ps1` BOM'suz UTF-8'di; Windows PowerShell 5.1 BOM'suz betiği ANSI kod sayfasıyla okuduğu için Türkçe metinler "ayarlarÄ±", "aÃ§Ä±k" görünüyordu. Betik BOM ile kaydedildi; Türkçe harf içeren her `app/*.ps1` için test var. Sonuç metninin satır sonları sayfada korunur.
+
+## 2026-10-31 — Bluetooth: cihaz açıkken "bulunamadı" (firmware 1.18.4)
+- Neden 1 (firmware): cihaz 2 bağlantıdan sonra reklamı (advertising) kesiyordu. Mac ve Windows klavye bağlantısını birlikte tutunca Windows uygulamasının taraması cihazı hiç görmüyordu. Artık NimBLE'nin izin verdiği 3 bağlantıya kadar reklam sürer.
+- Bekçi (`bleAdvWatch`, döngüde 3 sn'de bir): bağlantı sayısı yığından okunur (kaçan bir geri çağrı sayacı yüksek bırakıp reklamı kalıcı kapatabiliyordu); boş yer varken reklam durmuşsa yeniden başlatılır.
+- Neden 2 (uygulama): seçici yalnız ayardaki adla eşleşen cihazı alıyordu; Windows / macOS eşleşmiş cihazın eski adını ("Volkan Deck") ya da boş ad bildirebilir. Artık 10 sn içinde adla bulunamazsa, taramada (zaten Game Deck servisiyle sınırlı) tek bir deck varsa ve adı boş / "deck" içeriyorsa o alınır (`pickOnlyDeck`). İki deck varsa yine yalnız adla.
+- Tanı: başarısız taramada görülen adlar uygulama günlüğüne yazılır ("taramada hiç Game Deck görünmedi" ya da "taramada görünen: … · aranan ad: …").

@@ -44,5 +44,22 @@ test('header has the Bluetooth button next to USB; the app connects on it and pi
   const comp = fs.readFileSync(path.join(root, 'app/companion.js'), 'utf8');
   assert.match(comp, /window\.__deckBleConnect = async \(\) => \{/);
   const main = fs.readFileSync(path.join(root, 'app/main.js'), 'utf8');
-  assert.match(main, /finish\(manual && seen\.length === 1 \? seen\[0\]\.deviceId : ''\)/);
+  assert.match(main, /const id = manual && seen\.length === 1 \? seen\[0\]\.deviceId : pickOnlyDeck\(seen\);/);
+});
+
+test('only deck around: taken when its name is the old one, empty or unknown; never with two decks or another device', () => {
+  const { pickOnlyDeck } = require('../../app/ble-pick');
+  assert.equal(pickOnlyDeck([{ deviceId: 'a', deviceName: 'Volkan Deck' }]), 'a');
+  assert.equal(pickOnlyDeck([{ deviceId: 'a', deviceName: '' }]), 'a');
+  assert.equal(pickOnlyDeck([{ deviceId: 'a', deviceName: 'Unknown or Unsupported Device (7D:9A…)' }]), 'a');
+  assert.equal(pickOnlyDeck([{ deviceId: 'a', deviceName: 'Game Deck' }, { deviceId: 'b', deviceName: 'Ali Deck' }]), '');
+  assert.equal(pickOnlyDeck([{ deviceId: 'a', deviceName: 'Kulaklık' }]), '');
+  assert.equal(pickOnlyDeck([]), '');
+});
+test('firmware 1.18.4: advertises while fewer than 3 links; a watchdog restarts advertising and fixes the link count', () => {
+  const hid = fs.readFileSync(path.join(root, 'firmware/VolkanDeck/Hid.h'), 'utf8');
+  assert.match(hid, /if \(bleConns < 3\) btAdvertise\(\);/);
+  assert.match(hid, /int n = bleServer->getConnectedCount\(\);/);
+  assert.match(hid, /n < 3 && !NimBLEDevice::getAdvertising\(\)->isAdvertising\(\)\) btAdvertise\(\);/);
+  assert.match(fs.readFileSync(path.join(root, 'firmware/VolkanDeck/VolkanDeck.ino'), 'utf8'), /bleAdvWatch\(\);/);
 });

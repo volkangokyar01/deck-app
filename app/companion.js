@@ -82,6 +82,13 @@
   // 2026-10-22: the scan did not see the deck at all (switched off when the computer started, out of range)
   const bleUnseen = () => typeof bleLastErr !== 'undefined' && !!bleLastErr?.unseen;
   // the window is opened while not connected: try now instead of at the end of the wait
+  // what the last unsuccessful scan saw (2026-10-31): none at all = the deck was not advertising / Bluetooth off
+  let bleSeenText = '';
+  deck.onBleSeen?.(s => {
+    const t = !s.names.length ? 'taramada hiç Game Deck görünmedi (cihaz kapalı, uzakta ya da görünür değil)'
+      : 'taramada görünen: ' + s.names.join(', ') + ' · aranan ad: ' + s.want + ' (Cihaz ayarları → ad)';
+    if (t !== bleSeenText) { bleSeenText = t; log('', '  Bluetooth: ' + t); }
+  });
   window.addEventListener?.('focus', () => { if (!port && !connecting && Date.now() - bleTriedAt > 5e3) bleTriedAt = 0; });
   // "Bluetooth ile bağlan" (2026-10-18): connect now, waiting for a running automatic attempt first
   window.__deckBleConnect = async () => {

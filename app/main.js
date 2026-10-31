@@ -13,7 +13,7 @@ const { createSensorInstaller } = require('./sensor-install');
 const { wolInfo } = require('./wol');
 const { createUpdater, REPO_URL } = require('./updater');
 const { createTrayUpdate, openLocationSettings } = require('./main-actions');
-const { macDeckPaired, pickDeck } = require('./ble-pick');
+const { macDeckPaired, pickDeck, pickOnlyDeck } = require('./ble-pick');
 const { createMailWatcher } = require('./mail');
 
 const IS_WIN = process.platform === 'win32';
@@ -168,7 +168,13 @@ function setupBluetooth(wc) {
     const id = pickDeck(list, bleWantName);
     if (id) return finish(id);
     const manual = Date.now() < bleManualUntil;
-    if (!timer) timer = setTimeout(() => finish(manual && seen.length === 1 ? seen[0].deviceId : ''), manual ? 6000 : 8000);   // nothing nearby: give up, the page retries later
+    // not found by name: after a moment the only deck around is taken (any name when asked by hand); nothing nearby:
+    // give up after 10 s, the page retries later. What the scan saw goes to the page's log (diagnosis).
+    if (!timer) timer = setTimeout(() => {
+      const id = manual && seen.length === 1 ? seen[0].deviceId : pickOnlyDeck(seen);
+      if (!id && win && !win.isDestroyed()) win.webContents.send('ble-seen', { want: bleWantName, names: seen.map(d => d.deviceName || '(adsız)') });
+      finish(id);
+    }, manual ? 6000 : 10000);
   });
   session.defaultSession.setBluetoothPairingHandler?.((details, callback) => callback({ confirmed: details.pairingKind === 'confirm' || details.pairingKind === 'confirmPin' }));
 }

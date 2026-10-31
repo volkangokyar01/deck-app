@@ -114,12 +114,25 @@ static const HostSeen* hostOf(uint16_t conn) { for (auto& h : hostSeen) if (h.co
 static void btEvt(uint8_t e, int code, const uint8_t* a) { if (a) memcpy(bt.evtAddr, a, 6); bt.evtCode = code; bt.evt = e; }
 static bool btPairing() { return bt.pairUntil && (int32_t)(millis() - bt.pairUntil) < 0; }
 static void btAdvertise() { if (bleStarted && !bt.off && !bt.hold) NimBLEDevice::startAdvertising(); }
+// 1.18.4 watchdog (loop, every 3 s): the link count comes from the stack (a missed callback could leave the counter
+// high and advertising off for good), and advertising is restarted whenever it stopped with a free link
+static void bleAdvWatch() {
+  static uint32_t t = 0; uint32_t now = millis();
+  if (!bleStarted || now - t < 3000) return;
+  t = now;
+  int n = bleServer->getConnectedCount();
+  if (n != bleConns) { bleConns = n; bleConnected = n > 0; }
+  if (!bt.off && !bt.hold && n < 3 && !NimBLEDevice::getAdvertising()->isAdvertising()) btAdvertise();
+}
 
 class BleCb : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, NimBLEConnInfo& ci) override {
     bleConns++; bleConnected = true;
     if (bt.off || bt.hold) { s->disconnect(ci.getConnHandle()); return; }
-    if (bleConns < 2) btAdvertise();   // stay visible so the desktop app can find us while the OS holds the keyboard link
+    // stay visible so the desktop app can find us while the OS holds the keyboard link. 1.18.4: up to the 3 links
+    // NimBLE allows (was 2): with a Mac and the Windows PC both holding the keyboard link the deck stopped advertising and
+    // the Windows app's scan never saw it ("cihaz bulunamadı" while the deck was on)
+    if (bleConns < 3) btAdvertise();
   }
   void onDisconnect(NimBLEServer* s, NimBLEConnInfo& ci, int reason) override {
     if (bleConns > 0) bleConns--;

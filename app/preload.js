@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('deck', {
   bleReady: () => ipcRenderer.invoke('ble-ready'),
   blePaired: name => ipcRenderer.invoke('ble-paired', name),
   bleManual: name => ipcRenderer.invoke('ble-manual', name),
+  onBleSeen: fn => { const listener = (ev, s) => fn(s); ipcRenderer.on('ble-seen', listener); return () => ipcRenderer.removeListener('ble-seen', listener); },
   hostName: () => ipcRenderer.invoke('host-name'),
   idleTime: () => ipcRenderer.invoke('idle-time'),
   updateState: () => ipcRenderer.invoke('update-state'),

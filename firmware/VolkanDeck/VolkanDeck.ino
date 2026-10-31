@@ -653,6 +653,7 @@ void loop() {
   connPoll();
   wifiPoll();
   bootWakeLoop();
+  bleAdvWatch();
   if (wf.dirty) { wf.dirty = false; dirty = true; }   // Wi-Fi state (and a moved screen buffer) redraw the screen
 
   uint32_t now = millis();
