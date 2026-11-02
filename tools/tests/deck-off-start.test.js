@@ -31,7 +31,7 @@ test('a deck the scan does not see is marked unseen; a deck that is seen but fai
 });
 
 test('companion: an unseen deck is tried every 20 s without growing the back-off; seen failures still back off', () => {
-  assert.match(page, /catch\(e\)\{ port=null; bleLastErr=e;/);
+  assert.match(page, /catch\(e\)\{ bleLastErr=e;/);
   assert.match(page, /if\(!\(auto&&e\.unseen&&before\?\.unseen\)\) log\("er"/, 'a deck that stays off is logged once');
   assert.match(comp, /: bleUnseen\(\) \? 20e3 : \[12e3, 30e3, 60e3\]\[bleFails\] \|\| 300e3;/);
   assert.match(comp, /bleFails = port \? 0 : bleUnseen\(\) \? bleFails : bleFails \+ 1;/);
@@ -42,7 +42,7 @@ test('companion: an unseen deck is tried every 20 s without growing the back-off
 test('Windows: a deck paired under an older name still counts as paired (its Game Deck GATT service node)', () => {
   const svc = page.match(/const VD_SVC="([0-9a-f-]+)"/)[1].toUpperCase();
   assert.ok(main.includes("$_.InstanceId -like 'BTHLEDEVICE\\\\{" + svc + "}*'"), 'same UUID as the page');
-  assert.match(main, /\(\$_\.InstanceId -like 'BTHLE\\\\DEV_\*' -and \$_\.FriendlyName -eq '\$\{q\}'\) -or /);
+  assert.match(main, /\(\$_\.InstanceId -like 'BTHLE\\\\DEV_\*' -and \(\$_\.FriendlyName -eq '\$\{q\}' -or \$_\.FriendlyName -eq '\$\{q2\}'\)\) -or /);
 });
 
 test('stats helper processes run only while a deck is connected', async () => {

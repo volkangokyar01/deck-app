@@ -90,15 +90,18 @@
     if (t !== bleSeenText) { bleSeenText = t; log('', '  Bluetooth: ' + t); }
   });
   window.addEventListener?.('focus', () => { if (!port && !connecting && Date.now() - bleTriedAt > 5e3) bleTriedAt = 0; });
-  // "Bluetooth ile bağlan" (2026-10-18): connect now, waiting for a running automatic attempt first
+  // "Bluetooth ile bağlan" (2026-10-18): connect now. 2026-11-02: connect() itself decides about a running attempt
+  // (a Bluetooth scan gives way to the click, a USB attempt is waited for); this used to wait 20 s and then start a
+  // second attempt next to the running one (both wrote the port)
   window.__deckBleConnect = async () => {
-    for (let i = 0; i < 40 && connecting; i++) await new Promise(r => setTimeout(r, 500));
     if (port) return;
-    connecting = true; connectingAt = Date.now();
+    await deck.bleManual?.(cfg.device?.name || 'Game Deck').catch(() => {});
+    const own = !connecting;                                    // the automatic loop may hold the flag: leave it to it
+    if (own) { connecting = true; connectingAt = Date.now(); }
     try { bleTriedAt = Date.now(); await connect(false, true); if (port) bleFails = 0; }
     catch (e) { log('er', '  Bluetooth: ' + (e && e.message || e)); }
-    finally { connecting = false; }
-    if (port && deviceInfo) await afterConnect();
+    finally { if (own) connecting = false; }
+    if (port && deviceInfo && !connecting) await afterConnect();   // otherwise the heartbeat below does it
   };
   // Is the deck plugged into this computer? getPorts() may be empty until a port was picked once,
   // so ask the main process too (it answers requestPort without a chooser).
@@ -106,13 +109,39 @@
     try { if ((await navigator.serial.getPorts()).some(p => p.getInfo().usbVendorId === ESP_VID)) return true; } catch (e) {}
     try { return !!(await navigator.serial.requestPort({ filters: [{ usbVendorId: ESP_VID }] })); } catch (e) { return false; }
   };
+  // 2026-11-02: can the deck's USB port be opened? A cable to this computer whose port another program holds
+  // (Arduino IDE, a browser tab with the settings page) used to drop a working Bluetooth link every cycle:
+  // switch to USB, fail to open, reconnect Bluetooth, repeat.
+  let usbBusyNote = false;
+  const usbOpenable = async () => {
+    let p = null;
+    try { p = (await navigator.serial.getPorts()).find(x => x.getInfo().usbVendorId === ESP_VID) || await navigator.serial.requestPort({ filters: [{ usbVendorId: ESP_VID }] }); } catch (e) { return false; }
+    try { await p.open({ baudRate: 115200 }); } catch (e) { return false; }
+    try { await p.close(); } catch (e) {}
+    return true;
+  };
+  let autoRun = 0;                                              // the invocation that owns `connecting`
   window.__deckAutoConnect = async () => {
-    if (connecting && Date.now() - connectingAt > 60e3) { log('er', '  Bağlantı denemesi takıldı, yeniden deneniyor'); connecting = false; try { await disconnect(); } catch (e) {} }
-    if (connecting || busy || (port && !port.isBle)) return;
-    connecting = true; connectingAt = Date.now();
+    // stuck rule: 120 s is above the slowest attempt that still makes progress (USB try, blePaired up to 15-20 s,
+    // Bluetooth steps up to ~75 s with their own time limits). Also covers an attempt started by a click / at load
+    // (connectRun without `connecting`), which would otherwise block the automatic loop for good.
+    const runOld = typeof connectRun === 'function' && connectRun() && Date.now() - connectRunAt() > 120e3;
+    if ((connecting && Date.now() - connectingAt > 120e3) || runOld) {
+      log('er', '  Bağlantı denemesi takıldı, yeniden deneniyor'); connecting = false; autoRun++;   // its finally no longer owns the flag
+      if (typeof connectAbandon === 'function') connectAbandon();   // whatever the hung attempt opens later is discarded (body.html)
+      if (!deviceInfo) try { await disconnect(); } catch (e) {}     // a half-open port; a working connection (a click) stays
+    }
+    // connectRun: a "USB ile bağlan" click is connecting right now
+    if (connecting || busy || (typeof connectRun === 'function' && connectRun()) || (port && !port.isBle)) return;
+    connecting = true; connectingAt = Date.now(); const me = ++autoRun;
     try {
       if (port) {                                               // on Bluetooth: move to USB as soon as the cable is here
-        if (!(await usbDeck())) return;
+        if (!(await usbDeck())) { usbBusyNote = false; return; }
+        if (!(await usbOpenable())) {
+          if (!usbBusyNote) log('', '  Kablo bağlı ama USB portu başka bir programda açık (Arduino IDE, tarayıcıdaki ayar sayfası): Bluetooth\'ta kalınıyor');
+          usbBusyNote = true; return;
+        }
+        usbBusyNote = false;
         log('', '  Kablo bağlı: USB\'ye geçiliyor'); await disconnect();
       }
       await connect(true);                                      // USB always first
@@ -138,13 +167,13 @@
             bleUnpairedNote = true;
           } else {
             bleUnpairedNote = false;
-            await connect(true, true);
-            bleFails = port ? 0 : bleUnseen() ? bleFails : bleFails + 1;
+            // "busy": skipped because a click is connecting; not a failed Bluetooth try
+            if (await connect(true, true) !== 'busy') bleFails = port ? 0 : bleUnseen() ? bleFails : bleFails + 1;
           }
         }
       }
-    } catch (e) { log('er', '  Bağlantı: ' + (e && e.message || e)); } finally { connecting = false; }
-    if (port && deviceInfo) await afterConnect();
+    } catch (e) { log('er', '  Bağlantı: ' + (e && e.message || e)); } finally { if (autoRun === me) connecting = false; }
+    if (port && deviceInfo && !connecting) await afterConnect();
   };
   async function afterConnect() {
     checkedPort = port;

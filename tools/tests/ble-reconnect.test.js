@@ -16,7 +16,7 @@ function harness({ known = [], connectFails = false } = {}) {
     return d;
   };
   const knownDevs = known.map(n => Object.assign(dev(n), { known: true }));
-  const ctx = vm.createContext({ ReadableStream, WritableStream, setTimeout, clearTimeout, cfg: { device: { name: 'Game Deck' } }, window: {},
+  const ctx = vm.createContext({ ReadableStream, WritableStream, TextEncoder, TextDecoder, setTimeout, clearTimeout, cfg: { device: { name: 'Game Deck' } }, window: {},
     navigator: { bluetooth: { getDevices: async () => knownDevs, requestDevice: async () => { calls.request++; return dev('Game Deck'); } } } });
   vm.runInContext(code + '\nthis.openBlePort = openBlePort; this.bleWithin = typeof bleWithin === "function" ? bleWithin : null;', ctx);
   if (!ctx.bleWithin) vm.runInContext('function bleWithin(p){ return p; }', ctx);

@@ -66,6 +66,6 @@ test('companion: fast Bluetooth retries after a drop, watchdog asks hello after 
   assert.match(comp, /window\.onBleDropped = \(\) => \{ bleFails = 0; bleTriedAt = 0; bleFastUntil = Date\.now\(\) \+ 180e3; \};/);
   assert.match(comp, /const bleWait = Date\.now\(\) < bleFastUntil \? 4e3 :/);
   assert.match(comp, /Date\.now\(\) - lastRxAt < 10e3\) return;/);
-  assert.match(comp, /if \(connecting && Date\.now\(\) - connectingAt > 60e3\)/);
+  assert.match(comp, /if \(\(connecting && Date\.now\(\) - connectingAt > 120e3\) \|\| runOld\)/);
   assert.match(body, /setTimeout\(\(\)=>\{ if\(pending\.has\(id\)\)\{ pending\.delete\(id\); rejFn\(new Error\("Cihaz yanıt vermedi"\)\); \} \},timeout\);\n  const w=withWrite/, 'send() times out even when the write hangs');
 });

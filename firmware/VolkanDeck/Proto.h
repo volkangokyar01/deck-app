@@ -68,7 +68,7 @@ const char* linkName();
 // Bluetooth sending runs on its own task: the main loop (screen, knob) never waits for the radio,
 // and the NimBLE host task is never blocked by us, so its buffers keep draining.
 // One receive buffer per Bluetooth connection (lines from two computers must never mix)
-struct BleLink { volatile uint16_t conn = BLE_HS_CONN_HANDLE_NONE; volatile uint16_t mtu = 23; char* buf = nullptr; size_t have = 0; volatile size_t len = 0; };
+struct BleLink { volatile uint16_t conn = BLE_HS_CONN_HANDLE_NONE; volatile uint16_t mtu = 23; char* buf = nullptr; size_t have = 0; volatile size_t len = 0; uint32_t at = 0; };
 static const int BLE_LINKS = 3;
 static BleLink bleLinks[BLE_LINKS];
 static BleLink* bleLinkOf(uint16_t conn) {
@@ -94,7 +94,11 @@ static void bleTxTask(void*) {
       if (bleTx->notify((const uint8_t*)it.p + i, k, conn)) { i += k; continue; }
       int tries = 0;
       while (!bleTx->notify((const uint8_t*)it.p + i, k, conn) && bleConnAlive(conn) && ++tries < 400) vTaskDelay(pdMS_TO_TICKS(5));
-      if (tries >= 400) break;                       // link stuck for 2 s: drop the rest of this line
+      if (tries >= 400) {                            // link stuck for 2 s: drop the rest of this line
+        // 1.18.5: end the half-sent line, otherwise the computer glued it to the next reply and lost that one too
+        if (i) for (int t = 0; t < 40 && bleConnAlive(conn) && !bleTx->notify((const uint8_t*)"\n", 1, conn); t++) vTaskDelay(pdMS_TO_TICKS(5));
+        break;
+      }
       i += k;
     }
     free(it.p);
@@ -451,6 +455,13 @@ static void bleRx(uint16_t conn, uint16_t mtu, const uint8_t* p, size_t n) {
   BleLink* L = bleLinkOf(conn);
   if (!L) { L = bleLinkOf(BLE_HS_CONN_HANDLE_NONE); if (!L) return; L->len = 0; L->conn = conn; }
   L->mtu = mtu;
+  // 1.18.5: the chunks of one line come back to back. A partial line older than 15 s (above two of the app's 6 s
+  // per-chunk write timeouts) was left by a program that stopped mid-write (the app quit, a write failed) while
+  // the computer kept the link: drop it, or it would corrupt the next command on this link (the OS link outlives
+  // the app, so bleDrop never ran).
+  uint32_t now = millis();
+  if (L->len && now - L->at > 15000) { L->len = 0; lineShrink(L->buf, L->have); }
+  L->at = now;
   for (size_t i = 0; i < n; i++) {
     char c = (char)p[i]; rxBytes++;
     if (c == '\n') {

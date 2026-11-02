@@ -75,11 +75,11 @@ def main():
     head, body, comp = rd('web', 'head.css.html'), rd('web', 'body.html'), rd('app', 'companion.js')
     head, body = inline_fonts(head), embed_esptool(body)
     doc = lambda b: '<!doctype html>\n<html lang="tr">\n' + head + b + '\n</html>\n'
-    Path(ROOT, 'web', 'StreamDeck-Ayar.html').write_text(doc(body), encoding='utf-8')
+    Path(ROOT, 'web', 'StreamDeck-Ayar.html').write_text(doc(body), encoding='utf-8', newline='\n')   # LF on Windows too
     end = body.rindex('})();')
     app = body[:end] + '\n/* ===== desktop app additions ===== */\n' + comp + '\n' + body[end:]
-    Path(ROOT, 'app', 'index.html').write_text(doc(app), encoding='utf-8')
-    with open(os.path.join(ROOT, 'app', 'build-info.json'), 'w', encoding='utf-8') as output:
+    Path(ROOT, 'app', 'index.html').write_text(doc(app), encoding='utf-8', newline='\n')
+    with open(os.path.join(ROOT, 'app', 'build-info.json'), 'w', encoding='utf-8', newline='\n') as output:
         json.dump(build_info(), output)
         output.write('\n')
     print('built web/StreamDeck-Ayar.html, app/index.html and app/build-info.json')

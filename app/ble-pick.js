@@ -2,6 +2,17 @@
 // deck'e bağlanır. Aynı odadaki başka birinin deck'ine bağlanmaya çalışmak macOS'te onun için
 // "… bağlanılsın mı?" eşleştirme penceresi açtırır.
 const norm = s => String(s || '').normalize('NFC').replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLocaleLowerCase('tr');
+// 2026-11-02 (firmware 1.18.5): the deck advertises at most 29 UTF-8 bytes of its name, cut on a character
+// boundary (Hid.h bleName). A long Turkish name is compared the same way, plus the full name for older firmware.
+function bleAdvName(s) {
+  s = String(s || '');
+  const b = Buffer.from(s, 'utf8');
+  if (b.length <= 29) return s;
+  let n = 29;
+  while (n > 0 && (b[n] & 0xC0) === 0x80) n--;
+  return b.subarray(0, n).toString('utf8');
+}
+const nameMatch = (seen, want) => { const n = norm(seen); return !!n && (n === norm(want) || n === norm(bleAdvName(want))); };
 
 // `system_profiler SPBluetoothDataType -json` çıktısı: eşleşmiş cihazlar device_connected / device_not_connected içinde
 function macPairedNames(json) {
@@ -17,8 +28,7 @@ function macPairedNames(json) {
 function macDeckPaired(json, name) {
   const names = macPairedNames(json);
   if (!names) return null;
-  const want = norm(name);
-  return names.some(n => norm(n) === want);
+  return names.some(n => nameMatch(n, name));
 }
 
 // Web Bluetooth seçicisinin listesinden (Electron: {deviceId, deviceName}) doğru deck'in kimliği, yoksa ''.
@@ -26,7 +36,7 @@ function macDeckPaired(json, name) {
 function pickDeck(list, wantName) {
   if (!Array.isArray(list) || !list.length) return '';
   if (!norm(wantName)) return list[0].deviceId;
-  const hit = list.find(d => norm(d.deviceName) === norm(wantName));
+  const hit = list.find(d => nameMatch(d.deviceName, wantName));
   return hit ? hit.deviceId : '';
 }
 
@@ -39,4 +49,4 @@ function pickOnlyDeck(list) {
   return !n || /deck|unknown|bilinmeyen/.test(n) ? list[0].deviceId : '';
 }
 
-module.exports = { macDeckPaired, macPairedNames, pickDeck, pickOnlyDeck, norm };
+module.exports = { macDeckPaired, macPairedNames, pickDeck, pickOnlyDeck, norm, bleAdvName };

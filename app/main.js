@@ -13,7 +13,7 @@ const { createSensorInstaller } = require('./sensor-install');
 const { wolInfo } = require('./wol');
 const { createUpdater, REPO_URL } = require('./updater');
 const { createTrayUpdate, openLocationSettings } = require('./main-actions');
-const { macDeckPaired, pickDeck, pickOnlyDeck } = require('./ble-pick');
+const { macDeckPaired, pickDeck, pickOnlyDeck, bleAdvName } = require('./ble-pick');
 const { createMailWatcher } = require('./mail');
 
 const IS_WIN = process.platform === 'win32';
@@ -192,11 +192,11 @@ async function blePaired(name) {
   if (blePairedCache.name === name && Date.now() - blePairedCache.at < 60e3) return blePairedCache.value;
   let value = true;                                          // if the system can't be asked, don't block Bluetooth
   if (IS_WIN) {
-    const q = name.replace(/'/g, "''");
+    const q = name.replace(/'/g, "''"), q2 = bleAdvName(name).replace(/'/g, "''");   // firmware 1.18.5 cuts long names
     // by name, or (2026-10-22) by the Game Deck GATT service node: Windows keeps the name the deck had when it was
     // paired, so a deck renamed later was never tried automatically
     const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
-      `[Console]::OutputEncoding=[Text.Encoding]::UTF8; @(Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Where-Object { ($_.InstanceId -like 'BTHLE\\DEV_*' -and $_.FriendlyName -eq '${q}') -or $_.InstanceId -like 'BTHLEDEVICE\\{7D9A0001-5C2E-4B7A-9F3D-1A6C0DE5D001}*' }).Count`], 15000);
+      `[Console]::OutputEncoding=[Text.Encoding]::UTF8; @(Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Where-Object { ($_.InstanceId -like 'BTHLE\\DEV_*' -and ($_.FriendlyName -eq '${q}' -or $_.FriendlyName -eq '${q2}')) -or $_.InstanceId -like 'BTHLEDEVICE\\{7D9A0001-5C2E-4B7A-9F3D-1A6C0DE5D001}*' }).Count`], 15000);
     const n = parseInt(r.stdout.trim(), 10);
     if (r.code === 0 && !isNaN(n)) value = n > 0;
   } else {

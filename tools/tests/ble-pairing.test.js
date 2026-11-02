@@ -14,7 +14,7 @@ test('Bluetooth auto-connect waits for Windows pairing and backs off after failu
   assert.match(main, /BTHLE\\\\DEV_\*/);
   assert.match(comp, /deck\.blePaired\?\.\(/);
   assert.match(comp, /\[12e3, 30e3, 60e3\]\[bleFails\] \|\| 300e3/);
-  const conn = comp.indexOf('await connect(true, true);'), gate = comp.indexOf('deck.blePaired?.(');
+  const conn = comp.indexOf('await connect(true, true)'), gate = comp.indexOf('deck.blePaired?.(');
   assert.ok(gate > 0 && gate < conn, 'pairing check comes before the Bluetooth connect');
 });
 

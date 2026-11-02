@@ -156,7 +156,8 @@ class BleCb : public NimBLEServerCallbacks {
     if (btPairing()) {
       bool known = false;
       for (uint8_t i = 0; i < bt.oldN; i++) if (!memcmp(bt.old[i], id, 6)) known = true;
-      if (!known) { bt.newBond = true; btEvt(BTE_PAIRED, 0, id); return; }
+      // 1.18.5: the new computer also gets the keys (the early return used to leave bleLastConn on the other one)
+      if (!known) { bt.newBond = true; bleLastConn = ci.getConnHandle(); btEvt(BTE_PAIRED, 0, id); return; }
     }
     if (bt.hasSel && memcmp(id, bt.sel, 6) && !btPairing()) {
       btEvt(BTE_REJECT, 0, id); bleServer->disconnect(ci.getConnHandle()); return;
@@ -180,6 +181,17 @@ static void usbEvent(void* arg, esp_event_base_t base, int32_t id, void* data) {
   }
 }
 
+// 1.18.5: the Bluetooth name is at most 29 UTF-8 bytes (what fits in the scan response), cut on a character
+// boundary. A 24-letter Turkish name can be 48 bytes: the scan response used to end in half a letter and above
+// 31 bytes the GAP name was not set at all. The desktop app cuts the same way before comparing (app/ble-pick.js).
+static String bleName(const String& name) {
+  const size_t MAX = 29;
+  if (name.length() <= MAX) return name;
+  size_t n = MAX;
+  while (n > 0 && ((uint8_t)name[n] & 0xC0) == 0x80) n--;   // name[n] would start the cut: back up to a lead byte
+  return name.substring(0, n);
+}
+
 // advertising: keyboard appearance + HID and Volkan Deck service UUIDs; the name goes in the scan response
 static void bleAdvData(const String& name) {
   NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
@@ -188,7 +200,7 @@ static void bleAdvData(const String& name) {
   ad.setAppearance(0x03C1);
   ad.addServiceUUID(NimBLEUUID((uint16_t)0x1812));
   ad.addServiceUUID(NimBLEUUID(VD_SVC_UUID));
-  sr.setName(name.c_str());
+  sr.setName(bleName(name).c_str());
   adv->setAdvertisementData(ad);
   adv->setScanResponseData(sr);
   adv->enableScanResponse(true);
@@ -207,7 +219,7 @@ static void btLoad();
 static void bleBegin(const String& name) {
   if (bleStarted) return;
   btLoad();
-  NimBLEDevice::init(name.c_str());
+  NimBLEDevice::init(bleName(name).c_str());
   NimBLEDevice::setDeviceCallbacks(new BtStoreCb());
   NimBLEDevice::setSecurityAuth(false, false, true);   // bonding only in pairing mode (btPairStart)
   NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
@@ -238,7 +250,7 @@ static void bleBegin(const String& name) {
 
 static void bleRename(const String& name) {
   if (!bleStarted) return;
-  NimBLEDevice::setDeviceName(name.c_str());
+  NimBLEDevice::setDeviceName(bleName(name).c_str());
   NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
   adv->stop(); bleAdvData(name); btAdvertise();
 }
@@ -369,7 +381,12 @@ static void btNameFromConn(uint16_t conn, const char* name) {
   if (ci.isBonded()) btSetName(ci.getIdAddress().getVal(), name);
 }
 
-static void bleBattery(uint8_t pct) { if (bleHid) bleHid->setBatteryLevel(pct, bleConnected); }
+// 1.18.5: notify only when the level changes (it was sent to every computer every 2 s)
+static void bleBattery(uint8_t pct) {
+  static int last = -1;
+  if (!bleHid || pct == last) return;
+  last = pct; bleHid->setBatteryLevel(pct, bleConnected);
+}
 
 static void hidBegin() {
   usbKb.begin();
