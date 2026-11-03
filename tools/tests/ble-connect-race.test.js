@@ -125,7 +125,7 @@ test('companion: no second attempt next to a running one, stuck rule abandons, U
   assert.match(comp, /if \(typeof connectAbandon === 'function'\) connectAbandon\(\);/);
   assert.match(comp, /\(typeof connectRun === 'function' && connectRun\(\)\)/);
   assert.match(comp, /finally \{ if \(autoRun === me\) connecting = false; \}/, 'a hung invocation does not clear a newer one');
-  assert.match(comp, /if \(await connect\(true, true\) !== 'busy'\) bleFails =/, 'a skipped try is not a failure');
+  assert.match(comp, /if \(await connect\(true, true\) !== 'busy'\) \{ bleFails =/, 'a skipped try is not a failure');
   assert.match(comp, /if \(!deviceInfo\) try \{ await disconnect\(\); \} catch/, 'the stuck rule keeps a working connection');
   const sw = comp.slice(comp.indexOf("if (port) {                                               // on Bluetooth"), comp.indexOf("await connect(true);"));
   assert.ok(sw.indexOf('usbOpenable()') > 0 && sw.indexOf('usbOpenable()') < sw.indexOf('await disconnect()'), 'USB is checked before the Bluetooth link is dropped');

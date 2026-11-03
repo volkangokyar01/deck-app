@@ -3227,7 +3227,7 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
     await deck.bleManual?.(cfg.device?.name || 'Game Deck').catch(() => {});
     const own = !connecting;                                    // the automatic loop may hold the flag: leave it to it
     if (own) { connecting = true; connectingAt = Date.now(); }
-    try { bleTriedAt = Date.now(); await connect(false, true); if (port) bleFails = 0; }
+    try { bleTriedAt = Date.now(); await connect(false, true); if (port) bleFails = 0; await bleWedgeCheck(); }
     catch (e) { log('er', '  Bluetooth: ' + (e && e.message || e)); }
     finally { if (own) connecting = false; }
     if (port && deviceInfo && !connecting) await afterConnect();   // otherwise the heartbeat below does it
@@ -3250,6 +3250,28 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
     return true;
   };
   let autoRun = 0;                                              // the invocation that owns `connecting`
+  // 2026-11-04: Chromium's Web Bluetooth on Windows: once the data channel was lost, every new attempt in this process
+  // finds the deck (gatt.connect works) but never gets its services. Measured on the real deck: no recovery in the
+  // same process (same device, new scan, all services, 20 s pause), a new process connects in 16-20 s. It started
+  // each time the Windows Bluetooth adapter stopped answering (BTHUSB event 3). After two such failures (three if
+  // this process never had a Bluetooth link) the app restarts itself (main.js ble-relaunch); while the user is in the
+  // window it only says so and restarts once the window is left.
+  const bleWedgeErr = e => !!e && !e.unseen && ((e.name === 'TimeoutError' && /^(servis|yazma kanalı|okuma kanalı|bildirim) /.test(e.message || ''))
+    || (e.name === 'NetworkError' && /retrieve services/i.test(e.message || '')));
+  let bleWedges = 0, bleHadLink = false, bleWedgeNote = false;
+  const bleWedgeCheck = async () => {
+    if (port?.isBle) { bleWedges = 0; bleHadLink = true; bleWedgeNote = false; return; }
+    if (!bleWedgeErr(typeof bleLastErr !== 'undefined' ? bleLastErr : null)) { bleWedges = 0; return; }
+    if (++bleWedges < (bleHadLink ? 2 : 3)) return;
+    if (!bleWedgeNote) {
+      bleWedgeNote = true;
+      const n = await deck.bleAdapterTimeouts?.().catch(() => null);
+      log('er', '  Bluetooth takıldı: Windows Bluetooth katmanı cihazın servislerini artık getirmiyor' + (n ? ' · bilgisayarın Bluetooth adaptörü son 15 dakikada ' + n + ' kez yanıt vermedi (adaptörü USB 2.0 portuna ya da uzatma kablosuna tak, güç tasarrufunu kapat, sürücüyü güncelle)' : ''));
+    }
+    const r = await deck.bleRelaunch?.().catch(() => null);
+    if (r?.ok) { log('er', '  Bluetooth: uygulama yeniden başlatılıyor'); return; }
+    if (r?.reason === 'focused') serialNote('Bluetooth bağlantısı takıldı. Pencereden çıkınca uygulama kendini yeniden başlatır (ya da kapatıp aç). Sık oluyorsa bilgisayarın Bluetooth adaptörünü çıkarıp tak.');
+  };
   window.__deckAutoConnect = async () => {
     // stuck rule: 120 s is above the slowest attempt that still makes progress (USB try, blePaired up to 15-20 s,
     // Bluetooth steps up to ~75 s with their own time limits). Also covers an attempt started by a click / at load
@@ -3297,7 +3319,7 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
           } else {
             bleUnpairedNote = false;
             // "busy": skipped because a click is connecting; not a failed Bluetooth try
-            if (await connect(true, true) !== 'busy') bleFails = port ? 0 : bleUnseen() ? bleFails : bleFails + 1;
+            if (await connect(true, true) !== 'busy') { bleFails = port ? 0 : bleUnseen() ? bleFails : bleFails + 1; await bleWedgeCheck(); }
           }
         }
       }
@@ -3337,6 +3359,7 @@ if(!("serial" in navigator)) serialNote("Bu pencerede USB bağlantısı yok; aya
     if (port && deviceInfo && checkedPort !== port && !connecting && !busy) { checkedPort = port; afterConnect(); }
     if (writer && deviceInfo && direct && !busy) sendRaw({ cmd: 'companion', os: HOST, mediaLaunch: true, idle: idleSec });
     if (!port) direct = false;
+    if (port?.isBle) bleHadLink = true;
     pushStatus();
   }, 2000);
   function pushStatus() {

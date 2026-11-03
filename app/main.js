@@ -210,6 +210,33 @@ async function blePaired(name) {
 }
 ipcMain.handle('ble-paired', (e, name) => blePaired(name));
 ipcMain.handle('ble-manual', (e, name) => { bleWantName = String(name || 'Game Deck').slice(0, 40); bleManualUntil = Date.now() + 25e3; return true; });
+// 2026-11-04: on Windows, once the Bluetooth data channel is lost, Chromium's Web Bluetooth in this process stops
+// finding the deck's services (gatt.connect works, getPrimaryService never answers; measured on the real deck: no
+// recovery in the same process, a new process connects in 16-20 s). It happened each time the Windows Bluetooth
+// adapter stopped answering (System log, BTHUSB event 3). The page asks for a fresh process: at least 3 minutes
+// apart and at most 6 times an hour (the adapter's failures come in bursts), never while the user is in the window,
+// hidden again if the window was hidden.
+ipcMain.handle('ble-relaunch', () => {
+  if (!IS_WIN) return { ok: false, reason: 'platform' };
+  if (win && !win.isDestroyed() && win.isFocused()) return { ok: false, reason: 'focused' };
+  const st = readState(), now = Date.now();
+  const recent = (Array.isArray(st.bleRelaunches) ? st.bleRelaunches : []).filter(t => now - t >= 0 && now - t < 3600e3);
+  if (recent.length >= 6 || recent.some(t => now - t < 3 * 60e3)) return { ok: false, reason: 'recent' };
+  st.bleRelaunches = [...recent, now]; delete st.bleRelaunchAt; writeState(st);
+  const visible = !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized();
+  app.relaunch({ args: process.argv.slice(1).filter(a => a !== '--hidden').concat(visible ? [] : ['--hidden']) });
+  quitting = true; app.quit();
+  return { ok: true };
+});
+// How often the Windows Bluetooth adapter stopped answering lately (System log, BTHUSB event 3:
+// "Bağdaştırıcıya gönderilen komut zaman aşımına uğradı"). null = could not be asked.
+ipcMain.handle('ble-adapter-timeouts', async () => {
+  if (!IS_WIN) return null;
+  const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
+    "@(Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='BTHUSB'; Id=3; StartTime=(Get-Date).AddMinutes(-15)} -ErrorAction SilentlyContinue).Count"], 15000);
+  const n = parseInt(r.stdout.trim(), 10);
+  return r.code === 0 && !isNaN(n) ? n : null;
+});
 // computer name shown on the deck's Bağlantılar page (sent over Bluetooth with the first companion message)
 let hostName = null;
 // seconds since the last keyboard / mouse input: the deck sends keys to the computer in use
