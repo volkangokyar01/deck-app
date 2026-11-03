@@ -691,8 +691,102 @@ static void drawFpsCard(int x, int y, int w, int h) {
   bigValue(v, has ? "fps" : "", x + 7, y + 45, col);
   if (has) trend(st.fpsH, x + w - 72, y + 30, 64, 26, SC_ACC, true);
 }
-static void drawCard(uint8_t wdg, int x, int y, int w, int h) {
+// 1.19.0 memory: used GB big, installed total, free, % in use, trend of % (wide card for the Kartlar page)
+static void drawRamCard(int x, int y, int w, int h) {
+  spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
+  bool ok = ramFresh() && !isnan(st.ram.used) && st.ram.total > 0;
+  float pct = ok ? st.ram.used / st.ram.total * 100 : NAN;
+  uint16_t col = !ok ? SC_DIM : pct > 90 ? SC_RED : pct > 75 ? SC_HL : SC_TEXT, lc = col == SC_TEXT || col == SC_DIM ? SC_ACC : col;
+  text("RAM", x + 8, y + 9, FB10, SC_SUB);
+  if (ok) text("%" + String((int)roundf(pct)), x + w - 8, y + 9, FSB11, SC_SUB, textdatum_t::middle_right);
+  text(ok ? "boş " + fmtNum(st.ram.total - st.ram.used, 1) + " GB" : waitText(), x + 8, y + 20, FM9, SC_DIM);
+  if (ok) text("/ " + String((int)roundf(st.ram.total)) + " GB", x + w - 8, y + 20, FM9, SC_SUB, textdatum_t::middle_right);
+  bigValue(ok ? fmtNum(st.ram.used, 1) : String("--"), "GB", x + 7, y + 45, col);
+  if (ok) trend(st.ramH, x + w - 72, y + 30, 64, 26, lc, false);
+  int bx = x + 8, bw = w - 16, by = y + h - 9;
+  spr.fillRoundRect(bx, by, bw, 4, 2, SC_LINE);
+  if (ok) spr.fillRoundRect(bx, by, max(4, (int)(bw * min(1.0f, pct / 100))), 4, 2, lc);
+}
+// 1.19.0 home: four narrow cards (91 px) right of the animation. Label + one detail on top, the value, one line
+// under it (CPU / GPU: watts), a bar at the bottom.
+static void narrowBar(int x, int y, int w, int h, float frac, uint16_t col) {
+  int bx = x + 8, bw = w - 16, by = y + h - 8;
+  spr.fillRoundRect(bx, by, bw, 4, 2, SC_LINE);
+  if (frac >= 0) spr.fillRoundRect(bx, by, max(4, (int)(bw * min(1.0f, frac))), 4, 2, col);
+}
+static void drawNarrowCard(uint8_t wdg, int x, int y, int w, int h) {
+  spr.fillRoundRect(x, y, w, h, 8, SC_PANEL);
+  const int vy = y + 34, sy = y + 55;
   switch (wdg) {
+    case W_CPU: case W_GPU: {
+      bool gpu = wdg == W_GPU; const PcStat& p = gpu ? st.gpu : st.cpu; bool ok = gpu ? gpuFresh() : cpuFresh();
+      bool hasT = ok && !isnan(p.temp), hasL = ok && !isnan(p.load);
+      uint16_t col = hasT ? tempColor(p.temp, gpu ? S.gpuWarn : S.cpuWarn, gpu ? S.gpuCrit : S.cpuCrit) : hasL ? SC_TEXT : SC_DIM;
+      uint16_t lc = col == SC_TEXT || col == SC_DIM ? SC_ACC : col;
+      text(gpu ? "GPU" : "CPU", x + 8, y + 9, FB10, SC_SUB);
+      if (hasL && (hasT ? S.showLoad : true)) text("%" + String((int)roundf(p.load)), x + w - 8, y + 9, FSB11, SC_SUB, textdatum_t::middle_right);
+      if (hasT) midValue(String((int)roundf(p.temp)), "°C", x + 8, vy, col);
+      else midValue(hasL ? String((int)roundf(p.load)) : String("--"), hasL ? "%" : "°C", x + 8, vy, col);
+      if (ok && !isnan(p.power)) text(String((int)roundf(p.power)) + " W", x + 8, sy, FSB12, SC_TEXT);
+      else text(fit(ok ? String("- W") : waitText(), w - 16, FM9), x + 8, sy, FM9, SC_DIM);
+      narrowBar(x, y, w, h, hasT ? p.temp / 110.0f : hasL ? p.load / 100.0f : -1, lc);
+      break; }
+    case W_FPS: {
+      bool ok = fpsFresh(), has = ok && !isnan(st.fps.fps);
+      text("FPS", x + 8, y + 9, FB10, SC_SUB);
+      if (netFresh() && !isnan(st.net.ping)) { float pg = st.net.ping; text(String((int)roundf(pg)) + " ms", x + w - 8, y + 9, FSB11, pg < 40 ? SC_GREEN : pg < 100 ? SC_HL : SC_RED, textdatum_t::middle_right); }
+      uint16_t col = !has ? SC_DIM : st.fps.fps < 30 ? SC_RED : st.fps.fps < 60 ? SC_HL : SC_TEXT;
+      midValue(has ? String((int)roundf(st.fps.fps)) : String("--"), has ? "fps" : "", x + 8, vy, col);
+      if (has && !isnan(st.fps.low)) text("1% " + String((int)roundf(st.fps.low)), x + 8, sy, FSB12, SC_TEXT);
+      else text(fit(ok ? String("Oyun yok") : String("FPS verisi yok"), w - 16, FM9), x + 8, sy, FM9, SC_DIM);
+      narrowBar(x, y, w, h, has ? st.fps.fps / 240.0f : -1, SC_ACC);
+      break; }
+    case W_RAM: {
+      bool ok = ramFresh() && !isnan(st.ram.used) && st.ram.total > 0;
+      float pct = ok ? st.ram.used / st.ram.total * 100 : NAN;
+      uint16_t col = !ok ? SC_DIM : pct > 90 ? SC_RED : pct > 75 ? SC_HL : SC_TEXT;
+      text("RAM", x + 8, y + 9, FB10, SC_SUB);
+      if (ok) text("%" + String((int)roundf(pct)), x + w - 8, y + 9, FSB11, SC_SUB, textdatum_t::middle_right);
+      midValue(ok ? fmtNum(st.ram.used, 1) : String("--"), "GB", x + 8, vy, col);
+      if (ok) text("/ " + String((int)roundf(st.ram.total)) + " GB", x + 8, sy, FSB12, SC_TEXT);
+      else text(fit(waitText(), w - 16, FM9), x + 8, sy, FM9, SC_DIM);
+      narrowBar(x, y, w, h, ok ? pct / 100 : -1, col == SC_TEXT || col == SC_DIM ? SC_ACC : col);
+      break; }
+    case W_CLOCK: {
+      struct tm t;
+      if (localTime(t)) {
+        char b[8]; snprintf(b, sizeof b, "%02d:%02d", t.tm_hour, t.tm_min);
+        text(b, x + w / 2, y + 31, FB26, SC_TEXT, textdatum_t::middle_center);
+        text(String(DAY_TR[t.tm_wday]) + " " + String(t.tm_mday) + " " + MON_TR[t.tm_mon], x + w / 2, y + 56, FSB12, SC_SUB, textdatum_t::middle_center);
+      } else { text("--:--", x + w / 2, y + 31, FB26, SC_DIM, textdatum_t::middle_center); text(fit(waitText(), w - 12, FM9), x + w / 2, y + 56, FM9, SC_DIM, textdatum_t::middle_center); }
+      break; }
+    case W_WEATHER: {
+      bool ok = wxFresh(); String city = st.wx.city.length() ? st.wx.city : S.wxCity;
+      text(fit(city.length() ? city : String("Hava"), w - 16, FB10), x + 8, y + 9, FB10, SC_SUB);
+      bool hasT = ok && !isnan(st.wx.temp);
+      midValue(hasT ? String((int)roundf(st.wx.temp)) : String("--"), "°", x + 8, vy, hasT ? SC_TEXT : SC_DIM);
+      if (ok && !isnan(st.wx.hi) && !isnan(st.wx.lo)) text(String((int)roundf(st.wx.hi)) + "° / " + String((int)roundf(st.wx.lo)) + "°", x + 8, sy, FSB12, SC_SUB);
+      else text(fit(ok ? String("-") : waitText(), w - 16, FM9), x + 8, sy, FM9, SC_DIM);
+      break; }
+    case W_FX: {
+      bool ok = fxFresh();
+      text("USD", x + 8, y + 22, FB11, SC_SUB); text(ok && !isnan(st.fx.usd) ? fmtNum(st.fx.usd, 2) : String("-"), x + w - 8, y + 23, FB18, ok ? SC_TEXT : SC_DIM, textdatum_t::middle_right);
+      text("EUR", x + 8, y + h - 22, FB11, SC_SUB); text(ok && !isnan(st.fx.eur) ? fmtNum(st.fx.eur, 2) : String("-"), x + w - 8, y + h - 21, FB18, ok ? SC_TEXT : SC_DIM, textdatum_t::middle_right);
+      break; }
+    case W_NET: {
+      bool ok = netFresh();
+      text("AĞ", x + 8, y + 9, FB10, SC_SUB);
+      if (ok && !isnan(st.net.ping)) { float pg = st.net.ping; text(String((int)roundf(pg)) + " ms", x + w - 8, y + 9, FSB11, pg < 40 ? SC_GREEN : pg < 100 ? SC_HL : SC_RED, textdatum_t::middle_right); }
+      float d = ok ? st.net.down : NAN;
+      midValue(isnan(d) ? String("--") : d < 10 ? fmtNum(d, 1) : String((int)roundf(d)), "Mb/s", x + 8, vy, isnan(d) ? SC_DIM : SC_TEXT);
+      if (ok && !isnan(st.net.up)) text("yük. " + (st.net.up < 10 ? fmtNum(st.net.up, 1) : String((int)roundf(st.net.up))), x + 8, sy, FSB12, SC_SUB);
+      break; }
+  }
+}
+static void drawCard(uint8_t wdg, int x, int y, int w, int h) {
+  if (w < 120) { drawNarrowCard(wdg, x, y, w, h); return; }   // 1.19.0 home 2 x 2
+  switch (wdg) {
+    case W_RAM: drawRamCard(x, y, w, h); break;
     case W_GPU: drawPcCard(x, y, w, h, true); break;
     case W_CLOCK: drawClockCard(x, y, w, h); break;
     case W_WEATHER: drawWeatherCard(x, y, w, h); break;
@@ -783,26 +877,15 @@ static void drawWidgets() {
   }
 }
 
-// home cards: two (76 + 75 px) or three (49 + 49 + 51 px) stacked right of the animation
-static void homeCardRect(int i, int& y, int& h) {
-  if (S.ccount >= 3) { static const int16_t Y[3] = { 15, 66, 117 }, H[3] = { 49, 49, 51 }; y = Y[i]; h = H[i]; }
-  else { y = i ? 93 : 15; h = i ? 75 : 76; }
-}
+// 1.19.0 home: the animation full height on the left (its 128 x 128 picture centred), four cards 2 x 2 on the right
+// (CPU | GPU over FPS | RAM by default); the A / B shortcut rows are gone
+static const int16_t HOME_CARD[4][4] = { { 132, 15, 91, 76 }, { 227, 15, 91, 76 }, { 132, 93, 91, 75 }, { 227, 93, 91, 75 } };
+static const int HOME_ANIM_Y = 21;                 // 2 + (166 - 128) / 2
+static void homeCardRect(int i, int& y, int& h) { y = HOME_CARD[i][1]; h = HOME_CARD[i][3]; }
 static void drawHome() {
-  drawAnim(2, 2, 128, 128, millis());               // top-left corner; the status row sits to its right
-  for (int i = 0; i < S.ccount; i++) { int y, h; homeCardRect(i, y, h); drawCard(S.cards[i], 132, y, 186, h); }   // 2 or 3 cards (1.15.1)
-  // A / B under the animation, one row each (A on top): letter, the app's icon, name
-  const String* q[2] = { &S.quickA, &S.quickB };
-  for (int i = 0; i < 2; i++) {
-    int y = i ? 151 : 132; App* a = appById(*q[i]); uint8_t pg = quickPage(*q[i]);
-    spr.fillRoundRect(2, y, 128, 17, 4, SC_PANEL);
-    text(i ? "B" : "A", 7, y + 8, FB10, SC_DIM);
-    if (a) { miniIcon(a, 22, y + 8); text(fit(a->name, S.keyN[i] > 1 ? 76 : 94, FSB11), 32, y + 8, FSB11, SC_SUB); }
-    else if (pg) { bubble(false, nullptr, 22, y + 8, 7, 1, pg); text(fit(quickPageName(pg), S.keyN[i] > 1 ? 76 : 94, FSB11), 32, y + 8, FSB11, SC_SUB); }
-    else if (uint8_t t = quickToggle(*q[i])) { quickToggleIcon(t, 22, y + 8, 7); text(fit(quickToggleName(t), S.keyN[i] > 1 ? 76 : 94, FSB11), 32, y + 8, FSB11, quickToggleOff(t) ? SC_RED : SC_SUB); }
-    else text("-", 18, y + 8, FSB11, SC_DIM);
-    if (S.keyN[i] > 1) text("+" + String(S.keyN[i] - 1), 125, y + 8, FB10, SC_DIM, textdatum_t::middle_right);   // 1.18.0: more actions
-  }
+  if (!(ecoActive && ecoAnimFps == 0 && homeFrameShown)) spr.fillRoundRect(2, 2, 128, 166, 8, SC_PANEL);
+  drawAnim(2, HOME_ANIM_Y, 128, 128, millis());
+  for (int i = 0; i < 4; i++) drawCard(S.cards[i], HOME_CARD[i][0], HOME_CARD[i][1], HOME_CARD[i][2], HOME_CARD[i][3]);
 }
 
 // Keep periodic eco updates inside their own LCD regions.
@@ -811,13 +894,13 @@ static void pushRegion(int x, int y, int w, int h) {
 }
 static void renderEcoAnim(uint32_t now) {
   if (ecoAnimFps <= 0) return;
-  drawAnim(2, 2, 128, 128, now); pushRegion(2, 2, 128, 128);
+  drawAnim(2, HOME_ANIM_Y, 128, 128, now); pushRegion(2, HOME_ANIM_Y, 128, 128);
 }
 static void renderEcoClock() {
   if (items.empty() || mailActive()) return;
   { int sx = items[sel].home ? 134 : 2; drawStatusClock(sx); pushRegion(sx, 0, 78, 14); }   // the time in the status row (1.15.2: every screen)
   if (items[sel].home) {
-    for (int i = 0; i < S.ccount; i++) if (S.cards[i] == W_CLOCK) { int y, h; homeCardRect(i, y, h); drawClockCard(132, y, 186, h); pushRegion(132, y, 186, h); }
+    for (int i = 0; i < 4; i++) if (S.cards[i] == W_CLOCK) { const int16_t* r = HOME_CARD[i]; drawCard(W_CLOCK, r[0], r[1], r[2], r[3]); pushRegion(r[0], r[1], r[2], r[3]); }
   } else if (items[sel].kind == K_WIDGETS) {
     // drawWidgets shares the layout; only clock rectangles reach the LCD.
     drawWidgets();
@@ -1227,8 +1310,8 @@ static void render(const char* link) {
   drawToast();
   if (ecoActive && ecoAnimFps == 0 && homeFrameShown && !items.empty() && items[sel].home) {
     // Preserve the complete LCD frame, even when stats/theme/link dirty the rest.
-    pushRegion(0, 0, 320, 2); pushRegion(0, 2, 2, 128);
-    pushRegion(130, 2, 190, 128); pushRegion(0, 130, 320, 40);
+    pushRegion(0, 0, 320, HOME_ANIM_Y); pushRegion(0, HOME_ANIM_Y, 2, 128);
+    pushRegion(130, HOME_ANIM_Y, 190, 128); pushRegion(0, HOME_ANIM_Y + 128, 320, 170 - HOME_ANIM_Y - 128);
   } else spr.pushSprite(0, 0);
   homeFrameShown = !items.empty() && items[sel].home;
 }

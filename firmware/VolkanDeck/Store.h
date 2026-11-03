@@ -5,8 +5,8 @@
 
 enum LaunchMethod : uint8_t { M_RUN = 0, M_SEARCH, M_TASKBAR, M_KEY };
 enum AnimKind : uint8_t { A_FAN = 0, A_RADAR, A_PULSE, A_EQ, A_CUSTOM, A_NONE };
-enum Widget : uint8_t { W_CPU = 0, W_GPU, W_CLOCK, W_WEATHER, W_FX, W_NET, W_FPS };
-static const char* WIDGET_IDS[7] = { "cpu", "gpu", "clock", "weather", "fx", "net", "fps" };
+enum Widget : uint8_t { W_CPU = 0, W_GPU, W_CLOCK, W_WEATHER, W_FX, W_NET, W_FPS, W_RAM, W_COUNT };   // W_RAM 1.19.0
+static const char* WIDGET_IDS[W_COUNT] = { "cpu", "gpu", "clock", "weather", "fx", "net", "fps", "ram" };
 
 struct Launch {
   uint8_t method = M_RUN;
@@ -46,7 +46,7 @@ struct Settings {
   bool kbFallback = false;   // type Win+R / Start / Spotlight when the desktop app is not running (off by default)      // keyboard fallback style: Windows (Win+R / Start) or macOS (Spotlight)
   // home
   bool homeOn = true;
-  uint8_t cards[3] = { W_CPU, W_GPU, W_NET }, ccount = 2;   // home-screen slots: two, or three (1.15.1)
+  uint8_t cards[4] = { W_CPU, W_GPU, W_FPS, W_RAM }, ccount = 4;   // 1.19.0: four slots, 2 x 2 right of the animation
   String cpuLabel, gpuLabel;              // "" = name from stats
   String wxCity;                          // home.weather.city: label until the app sends weather
   int cpuWarn = 85, cpuCrit = 95, gpuWarn = 80, gpuCrit = 87;
@@ -233,10 +233,12 @@ static void applyConfig(JsonObjectConst c) {
   N.animColor = parseColor(an["color"] | "#3B6CF6", 0x3B7E);
   N.animFps = constrain(an["fps"] | 15, 1, 30);
 
-  JsonArrayConst cards = h["cards"];          // unknown / missing entries keep the defaults (cpu, gpu)
-  for (int i = 0; i < 3; i++) {
+  // 1.19.0: four home slots; unknown / missing entries keep the defaults (cpu, gpu, fps, ram), so an older two-card
+  // config becomes "its two cards + FPS + RAM"
+  JsonArrayConst cards = h["cards"];
+  for (int i = 0; i < 4; i++) {
     const char* w = cards[i] | "";
-    for (uint8_t k = 0; k < 7; k++) if (!strcmp(w, WIDGET_IDS[k])) { N.cards[i] = k; if (i == 2) N.ccount = 3; }
+    for (uint8_t k = 0; k < W_COUNT; k++) if (!strcmp(w, WIDGET_IDS[k])) N.cards[i] = k;
   }
   N.wxCity = (const char*)(h["weather"]["city"] | "");
 
@@ -275,7 +277,7 @@ static void applyConfig(JsonObjectConst c) {
     N.wcount = 0;
     for (JsonVariantConst v : wc) {
       const char* w = v | "";
-      for (uint8_t k = 0; k < 7; k++) if (!strcmp(w, WIDGET_IDS[k]) && N.wcount < 4) { N.wcards[N.wcount++] = k; break; }
+      for (uint8_t k = 0; k < W_COUNT; k++) if (!strcmp(w, WIDGET_IDS[k]) && N.wcount < 4) { N.wcards[N.wcount++] = k; break; }
     }
     if (!N.wcount) { N.wcards[0] = W_CPU; N.wcount = 1; }
   }

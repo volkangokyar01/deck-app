@@ -86,7 +86,7 @@ test('A / B toggle the microphone or the sound output (1.14.0)', () => {
   assert.match(q, /if \(t == QA_MIC\) \{ toggleMic\(\);/);
   assert.match(q, /else \{ toggleMute\(\);/);
   assert.ok(q.indexOf('quickToggle(id)') < q.indexOf('quickPage(id)'), 'toggles are handled before pages and apps');
-  assert.equal((ui.match(/quickToggleIcon\(t, /g) || []).length, 2, 'home and app screens show the toggle');
+  assert.equal((ui.match(/quickToggleIcon\(t, /g) || []).length, 1, 'app screens show the toggle (1.19.0: home has no A / B rows)');
   assert.match(web, /qref=v=>\["__media","__system","__connections","__mic","__mute","__wake"\]\.includes\(v\)/);
   assert.match(web, /QUICK_ACTS\.find\(q=>q\.id===id\)/);
   assert.ok(!/^\s*mic:/m.test(web.slice(web.indexOf('const ICONS = {'), web.indexOf('const XICONS'))), 'mic is not offered as an app icon (the device has no such line icon)');

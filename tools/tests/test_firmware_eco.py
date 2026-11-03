@@ -176,7 +176,8 @@ int main(){
         self.assertLess(periodic.index('if (ecoAnimFps <= 0) return;'), periodic.index('drawAnim('))
         render = ui[ui.index('static void render(const char*'):ui.index('static void uiBegin()')]
         self.assertIn('ecoActive && ecoAnimFps == 0 && homeFrameShown && !items.empty() && items[sel].home', render)
-        for rect in ['0, 0, 320, 2', '0, 2, 2, 128', '130, 2, 190, 128', '0, 130, 320, 40']:
+        # 1.19.0: the animation sits at y = HOME_ANIM_Y (centred in the full-height panel); everything around it is kept
+        for rect in ['0, 0, 320, HOME_ANIM_Y', '0, HOME_ANIM_Y, 2, 128', '130, HOME_ANIM_Y, 190, 128', '0, HOME_ANIM_Y + 128, 320, 170 - HOME_ANIM_Y - 128']:
             self.assertIn(f'pushRegion({rect})', render)
         self.assertIn('else spr.pushSprite(0, 0)', render)
         self.assertIn('homeFrameShown = !items.empty() && items[sel].home;', render)

@@ -17,8 +17,9 @@ struct Stats {
   struct { String city; float temp = NAN, hi = NAN, lo = NAN, rain = NAN; int code = -1; uint32_t at = 0; } wx;
   struct { float usd = NAN, eur = NAN, usdChg = NAN, eurChg = NAN; uint32_t at = 0; } fx;
   struct { float fps = NAN, low = NAN; String app; uint32_t at = 0; } fps;   // 1.16.0: in-game FPS (Windows, PresentMon)
+  struct { float used = NAN, total = NAN; uint32_t at = 0; } ram;            // 1.19.0: memory in use / installed, GB
   int64_t epoch = 0; int32_t tz = 0; uint32_t timeAt = 0;   // UTC seconds + local offset, at millis() timeAt
-  Hist cpuT, gpuT, netD, fpsH;
+  Hist cpuT, gpuT, netD, fpsH, ramH;
 } st;
 bool statsDirty = false;
 
@@ -29,6 +30,7 @@ static bool netFresh() { return fresh(st.net.at, 5000); }
 static bool wxFresh() { return fresh(st.wx.at, 2 * 3600000UL); }
 static bool fxFresh() { return fresh(st.fx.at, 2 * 3600000UL); }
 static bool fpsFresh() { return fresh(st.fps.at, 15000); }   // 1.16.1: a late stats packet must not blank the card
+static bool ramFresh() { return fresh(st.ram.at, 10000); }
 
 // Local time (1.11.0, no Wi-Fi): every "time" from the desktop app also sets the chip's own clock
 // (settimeofday). That clock keeps running through restarts, crashes and deep sleep ("Kapanıyor"),
@@ -94,6 +96,11 @@ static void parseStats(JsonObjectConst d) {
     if (isnan(f) && !isnan(st.fps.fps) && st.fps.at && millis() - st.fps.at < 3000) { /* keep */ }
     else { st.fps.fps = f; st.fps.low = num(o["low"]); st.fps.app = (const char*)(o["app"] | ""); st.fps.at = millis() | 1; }
     if (!isnan(f)) st.fpsH.push(f);
+  }
+  if (d["ram"].is<JsonObjectConst>()) {                 // 1.19.0
+    JsonObjectConst o = d["ram"];
+    st.ram.used = num(o["used"]); st.ram.total = num(o["total"]); st.ram.at = millis() | 1;
+    if (!isnan(st.ram.used) && st.ram.total > 0) st.ramH.push(st.ram.used / st.ram.total * 100);
   }
   if (d["time"].is<JsonObjectConst>() && d["time"]["epoch"].is<double>()) {
     st.epoch = (int64_t)d["time"]["epoch"].as<double>(); st.tz = (int32_t)(d["time"]["tz"] | 0.0); st.timeAt = millis() | 1;

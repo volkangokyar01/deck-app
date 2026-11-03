@@ -5,7 +5,21 @@ const path = require('path');
 const cp = require('child_process');
 const tcp = require('net');
 const assets = require('./stats-assets');
-const RATES = { cpu: 1000, gpu: 1000, net: 1000, fps: 1000, time: 60000, weather: 900000, fx: 1800000 };
+const RATES = { cpu: 1000, gpu: 1000, net: 1000, fps: 1000, ram: 2000, time: 60000, weather: 900000, fx: 1800000 };
+// RAM (2026-11-03, firmware 1.19.0): GB in use and installed. Windows: total - available (GlobalMemoryStatusEx, the
+// same "In use" as Task Manager). macOS: free pages exclude the file cache, so "used" is active + wired + compressed
+// pages from vm_stat (close to Activity Monitor's "Memory Used").
+const GB = 1024 ** 3;
+const round1 = v => Math.round(v * 10) / 10;
+function parseVmStat(text, total) {
+  const page = Number((String(text).match(/page size of (\d+) bytes/) || [])[1]) || 16384;
+  const pages = name => { const m = String(text).match(new RegExp('^' + name + ':\\s+(\\d+)', 'm')); return m ? Number(m[1]) : null; };
+  const active = pages('Pages active'), wired = pages('Pages wired down'), comp = pages('Pages occupied by compressor');
+  if (active === null || wired === null) return null;
+  const used = (active + wired + (comp || 0)) * page;
+  return used > 0 && used <= total ? { used: round1(used / GB), total: round1(total / GB) } : null;
+}
+function ramFromOs(total, free) { return total > 0 && free >= 0 && free <= total ? { used: round1((total - free) / GB), total: round1(total / GB) } : null; }
 const number = v => v !== null && v !== undefined && String(v).trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null;
 const range = (v, min, max) => { const n = number(v); return n !== null && n >= min && n <= max ? n : null; };
 const cpuName = s => String(s || '').replace(/\((R|TM)\)|\bCPU\b|@\s*[\d.]+\s*GHz/gi, '').replace(/\s+/g, ' ').trim() || null;
@@ -138,7 +152,7 @@ function createFpsTracker(alive = pid => { try { process.kill(pid, 0); return tr
   };
 }
 function createStats({ fetch, cacheDir, platform = process.platform, arch = process.arch, sensorFile, fpsFile } = {}) {
-  const cache = { cpu: { name: cpuName(os.cpus()[0]?.model), temp: null, load: null, power: null, clock: null }, gpu: gpuEmpty(), net: { down: null, up: null, ping: null }, fx: { usd: null, eur: null, usdChg: null, eurChg: null } };
+  const cache = { ram: null, cpu: { name: cpuName(os.cpus()[0]?.model), temp: null, load: null, power: null, clock: null }, gpu: gpuEmpty(), net: { down: null, up: null, ping: null }, fx: { usd: null, eur: null, usdChg: null, eurChg: null } };
   if (platform === 'win32') cache.fps = { fps: null, low: null, app: null };
   let fgPid = 0, fgAt = 0, fpsData = null;
   const fpsTrack = createFpsTracker();
@@ -224,6 +238,14 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
     previousNet = next; netAt = now; netSeen = Date.now();
   }
   let netBusy = false;
+  let ramBusy = false;
+  async function ram() {
+    if (ramBusy || !live) return; ramBusy = true;
+    try {
+      if (platform === 'darwin') cache.ram = parseVmStat(await assets.run('/usr/bin/vm_stat', [], 2000), os.totalmem()) || ramFromOs(os.totalmem(), os.freemem());
+      else cache.ram = ramFromOs(os.totalmem(), os.freemem());
+    } catch (_) { cache.ram = ramFromOs(os.totalmem(), os.freemem()); } finally { ramBusy = false; }
+  }
   async function macNetwork() {
     if (netBusy || !live) return; netBusy = true;
     try {
@@ -329,7 +351,7 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
     return structuredClone(cache);
   }
   function start() {
-    if (running) return; running = true; cpu(); every(cpu, RATES.cpu);
+    if (running) return; running = true; cpu(); every(cpu, RATES.cpu); ram().catch(() => {}); every(ram, RATES.ram);
     ping(); every(ping, 5000); refreshFx(); every(refreshFx, RATES.fx); refreshWeather(); every(refreshWeather, RATES.weather);
     locationAt = 0; refreshLocation(); every(refreshLocation, 6 * 3600000);
     if (platform === 'darwin') {
@@ -361,4 +383,4 @@ function createStats({ fetch, cacheDir, platform = process.platform, arch = proc
   function stop() { running = false; locationGeneration++; for (const t of timers) clearInterval(t); timers.clear(); for (const c of children) c.kill(); children.clear(); for (const s of sockets) s.destroy(); sockets.clear(); }
   return { start, stop, setLive, get, refreshWeather, refreshFx, refreshLocation };
 }
-module.exports = { createStats, pickFps, createFpsTracker, RATES, parseNvidia, parseMacmon, parseNetstat, netDelta, cpuName, parseLocation, resolveLocation, parseReverseLocation, reverseLocation, resolveWeatherLocation };
+module.exports = { parseVmStat, ramFromOs, createStats, pickFps, createFpsTracker, RATES, parseNvidia, parseMacmon, parseNetstat, netDelta, cpuName, parseLocation, resolveLocation, parseReverseLocation, reverseLocation, resolveWeatherLocation };

@@ -32,12 +32,12 @@ test('PresentMon is pinned in the app and checked again (hash + Intel signature)
 
 test('firmware and settings page know the fps card; it shows ping too', () => {
   const store = read('firmware/VolkanDeck/Store.h'), ui = read('firmware/VolkanDeck/Ui.h'), stats = read('firmware/VolkanDeck/Stats.h'), web = read('web/body.html');
-  assert.match(store, /WIDGET_IDS\[7\] = \{ "cpu", "gpu", "clock", "weather", "fx", "net", "fps" \}/);
+  assert.match(store, /WIDGET_IDS\[W_COUNT\] = \{ "cpu", "gpu", "clock", "weather", "fx", "net", "fps", "ram" \}/);
   assert.match(stats, /if \(d\["fps"\]\.is<JsonObjectConst>\(\)\)/);
   const card = ui.slice(ui.indexOf('static void drawFpsCard('), ui.indexOf('static void drawCard('));
   assert.match(card, /pingText\(x, y \+ 9, w\);/);
   assert.match(ui, /case W_FPS: drawFpsCard\(x, y, w, h\); break;/);
-  assert.match(web, /\["fps","FPS"\]\];/);
+  assert.match(web, /\["fps","FPS"\],\["ram","RAM"\]\];/);
   assert.match(web, /else if \(id==="fps"\) drawFpsCard\(x,y,w,h\);/);
 });
 

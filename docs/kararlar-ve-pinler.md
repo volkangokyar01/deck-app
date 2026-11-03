@@ -96,7 +96,7 @@
 - Bluetooth'ta yapılmayanlar: firmware yükleme (dfu → usb_only), animasyon yükleme (uygulama engeller)
 - macOS: Electron'un Info.plist'inde NSBluetoothAlwaysUsageDescription var; Mac-Kur.command Türkçe açıklama yazar
 
-## Firmware (v1.18.5)
+## Firmware (v1.19.0)
 - Arduino-ESP32 3.3.12, kart lilygo_t_display_s3, USB-OTG (TinyUSB) + CDC on boot, özel partitions.csv (4 MB app0 + 12 MB LittleFS)
 - Kütüphaneler: LovyanGFX 1.2.x, ArduinoJson 7.4, NimBLE-Arduino 2.5.1
 - Yükleme: ayar uygulamasında "Firmware yükle" (esptool-js 0.7.0, bin'ler HTML'e gömülü)
@@ -481,3 +481,10 @@ Uygulama listesine komut dosyası eklenebilir; çalıştırmayı masaüstü uygu
 - Firmware 1.18.5: Bluetooth adı en çok 29 UTF-8 bayt, harf sınırında kesilir (`bleName`). 24 harflik Türkçe ad 48 bayt olabiliyordu: tarama yanıtı yarım harfle bitiyor, 31 baytın üstünde GAP adı hiç ayarlanmıyordu. Uygulama (`ble-pick.js` `bleAdvName`) aynı kesmeyle ve tam adla karşılaştırır; Windows eşleşme kontrolü iki adı da arar.
 - Bilinçli olarak değişmeyenler: pilde otomatik kapanma varsayılanı 300 sn (uygulamadan gelen veri etkinlik sayılmaz; kullanıcı Ayarlar → Cihaz'dan kapatabilir), eşleşmenin yalnız eşleştirme modunda yapılması, "yalnız bu bilgisayar" modunda diğerlerinin şifrelemeden sonra düşürülmesi. `navigator.bluetooth.getDevices()` Electron 44'te yok; hızlı yol yalnız oturum içinde (`lastBleDev`) çalışır.
 - Donanımda doğrulandı (Sencer'in kartı, 1.18.5 USB'den esptool ile, silmeden yüklendi; eşleşmeler korundu, Windows kendiliğinden yeniden bağlandı): 1 dk'da 56 `hello`, 0 hata; yarım satırdan 2 sn sonra gelen komut `json` hatası alıyor (kontrol), 16 sn sonra gelen yanıtlanıyor; 30 sn'de 0 pil bildirimi. USB portu başka programda açıkken eski uygulama Bluetooth'a bağlanıp 2,6 sn sonra kesti ve 95 sn boyunca bağlanamadı; yeni uygulama 8,9 sn'de bağlandı, 95 sn kopmadı, port serbest kalınca USB'ye geçti. Geliştirme modunda (Electron 44.5.1) yeniden açılınca 8–11 sn'de Bluetooth'a bağlandı. Denenmeyenler: macOS, yeni bilgisayar eşleştirip tuş yönü, 29 bayttan uzun ad, yarıda kesilen yanıt.
+
+## 2026-11-03 — Yeni ana sayfa: 2 × 2 kart, RAM (firmware 1.19.0)
+- Ana sayfa: animasyon solda tam boy panel (2, 2, 128 × 166), 128 × 128 resmi dikeyde ortada (`HOME_ANIM_Y` = 21). Sağda 4 kart 2 × 2: (132, 15) (227, 15) 91 × 76, (132, 93) (227, 93) 91 × 75. A / B kısayol satırları kaldırıldı (tuşlar aynı çalışır).
+- `home.cards` 4 eleman; varsayılan cpu, gpu, fps, ram. Eski 2–3 kartlı ayar ilk kartlarını korur, eksikler fps / ram olur (firmware ve ayar sayfası aynı kural).
+- Dar kart (genişlik < 120, `drawNarrowCard`): üstte ad + bir ayrıntı (CPU / GPU yük %, FPS ping, RAM %), ortada değer (26 px), altında bir satır (CPU / GPU watt, FPS 1% low, RAM toplam), en altta çubuk. Saat, hava, döviz, ağ için de dar sürüm var.
+- RAM: yeni `stats` grubu `ram` {used, total} GB, 2 sn'de bir; cihazda 10 sn tazelik. Windows: toplam − kullanılabilir (Görev Yöneticisi "Kullanımda"). macOS: `vm_stat` etkin + kablolu + sıkıştırılmış sayfalar (Etkinlik İzleyicisi "Kullanılan bellek"'e yakın). Kartlar sayfasında geniş RAM kartı da var.
+- Eko modunda donmuş karede korunan bölgeler yeni animasyon konumuna göre (`HOME_ANIM_Y`).

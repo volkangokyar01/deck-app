@@ -705,8 +705,9 @@ void loop() {
   int64_t minute = st.timeAt ? (st.epoch + st.tz + (int64_t)((now - st.timeAt) / 1000)) / 60 : -1;
   bool clockChanged = minute != clockMinute; clockMinute = minute;
   if (clockChanged && !ecoActive) dirty = true;           // 1.15.2: the status-row time on every screen
-  static uint8_t liveBits = 0;
-  uint8_t bits = (cpuFresh() ? 1 : 0) | (gpuFresh() ? 2 : 0) | (netFresh() ? 4 : 0) | (wxFresh() ? 8 : 0) | (fxFresh() ? 16 : 0) | (mediaLive() ? 32 : 0) | (sysLive() ? 64 : 0) | (fpsFresh() ? 128 : 0);
+  static uint16_t liveBits = 0;
+  uint16_t bits = (cpuFresh() ? 1 : 0) | (gpuFresh() ? 2 : 0) | (netFresh() ? 4 : 0) | (wxFresh() ? 8 : 0) | (fxFresh() ? 16 : 0) | (mediaLive() ? 32 : 0) | (sysLive() ? 64 : 0) | (fpsFresh() ? 128 : 0);
+  bits |= ramFresh() ? 256 : 0;                    // 1.19.0
   if (bits != liveBits) { liveBits = bits; dirty = true; }
   bool toastExpired = toastUntil && now > toastUntil;
   if (toastExpired) { toastUntil = 0; dirty = true; }

@@ -153,7 +153,7 @@ test('firmware 1.18.5: new computer gets the keys, battery notifies on change, h
   assert.match(hid, /if \(!bleHid \|\| pct == last\) return;/);
   assert.match(proto, /if \(i\) for \(int t = 0; t < 40 && bleConnAlive\(conn\) && !bleTx->notify\(\(const uint8_t\*\)"\\n", 1, conn\); t\+\+\)/);
   assert.match(proto, /if \(L->len && now - L->at > 15000\) \{ L->len = 0; lineShrink\(L->buf, L->have\); \}/);
-  assert.match(read('firmware/VolkanDeck/Board.h'), /#define FW_VERSION "1\.18\.5"/);
+  assert.match(read('firmware/VolkanDeck/Board.h'), /#define FW_VERSION "1\.(18\.5|19\.\d+)"/);
 });
 
 test('an automatic attempt after a click already connected does not open a second session (which dropped the link)', async () => {

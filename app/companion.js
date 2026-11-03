@@ -421,7 +421,7 @@
   pollLocation(); setInterval(pollLocation, 5000);
 
   /* ---- cached widget groups (firmware 1.4.0+), full snapshot after reconnect ---- */
-  const statsRates = { cpu: 1000, gpu: 1000, net: 1000, fps: 1000, time: 60000, weather: 900000, fx: 1800000 };
+  const statsRates = { cpu: 1000, gpu: 1000, net: 1000, fps: 1000, ram: 2000, time: 60000, weather: 900000, fx: 1800000 };
   let statsPolling = false, statsPort = null, statsWriter = null;
   let statsSent = {}, statsSlow = {};
   async function pollStats(full = false) {
